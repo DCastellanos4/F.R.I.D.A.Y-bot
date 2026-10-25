@@ -1,0 +1,35 @@
+{
+  "name": "friday-ai",
+  "version": "2.0.0",
+  "main": "api.js",
+  "scripts": {
+    "start": "node api.js",
+    "whatsapp": "node whatsappBot.js",
+    "chat": "node chat.js",
+    "test": "node full_system_test.js"
+  },
+  "keywords": [
+    "ai",
+    "whatsapp-bot",
+    "assistant",
+    "baileys",
+    "ollama",
+    "friday",
+    "second-brain"
+  ],
+  "author": "David",
+  "license": "MIT",
+  "description": "F.R.I.D.A.Y. - Personal Tactical AI Assistant with WhatsApp Multi-Device, Local Ollama LLM, Second Brain & Proactive Automation",
+  "type": "module",
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
+    "cheerio": "^1.2.0",
+    "dotenv": "^17.3.1",
+    "node-cron": "^4.6.0",
+    "ollama": "^0.6.4",
+    "pino": "^9.6.0",
+    "qrcode-terminal": "^0.12.0",
+    "rss-parser": "^3.13.0",
+    "youtube-transcript": "^1.3.1"
+  }
+}
