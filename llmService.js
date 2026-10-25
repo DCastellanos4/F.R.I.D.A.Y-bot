@@ -2,26 +2,65 @@ import { Ollama } from 'ollama';
 import OpenAI from 'openai';
 import { config } from './config.js';
 
-let ollamaInstance = null;
-let openaiInstance = null;
+let defaultOllamaInstance = null;
+let defaultOpenAIInstance = null;
+let defaultOpenAIConfig = null;
+
+/**
+ * Resets cached client singletons. Useful for testing or hot-reloading configurations.
+ */
+export function resetClients() {
+  defaultOllamaInstance = null;
+  defaultOpenAIInstance = null;
+  defaultOpenAIConfig = null;
+}
 
 /**
  * Returns or initializes the local Ollama client singleton.
  */
-export function getOllamaClient() {
-  if (!ollamaInstance) {
-    const host = config.llm?.ollamaHost || config.ollamaHost || 'http://127.0.0.1:11434';
-    ollamaInstance = new Ollama({ host });
+export function getOllamaClient(overrides = {}) {
+  const host = overrides.host || config.llm?.ollamaHost || config.ollamaHost || 'http://127.0.0.1:11434';
+  if (overrides.host) {
+    return new Ollama({ host });
   }
-  return ollamaInstance;
+  if (!defaultOllamaInstance) {
+    defaultOllamaInstance = new Ollama({ host });
+  }
+  return defaultOllamaInstance;
 }
 
 /**
  * Resolves cloud provider configurations, defaulting known endpoints and models.
+ * Automatically resolves Groq, OpenRouter, DeepSeek, and OpenAI endpoints.
  */
 export function resolveCloudConfig(options = {}) {
-  const provider = (options.provider || config.llm?.provider || 'openai').toLowerCase();
-  const apiKey = options.apiKey || config.llm?.apiKey || process.env.OPENAI_API_KEY || '';
+  let apiKey = options.apiKey || config.llm?.apiKey || process.env.OPENAI_API_KEY || '';
+  let provider = (options.provider || config.llm?.provider || '').toLowerCase();
+
+  // Multi-provider key fallback if standard OPENAI_API_KEY is not defined
+  if (!apiKey) {
+    if (process.env.GROQ_API_KEY) {
+      apiKey = process.env.GROQ_API_KEY;
+      if (!provider || provider === 'ollama') provider = 'groq';
+    } else if (process.env.OPENROUTER_API_KEY) {
+      apiKey = process.env.OPENROUTER_API_KEY;
+      if (!provider || provider === 'ollama') provider = 'openrouter';
+    } else if (process.env.DEEPSEEK_API_KEY) {
+      apiKey = process.env.DEEPSEEK_API_KEY;
+      if (!provider || provider === 'ollama') provider = 'deepseek';
+    }
+  }
+
+  // Auto-detect provider from key prefix if provider is generic or ollama
+  if (!provider || provider === 'ollama') {
+    if (apiKey.startsWith('gsk_')) {
+      provider = 'groq';
+    } else if (apiKey.startsWith('sk-or-')) {
+      provider = 'openrouter';
+    } else {
+      provider = 'openai';
+    }
+  }
 
   let baseUrl = options.baseUrl || config.llm?.baseUrl || process.env.OPENAI_BASE_URL || '';
   let model = options.model || config.llm?.model || process.env.OPENAI_MODEL || '';
@@ -55,20 +94,32 @@ export function resolveCloudConfig(options = {}) {
 
 /**
  * Returns or initializes the OpenAI-compatible client singleton.
+ * Isolated clients are created when custom overrides are provided,
+ * preventing test or request-specific pollution of default singletons.
  */
 export function getOpenAIClient(overrides = {}) {
   const cloudConfig = resolveCloudConfig(overrides);
   if (!cloudConfig.apiKey) {
-    throw new Error('OPENAI_API_KEY is required when using cloud / OpenAI-compatible LLM provider.');
+    throw new Error('OPENAI_API_KEY (or provider-specific API key) is required when using cloud / OpenAI-compatible LLM provider.');
   }
 
-  if (!openaiInstance || overrides.apiKey || overrides.baseUrl) {
-    openaiInstance = new OpenAI({
+  const hasOverrides = Boolean(overrides.apiKey || overrides.baseUrl || overrides.provider);
+  if (hasOverrides) {
+    const customClient = new OpenAI({
       apiKey: cloudConfig.apiKey,
       baseURL: cloudConfig.baseUrl
     });
+    return { client: customClient, cloudConfig };
   }
-  return { client: openaiInstance, cloudConfig };
+
+  if (!defaultOpenAIInstance) {
+    defaultOpenAIInstance = new OpenAI({
+      apiKey: cloudConfig.apiKey,
+      baseURL: cloudConfig.baseUrl
+    });
+    defaultOpenAIConfig = cloudConfig;
+  }
+  return { client: defaultOpenAIInstance, cloudConfig: defaultOpenAIConfig || cloudConfig };
 }
 
 /**
@@ -123,8 +174,16 @@ export function prepareMessagesForProvider(messages, isOllama) {
           }
         };
       });
-      if (formatted.content === undefined) {
-        formatted.content = isOllama ? '' : null;
+
+      // OpenAI-compatible providers require content: null (or non-empty reasoning string) when tool_calls are present.
+      // Empty string "" triggers 400 Bad Request on strict endpoints (Groq, OpenRouter).
+      // Local Ollama expects content: "" (string).
+      if (isOllama) {
+        formatted.content = formatted.content || '';
+      } else {
+        formatted.content = (formatted.content && String(formatted.content).trim().length > 0)
+          ? formatted.content
+          : null;
       }
     }
 
@@ -163,7 +222,12 @@ export async function chatCompletion({
   apiKey: apiKeyOverride,
   baseUrl: baseUrlOverride
 }) {
-  const activeProvider = (providerOverride || config.llm?.provider || (process.env.OPENAI_API_KEY ? 'openai' : 'ollama')).toLowerCase();
+  const activeProvider = (
+    providerOverride ||
+    config.llm?.provider ||
+    (process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY || process.env.DEEPSEEK_API_KEY ? 'openai' : 'ollama')
+  ).toLowerCase();
+
   const isOllama = activeProvider === 'ollama';
 
   if (isOllama) {

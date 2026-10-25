@@ -5,7 +5,14 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
 
-const defaultProvider = (process.env.LLM_PROVIDER || (process.env.OPENAI_API_KEY ? 'openai' : 'ollama')).toLowerCase();
+const hasCloudKey = Boolean(
+  process.env.OPENAI_API_KEY ||
+  process.env.GROQ_API_KEY ||
+  process.env.OPENROUTER_API_KEY ||
+  process.env.DEEPSEEK_API_KEY
+);
+
+const defaultProvider = (process.env.LLM_PROVIDER || (hasCloudKey ? 'openai' : 'ollama')).toLowerCase();
 
 export const config = {
   // Identidades Telefónicas (WhatsApp Multi-Device Baileys)
@@ -21,7 +28,7 @@ export const config = {
     ollamaHost: process.env.OLLAMA_HOST || 'http://127.0.0.1:11434',
     ollamaModel: process.env.OLLAMA_MODEL || 'jarvis',
     // Configuración Cloud API (OpenAI, Groq, OpenRouter, DeepSeek, Together, vLLM)
-    apiKey: process.env.OPENAI_API_KEY || '',
+    apiKey: process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY || process.env.DEEPSEEK_API_KEY || '',
     baseUrl: process.env.OPENAI_BASE_URL || '',
     model: process.env.OPENAI_MODEL || ''
   },

@@ -1,9 +1,11 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 
-# Cargar variables de .env si existe
+# Cargar variables de .env de forma segura si existe
 if [ -f .env ]; then
-  export $(grep -v '^#' .env | xargs)
+  set -a
+  source <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' .env 2>/dev/null) 2>/dev/null || true
+  set +a
 fi
 
 BOT_PHONE=${BOT_PHONE:-34711222006}

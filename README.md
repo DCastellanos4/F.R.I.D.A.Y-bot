@@ -4,14 +4,30 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20.x+-green.svg)](https://nodejs.org/)
 [![Playwright](https://img.shields.io/badge/Playwright-Chromium-red.svg)](https://playwright.dev/)
 [![Baileys](https://img.shields.io/badge/WhatsApp-Baileys%20MultiDevice-darkgreen.svg)](https://github.com/WhiskeySockets/Baileys)
+[![Ollama](https://img.shields.io/badge/Ollama-Self--Hosted-black.svg)](https://ollama.com/)
+[![OpenAI Compatible](https://img.shields.io/badge/API-OpenAI%20%7C%20Groq%20%7C%20OpenRouter-orange.svg)](https://platform.openai.com/)
 
-Autonomous, self-hosted tactical AI assistant running 24/7 on Linux. It interfaces natively with WhatsApp via multi-device WebSockets, orchestrates tool calling across local LLMs (Ollama) or OpenAI-compatible cloud endpoints (Groq, OpenRouter, DeepSeek), transcribes voice notes via local whisper.cpp with SIMD acceleration, and browses dynamic web pages with headless Playwright.
+Autonomous, self-hosted tactical AI assistant running 24/7 on Linux. It interfaces natively with WhatsApp via multi-device WebSockets, orchestrates tool calling across local LLMs (Ollama) or OpenAI-compatible cloud endpoints (Groq, OpenRouter, DeepSeek), transcribes voice notes via local whisper.cpp with SIMD hardware acceleration, and browses dynamic web pages with headless Playwright.
 
 ---
 
-## Technical Architecture
+## Why I Built This (Engineering Philosophy)
 
-FRIDAY is built as an event-driven control plane where the primary user interface is a personal WhatsApp conversation. The assistant maintains conversational context, executes dynamic multi-turn tool calling, and triggers proactive background alerts (host telemetry, server uptime, price tracking, and scheduled morning briefings).
+Most AI assistant projects on GitHub are either toy web-chat wrappers around OpenAI's API or heavyweight enterprise frameworks that choke the moment a socket drops or an API rate-limit hits. 
+
+I built FRIDAY because I wanted a real, production-ready personal assistant that lives in my everyday communication channel (WhatsApp), runs 24/7 on my Linux VPS (an Oracle Cloud Always Free ARM64 Ampere instance), and actually executes deterministic actions in the real world. 
+
+Key architectural requirements I committed to from day one:
+1. **Zero Cloud Egress Option**: When configured with local Ollama and whisper.cpp, not a single byte of personal audio, chat history, or Second Brain data ever leaves the VPS.
+2. **Instant Cloud Onboarding**: For developers or recruiters who want to test the stack without compiling C++ binaries or downloading 4GB models, a single API key (OpenAI, Groq, OpenRouter, DeepSeek) gets the entire engine running in 5 minutes.
+3. **Hardware-Level Performance**: Audio is transcoded entirely in RAM pipes via ffmpeg and fed to whisper.cpp compiled with target-specific SIMD vector instructions (ARM NEON or x86 AVX2).
+4. **Resilient Network Handling**: WebSockets protocol reverse-engineering over Baileys with dual-identity validation (Phone Number + WhatsApp LID) and artificial presence heartbeats to prevent client timeouts during CPU inference.
+
+---
+
+## System Architecture
+
+FRIDAY operates as an event-driven control plane where the primary interface is a direct WhatsApp WebSocket session backed by an auxiliary REST API server (`api.js`).
 
 ```mermaid
 flowchart TD
@@ -33,7 +49,7 @@ flowchart TD
     subgraph Engine ["Reasoning & Tool Orchestration"]
         Router -->|"Text"| Agent
         API --> Agent
-        Agent --> Intent["Dynamic Tool Pruning"]
+        Agent --> Intent["Dynamic Tool Pruning (DTP)"]
         Intent -->|"Prompt + Pruned Schema"| LLM["llmService.js (Ollama / OpenAI Adapter)"]
         LLM --> Decision{"Tool Call or Direct Text?"}
         Decision -->|"Direct Answer"| Dispatch["Dispatch to WhatsApp / HTTP"]
@@ -62,39 +78,81 @@ flowchart TD
 
 ---
 
+## End-to-End Sequence Flow
+
+This diagram illustrates the full lifecycle of an inbound voice message requesting real-time weather information:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as David (WhatsApp)
+    participant WA as Baileys WebSocket
+    participant Bot as whatsappBot.js
+    participant Voice as voiceService.js
+    participant Agent as jarvisAgent.js
+    participant LLM as llmService.js
+    participant Weather as weatherService.js
+
+    User->>WA: Send Opus PTT Voice Note
+    WA->>Bot: Inbound Protobuf Message
+    Bot->>Bot: Validate sender against AUTHORIZED_USER_PHONE & LID
+    Bot->>WA: Send 'read' status & start composing heartbeat (every 4s)
+    Bot->>Voice: Extract audio buffer
+    Voice->>Voice: ffmpeg stdin/stdout pipe -> 16kHz Mono PCM WAV
+    Voice->>Voice: whisper.cpp SIMD inference
+    Voice-->>Bot: Transcribed: "What is the weather in Madrid today?"
+    Bot->>Agent: Route query to agent pipeline
+    Agent->>Agent: Check Second Brain memory cache (no match)
+    Agent->>Agent: Dynamic Tool Pruning: select [consultar_clima], strip remaining 11 tools
+    Agent->>LLM: chatCompletion(Turn 1, messages, tools=[consultar_clima])
+    LLM-->>Agent: Assistant Message (tool_calls: [{ name: 'consultar_clima', args: { ubicacion: 'Madrid' } }])
+    Agent->>Weather: consultarClima({ ubicacion: 'Madrid', momento: 'hoy' })
+    Weather-->>Agent: Raw forecast: 14.2°C, clear sky, 0% rain probability
+    Agent->>LLM: chatCompletion(Turn 2, messages=[user, assistant_tool_call, tool_result])
+    LLM-->>Agent: Synthesized text: "Madrid currently has 14.2°C with clear skies, boss."
+    Agent-->>Bot: Deliver final response text
+    Bot->>WA: Clear composing state & Send quoted message
+    WA-->>User: WhatsApp message delivered with voice transcription header
+```
+
+---
+
 ## Core Engineering Decisions & Internals
 
 ### 1. WhatsApp Multi-Device Protocol Handling (`whatsappBot.js`)
-- **Protocol implementation:** Rather than relying on fragile browser automation or third-party paid gateways (Twilio, MessageBird), the gateway communicates directly over WebSockets using `@whiskeysockets/baileys`. This reverse-engineers the official WhatsApp Web protocol, handling end-to-end Signal encryption, Noise protocol handshakes, and Protobuf message framing.
-- **Identity isolation and LID mapping:** WhatsApp routes messages using two separate identifier spaces: standard phone numbers (`[country_code][number]@s.whatsapp.net`) and Linked Identity Device identifiers (`[lid]@lid`). Incoming packets from linked devices frequently send the sender as an LID. The bot implements dual-identity validation with dynamic LID registration on the first handshake to reject unauthorized senders before any prompt parsing or model invocation occurs.
-- **Presence heartbeat during long inference:** Local model generation on constrained CPUs (e.g., 4 vCPU Oracle Ampere) can take 5 to 25 seconds during heavy tool synthesis. WhatsApp clients typically drop connections or assume failure if no acknowledgement is made. The event loop sets an interval that ticks `sock.sendPresenceUpdate('composing', jid)` every 4 seconds, keeping the typing bubble alive on the recipient device and clearing it immediately when the stream completes.
+- **Protocol Reverse-Engineering:** Rather than running fragile desktop browser automation or paying for restricted enterprise Twilio/Cloud API numbers, FRIDAY connects directly over raw WebSockets using `@whiskeysockets/baileys`. It implements Noise protocol cryptography, Curve25519 key exchanges, and Protobuf message serialization.
+- **Dual-Identity Architecture (Phone vs. LID):** Modern WhatsApp multi-device accounts route messages across two separate namespaces: standard MSISDNs (`[country_code][number]@s.whatsapp.net`) and Linked Identity Devices (`[lid]@lid`). Incoming packets from paired secondary devices (e.g., WhatsApp Web or desktop clients) identify the sender as an LID. The bot implements dynamic LID discovery on handshake and strict cryptographic verification: messages from unrecognized senders are dropped immediately without running prompt parsing or allocating memory.
+- **Presence Heartbeat During CPU Inference:** Synthesizing multi-turn tool calling on a 4-vCPU ARM instance can take between 5 to 30 seconds. WhatsApp clients automatically reset typing indicators or disconnect after brief inactivity. The event loop fires `sock.sendPresenceUpdate('composing', jid)` every 4 seconds to maintain the active typing bubble on David's phone until the response stream concludes.
 
-### 2. Multi-Provider LLM Abstraction & Tool Calling (`llmService.js`)
-- **Pluggable architecture:** Supports both local self-hosted instances (Ollama) and cloud OpenAI-compatible APIs (OpenAI, Groq, OpenRouter, DeepSeek, Together, vLLM) through a single configuration switch (`LLM_PROVIDER`).
-- **Dynamic Tool Pruning (DTP):** Feeding a full schema of 12+ JSON function specifications into smaller local models (3B to 8B parameters) drastically increases context consumption and induces tool hallucination. `jarvisAgent.js` applies an intent classifier over normalized user input to prune the schema down to only relevant tools (e.g., stripping reminders, browser, and news tools during pure weather inquiries, and dropping all tools during chit-chat).
-- **Two-turn execution protocol:** Standardizes assistant `tool_calls` parsing and response injection across differing backends. When a provider returns tool calls, the engine runs the target service, formats the output into standard `{ role: 'tool', tool_call_id, content }` payloads, and initiates the final synthesis completion pass.
+### 2. Multi-Provider LLM Abstraction & Dynamic Tool Pruning (`llmService.js` & `jarvisAgent.js`)
+- **Pluggable Architecture:** Supports both self-hosted local inference (Ollama with custom `Modelfile.jarvis`) and OpenAI-compatible Cloud APIs (OpenAI, Groq, OpenRouter, DeepSeek, Together, vLLM) controlled by `LLM_PROVIDER`.
+- **Dynamic Tool Pruning (DTP):** Feeding a full schema of 12+ function declarations into compact models (3B to 8B parameters) consumes 1,500+ prompt tokens and causes severe function hallucination. `jarvisAgent.js` runs a zero-overhead regex-based intent classification pass before invoking the LLM, pruning the schema down to only the relevant tools. Pure conversational chit-chat drops the tool schema entirely, reducing inference latency to ~1.2 seconds.
+- **Cross-Provider Normalization:**
+  - **Ollama:** Expects `tool_calls.arguments` as parsed JSON objects, `content: ""` (empty string), and accepts standard `role: 'tool'` responses.
+  - **OpenAI / Groq / OpenRouter:** Strictly requires `tool_calls.arguments` as stringified JSON, `content: null` when tool calls are present (sending an empty string triggers HTTP 400 on Groq and OpenRouter), and explicit matching `tool_call_id` headers.
+  - `llmService.js` handles bi-directional normalization transparently, including client lifecycle isolation to prevent test overrides from corrupting shared singletons.
 
 ### 3. Voice Transcription Pipeline (`voiceService.js`)
-- **Pipeline:** WhatsApp PTT voice messages are downloaded into memory as raw Opus/OGG buffers.
-- **Transcoding:** `ffmpeg` converts the input buffer via stdin pipes directly to 16-bit 16kHz mono PCM WAV, bypassing disk I/O bottlenecks.
-- **Inference with whisper.cpp:** The audio is processed by `whisper.cpp` compiled with native hardware vector extensions (ARM NEON on Oracle Cloud AArch64; AVX2/FMA on x86_64). The transcription is fed back into the standard intent router as if the user had typed the command, prepending a transcription citation to the final WhatsApp message.
+- **Buffer Streaming:** WhatsApp PTT voice notes are downloaded as raw Opus/OGG binary buffers directly in memory.
+- **Zero-Disk Transcoding:** `ffmpeg` is spawned with `-i pipe:0 -ar 16000 -ac 1 -c:a pcm_s16le -f wav pipe:1`, converting incoming compressed audio into uncompressed 16kHz mono WAV through Unix pipes with zero disk I/O.
+- **SIMD Hardware Acceleration:** Audio is handed to `whisper.cpp` compiled natively for the host architecture (`-march=armv8-a+simd` with NEON on Oracle ARM64; AVX2/FMA on x86_64). Transcription is prepended as a quote citation and routed into the standard intent engine.
 
 ### 4. Dynamic Web Scraping & Cookie Bypass (`browserService.js`)
-- **Playwright Chromium integration:** Scrapes JavaScript-heavy news outlets and sites with aggressive client-side rendering.
-- **Stealth and footprint:** Launches headless Chromium with arguments (`--no-sandbox`, `--disable-setuid-sandbox`, `--disable-dev-shm-usage`, `--disable-blink-features=AutomationControlled`).
-- **Sanitization:** Strips cookie consent overlays, sticky video headers, advertising iframes, and navigational DOM nodes (`nav`, `footer`, `header`, `aside`, `.ads`) before extracting inner text, truncating to safe context windows (4,500 tokens).
-- **Cheerio fallback:** If Playwright fails or encounters a browser timeout, an HTTP fetch client with custom User-Agent headers and Cheerio HTML parsing acts as a low-overhead secondary extractor.
+- **Headless Playwright Chromium:** Used for modern JavaScript-heavy news outlets and sites with aggressive client-side rendering.
+- **Stealth and Performance Flags:** Launches with `--no-sandbox`, `--disable-setuid-sandbox`, `--disable-dev-shm-usage`, and `--disable-blink-features=AutomationControlled` to minimize memory overhead on Linux VPS instances.
+- **DOM Sanitization:** Strips cookie consent overlays, paywall prompts, video popups, ads, and navigational elements (`nav`, `footer`, `header`, `aside`, `.ads`, `.comments`) before extracting inner text, safely clamping output to 4,500 characters.
+- **Cheerio Fallback:** If Chromium times out or fails, an HTTP fetch client with custom User-Agent headers and Cheerio HTML parsing acts as an ultra-fast secondary extractor.
 
 ### 5. Persistent Memory / Second Brain (`memoryService.js`)
-- **Deterministic JSON storage:** Maintains an atomic JSON database for user-specified attributes (passwords, clothing/shoe sizes, birthdays, server credentials, key facts).
-- **Phonetic and diacritic normalization:** Strips accents, punctuation, and casing.
-- **Proactive system prompt injection:** On every turn, the memory service searches for keywords matching the query. If a match is found, the fact is injected into the system prompt's `[DATOS RECORDADOS]` block, allowing the model to answer immediately without spending an extra tool execution cycle.
+- **Deterministic Atomic Storage:** Maintains an atomic JSON database for user-specified attributes (passwords, clothing/shoe sizes, birthdays, server credentials, key facts).
+- **Phonetic and Diacritic Normalization:** Strips accents, punctuation, and casing to ensure resilient queries across colloquial Spanish and English variations.
+- **Proactive Context Injection:** On every turn, the engine scans the user prompt against memory keys. If a match is detected, the fact is injected directly into the system prompt's `[DATOS RECORDADOS]` block, allowing the model to answer immediately without wasting an extra tool execution turn.
 
 ---
 
 ## Quickstart: Running in 5 Minutes (Cloud API)
 
-If you are a recruiter or developer wanting to test FRIDAY without downloading local models or compiling C++ binaries, use a cloud provider like OpenAI, Groq, or OpenRouter.
+If you are a recruiter or developer evaluating FRIDAY without local GPU/CPU model downloads, use a cloud API key (OpenAI, Groq, OpenRouter, or DeepSeek).
 
 ### 1. Clone & Install Dependencies
 ```bash
@@ -103,7 +161,7 @@ cd friday-ai
 npm install
 ```
 
-Ensure `ffmpeg` is installed on your host system:
+Ensure `ffmpeg` is available on your host:
 ```bash
 # Ubuntu / Debian
 sudo apt update && sudo apt install -y ffmpeg
@@ -111,7 +169,7 @@ sudo apt update && sudo apt install -y ffmpeg
 # macOS (Homebrew)
 brew install ffmpeg
 
-# Windows (winget or chocolatey)
+# Windows (winget)
 winget install Gyan.FFmpeg
 ```
 
@@ -123,38 +181,38 @@ cp .env.example .env
 
 Edit `.env` to set your phone numbers and API key:
 ```ini
-# Your personal WhatsApp phone number (with country prefix, no +)
+# Your personal WhatsApp phone number (country code prefix, no +)
 AUTHORIZED_USER_PHONE=34XXXXXXXXX
 
 # Phone number of the SIM card linked to the bot
 BOT_PHONE=34XXXXXXXXX
 
-# Set provider to cloud
+# Option 1: OpenAI
 LLM_PROVIDER=openai
-
-# Your provider key
 OPENAI_API_KEY=sk-your-openai-api-key
 
-# Optional: To use Groq (ultra-fast free tier):
+# Option 2: Groq (ultra-fast free tier - auto-detected from gsk_ prefix)
 # LLM_PROVIDER=groq
 # OPENAI_API_KEY=gsk_your_groq_api_key
-# OPENAI_BASE_URL=https://api.groq.com/openai/v1
-# OPENAI_MODEL=llama-3.3-70b-versatile
+
+# Option 3: OpenRouter
+# LLM_PROVIDER=openrouter
+# OPENAI_API_KEY=sk-or-v1-your-key
 ```
 
 ### 3. Run Automated Tests
-Verify configuration, provider auto-resolution, and tool handling:
+Execute the comprehensive 6-suite verification framework:
 ```bash
 npm test
 ```
 
 ### 4. Link WhatsApp
-Run the interactive pairing script:
+Run the interactive pairing helper:
 ```bash
 ./vincular-whatsapp.sh
 ```
-- Select **Option 1 (Phone Pairing Code)**: Enter the 8-character code shown on your terminal into WhatsApp under *Linked Devices > Link with phone number*.
-- Or select **Option 2 (QR Code)**: Scan the ASCII QR code printed on your terminal with your phone's camera.
+- Select **Option 1 (Phone Pairing Code)**: Enter the 8-character code displayed in the terminal into WhatsApp under *Linked Devices > Link with phone number*.
+- Or select **Option 2 (QR Code)**: Scan the ASCII QR code printed in the terminal with WhatsApp.
 
 ### 5. Start the Services
 ```bash
@@ -170,7 +228,7 @@ npm run whatsapp    # Starts WhatsApp WebSocket daemon
 
 ## Full Self-Hosted Guide (Ollama + Whisper.cpp)
 
-For total data privacy where no audio or text leaves your private server.
+For complete privacy where no audio or text ever leaves your private server.
 
 ### 1. Host Requirements
 - **OS:** Ubuntu 22.04 / 24.04 LTS (Oracle Cloud Always Free ARM64 Ampere 4 OCPU / 24GB RAM or equivalent x86_64 VPS).
@@ -210,7 +268,7 @@ make -j4
 # Download the compact multilingual model
 bash ./models/download-ggml-model.sh base
 
-# Symlink or verify binary is reachable in PATH or default path (/home/ubuntu/whisper.cpp)
+# Verify binary execution
 ./main -h
 cd ..
 ```
@@ -219,8 +277,8 @@ cd ..
 ```bash
 sudo npm install -g pm2
 
-pm2 start api.js --name "friday-api"
-pm2 start whatsappBot.js --name "friday-whatsapp"
+pm2 start api.js --name "jarvis-api"
+pm2 start whatsappBot.js --name "jarvis-whatsapp"
 
 pm2 save
 pm2 startup
@@ -238,11 +296,14 @@ All settings are resolved through `config.js` reading from `.env`:
 | `BOT_PHONE` | String | Required | Phone number assigned to the bot's SIM card. |
 | `AUTHORIZED_USER_LID` | String | Auto-detected | WhatsApp Linked Identity Device ID (auto-discovered on first connection). |
 | `LLM_PROVIDER` | String | `ollama` | Provider selector: `ollama`, `openai`, `groq`, `openrouter`, `deepseek`. |
-| `OLLAMA_HOST` | URL | `http://127.0.0.1:11434` | Ollama daemon HTTP host endpoint. |
+| `OLLAMA_HOST` | URL | `http://127.0.0.1:11434` | Ollama daemon HTTP endpoint. |
 | `OLLAMA_MODEL` | String | `jarvis` | Local Ollama model tag. |
-| `OPENAI_API_KEY` | String | Empty | API key for cloud provider. Setting this auto-selects cloud mode if `LLM_PROVIDER` is unset. |
+| `OPENAI_API_KEY` | String | Empty | API key for cloud provider. Setting this auto-selects cloud mode if `LLM_PROVIDER` is unset. Supports `gsk_`, `sk-or-` prefixes. |
+| `GROQ_API_KEY` | String | Empty | Dedicated Groq API key (auto-detected). |
+| `OPENROUTER_API_KEY` | String | Empty | Dedicated OpenRouter API key (auto-detected). |
+| `DEEPSEEK_API_KEY` | String | Empty | Dedicated DeepSeek API key (auto-detected). |
 | `OPENAI_BASE_URL` | URL | Provider default | Custom endpoint base URL (e.g., `https://api.groq.com/openai/v1`). |
-| `OPENAI_MODEL` | String | Provider default | Cloud model identifier (e.g., `gpt-4o-mini`, `llama-3.3-70b-versatile`). |
+| `OPENAI_MODEL` | String | Provider default | Cloud model identifier (e.g., `gpt-4o-mini`, `llama-3.3-70b-versatile`, `deepseek-chat`). |
 | `PORT` | Integer | `3000` | REST API listening port. |
 | `MINECRAFT_HOST` | String | `192.168.1.24` | IP address or domain for TCP ping health watchdog. |
 | `MINECRAFT_PORT` | Integer | `25565` | TCP port for ping watchdog. |
@@ -275,11 +336,11 @@ The HTTP server (`api.js`) exposes control hooks for web dashboards, webhooks, o
 
 ---
 
-## Security Model
+## Security & Privacy Model
 
-- **Zero unauthorized execution:** Unregistered senders receive neither error messages nor status signals; their WebSockets packets are dropped immediately upon incoming packet decoding.
-- **Credential hygiene:** Auth session tokens (`data/auth_info_baileys/`), personal database files (`data/brain_memory.json`, `data/sniper_items.json`, `data/reminders.json`), and `.env` credentials are excluded by gitignore.
-- **Air-gapped operation:** When configured with Ollama and whisper.cpp, the entire stack (voice transcription, reasoning, tool execution, and response synthesis) runs locally on the host machine.
+- **Zero Unauthorized Execution:** Unregistered senders receive neither error messages nor status signals; their WebSocket packets are dropped immediately upon incoming packet decoding.
+- **Credential Hygiene:** Auth session tokens (`data/auth_info_baileys/`), personal database files (`data/brain_memory.json`, `data/sniper_items.json`, `data/reminders.json`), and `.env` credentials are excluded by `.gitignore`.
+- **Air-Gapped Operation:** When configured with Ollama and whisper.cpp, the entire stack (voice transcription, reasoning, tool execution, and response synthesis) runs locally on the host machine with zero third-party cloud egress.
 
 ---
 

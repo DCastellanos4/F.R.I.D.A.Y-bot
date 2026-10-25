@@ -14,12 +14,16 @@
     "assistant",
     "baileys",
     "ollama",
+    "openai",
+    "groq",
+    "openrouter",
+    "deepseek",
     "friday",
     "second-brain"
   ],
   "author": "David",
   "license": "MIT",
-  "description": "F.R.I.D.A.Y. - Personal Tactical AI Assistant with WhatsApp Multi-Device, Local Ollama LLM, Second Brain & Proactive Automation",
+  "description": "F.R.I.D.A.Y. - Autonomous Tactical AI Assistant with WhatsApp Multi-Device, Multi-Provider LLMs (Ollama & OpenAI-Compatible), Second Brain & Hardware-Accelerated Audio Transcription",
   "type": "module",
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc14",
