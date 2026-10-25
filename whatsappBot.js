@@ -1,7 +1,8 @@
 import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
-  fetchLatestBaileysVersion
+  fetchLatestBaileysVersion,
+  downloadMediaMessage
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import qrcode from 'qrcode-terminal';
@@ -16,6 +17,8 @@ import { iniciarVigilanteProactivo } from './proactiveAlerts.js';
 import { iniciarSniperWatchdog } from './sniperService.js';
 import { programarEnvioMatutino } from './dailyBriefing.js';
 import { normalizarTexto } from './memoryService.js';
+import { transcribirAudioBuffer } from './voiceService.js';
+import { capturarPantallaWeb } from './browserService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CARPETA_AUTH = path.join(__dirname, 'data', 'auth_info_baileys');
@@ -130,50 +133,36 @@ export async function enviarMensajeADavid(contenido) {
       await sock.sendMessage(`${NUMERO_DAVID_AUTORIZADO}@s.whatsapp.net`, payload);
       return true;
     } catch (err2) {
-      console.error('❌ Error enviando mensaje a David en ambos canales:', err2.message);
+      console.error(`❌ Error fatal enviando alerta proactiva a David:`, err2.message);
       return false;
     }
   }
 }
 
 /**
- * Envía una imagen a David con pie de foto opcional
- */
-export async function enviarImagenADavid(rutaImagen, caption = '') {
-  if (!fs.existsSync(rutaImagen)) {
-    console.error(`❌ [WhatsApp] Archivo de imagen no encontrado: ${rutaImagen}`);
-    return false;
-  }
-  const buffer = fs.readFileSync(rutaImagen);
-  return await enviarMensajeADavid({
-    image: buffer,
-    caption
-  });
-}
-
-/**
- * Conecta los servicios de recordatorios, vigilante, sniper y briefing diario
+ * Registra los disparadores proactivos en segundo plano (vigilante, recordatorios, sniper y briefing)
  */
 function inicializarServiciosProactivos() {
   if (serviciosIniciados) return;
   serviciosIniciados = true;
 
-  console.log('🚀 [Servicios Proactivos] Vinculando alertas proactivas al chat de David...');
+  console.log(`🚀 [Servicios Proactivos] Vinculando alertas proactivas al chat de David...`);
 
-  // 1. Recordatorios
-  iniciarMonitorRecordatorios(async (textoAlerta) => {
-    await enviarMensajeADavid(textoAlerta);
-  });
+  // 1. Monitor del servidor Oracle y Minecraft (cada 5 minutos)
+  iniciarVigilanteProactivo(async (alerta) => {
+    await enviarMensajeADavid(`🚨 *ALERTA TÁCTICA F.R.I.D.A.Y.:*\n\n${alerta}`);
+  }, 5 * 60 * 1000);
 
-  // 2. Vigilante de servidores y clima
-  iniciarVigilanteProactivo(async (textoAlerta) => {
-    await enviarMensajeADavid(textoAlerta);
-  });
+  // 2. Monitor de recordatorios programados (cada 30 segundos)
+  iniciarMonitorRecordatorios(async (recordatorio) => {
+    const textoAviso = `⏰ *RECORDATORIO TÁCTICO DE F.R.I.D.A.Y.:*\n\nDavid, tal como me programó: *"${recordatorio.mensaje}"*.\n\n_Tarea completada y archivada, señor._`;
+    await enviarMensajeADavid(textoAviso);
+  }, 30 * 1000);
 
-  // 3. Price Sniper (ofertas y caídas de precio)
-  iniciarSniperWatchdog(async (textoAlerta) => {
-    await enviarMensajeADavid(textoAlerta);
-  });
+  // 3. Sniper Watchdog de artículos y ofertas (cada 20 minutos)
+  iniciarSniperWatchdog(async (alertaOferta) => {
+    await enviarMensajeADavid(alertaOferta);
+  }, 20 * 60 * 1000);
 
   // 4. Briefing matutino (07:00 AM hora peninsular de Madrid)
   programarEnvioMatutino(async (textoBriefing) => {
@@ -282,19 +271,49 @@ export async function iniciarWhatsApp() {
       // Actualizar el JID activo para futuras respuestas y alertas
       jidDavidActivo = remoteJid;
 
-      // Manejo de notas de voz
+      let texto = null;
+      let esAudio = false;
+
+      // Manejo inteligente de notas de voz con Whisper
       if (msg.message.audioMessage) {
-        console.log('🎤 [WhatsApp] Nota de voz recibida de David.');
-        await sock.sendMessage(remoteJid, {
-          text: '🎤 ¡Hola David! He recibido tu nota de voz. Por el momento solo leo mensajes de texto. ¡Escríbemelo por aquí y me encargo!'
-        }, { quoted: msg });
-        continue;
+        console.log('🎤 [WhatsApp] Nota de voz recibida de David. Procesando audio con Whisper...');
+        try {
+          await sock.sendPresenceUpdate('recording', remoteJid);
+
+          const audioBuffer = await downloadMediaMessage(
+            msg,
+            'buffer',
+            {},
+            { logger: pino({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage }
+          );
+
+          const resVoz = await transcribirAudioBuffer(audioBuffer);
+
+          if (resVoz.ok && resVoz.texto && resVoz.texto.length > 1) {
+            texto = resVoz.texto;
+            esAudio = true;
+            console.log(`🎤 [Audio Transcrito]: "${texto}"`);
+          } else {
+            console.warn('⚠️ Audio no pudo ser transcrito con claridad.');
+            await sock.sendMessage(remoteJid, {
+              text: '🎤 David, he recibido tu nota de voz pero no he podido transcribirla con claridad. ¿Podrías repetírmela o escribírmela?'
+            }, { quoted: msg });
+            continue;
+          }
+        } catch (errAudio) {
+          console.error('❌ Error descargando/transcribiendo nota de voz:', errAudio);
+          await sock.sendMessage(remoteJid, {
+            text: `⚠️ David, ha ocurrido un error al procesar tu nota de voz: ${errAudio.message}`
+          }, { quoted: msg });
+          continue;
+        }
+      } else {
+        texto = extraerTextoMensaje(msg);
       }
 
-      const texto = extraerTextoMensaje(msg);
       if (!texto) continue;
 
-      console.log(`\n📩 [WhatsApp de David]: "${texto}"`);
+      console.log(`\n📩 [WhatsApp de David${esAudio ? ' (Audio)' : ''}]: "${texto}"`);
 
       // Easter Egg: Solicitud de más tabaco para la cachimba
       if (esPeticionCachimba(texto) && fs.existsSync(RUTA_IMAGEN_CACHIMBA)) {
@@ -312,9 +331,11 @@ export async function iniciarWhatsApp() {
           const frase = frasesFriday[Math.floor(Math.random() * frasesFriday.length)];
           const bufferImagen = fs.readFileSync(RUTA_IMAGEN_CACHIMBA);
 
+          const pieDeFoto = esAudio ? `🎤 _"${texto}"_\n\n${frase}` : frase;
+
           await sock.sendMessage(remoteJid, {
             image: bufferImagen,
-            caption: frase
+            caption: pieDeFoto
           }, { quoted: msg });
 
           await sock.sendPresenceUpdate('paused', remoteJid);
@@ -322,6 +343,40 @@ export async function iniciarWhatsApp() {
           continue;
         } catch (errEaster) {
           console.error('❌ Error enviando imagen de cachimba:', errEaster);
+        }
+      }
+
+      // Solicitud de captura de pantalla web con Playwright
+      const tieneUrl = /(https?:\/\/[^\s]+)/i.test(texto);
+      const pideCaptura = /(haz(me)?|saca(me)?|pasa(me)?|envia(me)?|toma(me)?)\s+(una\s+)?(captura|screenshot|foto)\s+(de\s+)?(la\s+)?(web|pagina|enlace|noticia)?/i.test(texto) ||
+                          /(captura|screenshot)\s+(de\s+)?(la\s+)?(web|pagina|enlace|noticia)?/i.test(texto);
+
+      if (tieneUrl && pideCaptura) {
+        const urlCaptura = texto.match(/https?:\/\/[^\s]+/i)[0];
+        console.log(`📸 [WhatsApp Captura Web] Solicitada por David: ${urlCaptura}`);
+        try {
+          await sock.readMessages([msg.key]);
+          await sock.sendPresenceUpdate('composing', remoteJid);
+
+          const resCap = await capturarPantallaWeb(urlCaptura);
+          if (resCap.ok && resCap.buffer) {
+            const pieCaptura = esAudio
+              ? `🎤 _"${texto}"_\n\n📸 *Captura táctica realizada en vivo con Playwright Chromium:*\n🔗 ${urlCaptura}`
+              : `📸 *Captura táctica realizada en vivo con Playwright Chromium:*\n🔗 ${urlCaptura}`;
+
+            await sock.sendMessage(remoteJid, {
+              image: resCap.buffer,
+              caption: pieCaptura
+            }, { quoted: msg });
+
+            await sock.sendPresenceUpdate('paused', remoteJid);
+            console.log(`📤 [FRIDAY a David]: [Captura de pantalla de ${urlCaptura} enviada con éxito]\n`);
+            continue;
+          } else {
+            console.warn(`Aviso: Error capturando pantalla: ${resCap.error}`);
+          }
+        } catch (errCap) {
+          console.error('❌ Error capturando pantalla web:', errCap);
         }
       }
 
@@ -343,7 +398,12 @@ export async function iniciarWhatsApp() {
         // 4. Detener estado de escritura y enviar respuesta
         clearInterval(typingInterval);
         await sock.sendPresenceUpdate('paused', remoteJid);
-        await sock.sendMessage(remoteJid, { text: respuesta }, { quoted: msg });
+
+        const respuestaFinal = esAudio
+          ? `🎤 _"${texto}"_\n\n${respuesta}`
+          : respuesta;
+
+        await sock.sendMessage(remoteJid, { text: respuestaFinal }, { quoted: msg });
 
         console.log(`📤 [FRIDAY a David]: "${respuesta}"\n`);
       } catch (err) {

@@ -41,8 +41,25 @@ export const herramientasJarvis = [
   {
     type: 'function',
     function: {
+      name: 'navegar_y_leer_noticia',
+      description: 'OBLIGATORIA: Abre y navega en vivo con un navegador real (Playwright Chromium) a cualquier noticia, artículo periodístico o enlace web (URL) para leer su contenido completo, verificar la noticia antes de informar a David y extraer detalles profundos superando muros de cookies o JavaScript.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: {
+            type: 'string',
+            description: 'La URL completa de la noticia o página web a abrir con el navegador Chromium de Playwright'
+          }
+        },
+        required: ['url']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'resumir_enlace',
-      description: 'Descarga, lee y resume de forma inteligente una página web, noticia o vídeo de YouTube proporcionado por el usuario mediante una URL.',
+      description: 'Descarga, lee con navegador Playwright y sintetiza en un resumen ejecutivo táctico de WhatsApp cualquier página web, noticia o vídeo de YouTube proporcionado mediante una URL.',
       parameters: {
         type: 'object',
         properties: {

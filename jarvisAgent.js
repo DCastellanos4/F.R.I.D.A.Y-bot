@@ -8,6 +8,7 @@ import {
   cancelarRecordatorio
 } from './reminderService.js';
 import { generarResumenInteligente } from './summarizerService.js';
+import { navegarYExtraerArticulo } from './browserService.js';
 import {
   consultarSaludServidor,
   comprobarPuertoTCP
@@ -59,6 +60,7 @@ export function esPeticionCachimba(texto) {
 export function seleccionarHerramientasPorIntencion(mensaje) {
   const norm = normalizarTexto(mensaje);
   const sinNombre = norm.replace(/\b(friday|viernes|jarvis)\b/gi, '').replace(/\s+/g, ' ').trim();
+  const tieneUrl = /(https?:\/\/[^\s]+)/i.test(mensaje);
 
   // Detección de charla puramente conversacional
   const tieneChitChat = /(hola|ey|hey|buenas|buenos dias|buenas tardes|buenas noches|que tal|como estas|como va|quien eres|que eres|que sabes hacer|que puedes hacer|gracias|muchas gracias|de nada|ok|vale|entendido|perfecto|genial|adios|hasta luego|chao|hasta pronto)/i.test(sinNombre);
@@ -84,6 +86,9 @@ export function seleccionarHerramientasPorIntencion(mensaje) {
     
     // Noticias reales
     noticias: /(noticia|noticias|titular|titulares|actualidad|periodico|diario|prensa|ultima hora|briefing|que pasa en el mundo|que se cuenta en el mundo)/i,
+
+    // Navegación Web / Playwright Browser / Lectura de enlaces
+    navegacion: /(navega|entra|abre|lee|inspecciona|mira|visita|accede)\s+(a\s+la|en\s+la|la)?\s*(noticia|web|pagina|enlace|link|articulo)|resum(e|ir)|qu[eé?] dice|de qu[eé?] va/i,
     
     // Servidor / Minecraft
     servidor: /(servidor|server|minecraft|mc|ram|cpu|salud del servidor|sistema|como esta el server|esta online|puerto 25565)/i
@@ -94,10 +99,11 @@ export function seleccionarHerramientasPorIntencion(mensaje) {
   let matchRecordatorio = (intents.esRecordatorio.test(sinNombre) && !esClaveAlarma && !esRecuerdaQueDato);
   let matchSniper = intents.sniper.test(sinNombre);
   let matchNoticias = intents.noticias.test(sinNombre);
+  let matchNavegacion = intents.navegacion.test(sinNombre) || tieneUrl;
   let matchServidor = intents.servidor.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
-  if (tieneChitChat && !matchClima && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchServidor) {
+  if (tieneChitChat && !matchClima && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor) {
     return [];
   }
 
@@ -120,7 +126,11 @@ export function seleccionarHerramientasPorIntencion(mensaje) {
   }
 
   if (matchNoticias) {
-    tools.push(...herramientasJarvis.filter(h => h.function.name === 'obtener_noticias_actuales'));
+    tools.push(...herramientasJarvis.filter(h => h.function.name === 'obtener_noticias_actuales' || h.function.name === 'navegar_y_leer_noticia'));
+  }
+
+  if (matchNavegacion) {
+    tools.push(...herramientasJarvis.filter(h => h.function.name === 'navegar_y_leer_noticia' || h.function.name === 'resumir_enlace'));
   }
 
   if (matchServidor) {
@@ -153,9 +163,10 @@ export async function consultarJarvis(mensajeUsuario, historial = []) {
   // Detección directa de URLs para resumen rápido
   const urlMatch = mensajeUsuario.match(/https?:\/\/[^\s]+/i);
   const pideResumen = /resum|qu[eé?] dice|de qu[eé?] va|lee|analiz/i.test(mensajeUsuario);
+  const esUrlSola = urlMatch && mensajeUsuario.trim() === urlMatch[0];
 
-  if (urlMatch && pideResumen) {
-    console.log(`⚡ [FRIDAY] Detección directa de solicitud de resumen para: ${urlMatch[0]}`);
+  if (urlMatch && (pideResumen || esUrlSola)) {
+    console.log(`⚡ [FRIDAY] Detección directa de lectura/resumen con Playwright para: ${urlMatch[0]}`);
     return await generarResumenInteligente(urlMatch[0]);
   }
 
@@ -201,7 +212,9 @@ ${memoriasProactivas.map(m => `- [${m.sujeto.toUpperCase()}]: ${m.dato}`).join('
    - Si pasa un enlace o pide vigilar un producto si baja de precio, o actualizar su precio objetivo, INVOCA "vigilar_producto".
    - Si pregunta qué artículos vigilas, cómo va el tracker o el seguimiento de ofertas, INVOCA "listar_productos_vigilados".
    - Si pide cancelar el rastreo de un artículo, INVOCA "cancelar_vigilancia".
-5. NOTICIAS: Si pide noticias de hoy o de última hora, INVOCA "obtener_noticias_actuales".
+5. NOTICIAS Y NAVEGADOR PLAYWRIGHT:
+   - Si pide noticias de hoy o de última hora, INVOCA "obtener_noticias_actuales".
+   - Si David te proporciona una URL o te pide abrir, leer o inspeccionar en profundidad una noticia o web, INVOCA OBLIGATORIAMENTE "navegar_y_leer_noticia" o "resumir_enlace".
 6. ESTADO SERVIDOR: Si pregunta por RAM, CPU o Minecraft, INVOCA "consultar_estado_servidor".`;
   }
 
@@ -305,6 +318,18 @@ ${memoriasProactivas.map(m => `- [${m.sujeto.toUpperCase()}]: ${m.dato}`).join('
           resultadoTool = res.mensaje || (res.item ? `Vigilancia cancelada para: "${res.item.nombre}".` : 'Vigilancia cancelada con éxito.');
         } else {
           resultadoTool = res.error || 'Error al cancelar la vigilancia.';
+        }
+      } else if (nombreFuncion === 'navegar_y_leer_noticia') {
+        const resNav = await navegarYExtraerArticulo(args.url);
+        if (resNav.ok) {
+          resultadoTool = `Artículo web leído en vivo con Chromium (Playwright):\n` +
+            `Título: ${resNav.titulo}\n` +
+            `URL: ${resNav.url}\n` +
+            `Autor: ${resNav.autor || 'Redacción'}\n` +
+            `Fecha: ${resNav.fecha || 'Reciente'}\n` +
+            `Texto íntegro verificado extraído del artículo:\n${resNav.contenido}`;
+        } else {
+          resultadoTool = `No se pudo leer la página con el navegador Playwright: ${resNav.error}`;
         }
       } else if (nombreFuncion === 'resumir_enlace') {
         return await generarResumenInteligente(args.url);

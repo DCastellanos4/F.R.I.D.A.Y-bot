@@ -1,8 +1,10 @@
 import * as cheerio from 'cheerio';
 import { YoutubeTranscript } from 'youtube-transcript';
 import { Ollama } from 'ollama';
+import { config } from './config.js';
+import { navegarYExtraerArticulo } from './browserService.js';
 
-const ollama = new Ollama({ host: 'http://127.0.0.1:11434' });
+const ollama = new Ollama({ host: config?.ollamaHost || 'http://127.0.0.1:11434' });
 
 /**
  * Extrae el ID de un vídeo de YouTube
@@ -13,7 +15,8 @@ function extraerYoutubeId(url) {
 }
 
 /**
- * Descarga y limpia el contenido de una URL web o vídeo de YouTube
+ * Descarga y limpia el contenido de una URL web o vídeo de YouTube,
+ * priorizando el navegador real Playwright Chromium para sortear JavaScript y muros.
  */
 export async function extraerTextoDeUrl(url) {
   try {
@@ -56,14 +59,33 @@ export async function extraerTextoDeUrl(url) {
       }
     }
 
-    // Si es una página web normal
-    console.log(`🌐 [Resumidor] Descargando y analizando página web: ${url}...`);
+    // 1. Para páginas web y noticias: Usar primero Playwright Chromium real
+    try {
+      console.log(`🌐 [Resumidor] Leyendo artículo con Playwright Chromium: ${url}...`);
+      const resBrowser = await navegarYExtraerArticulo(url, { timeout: 15000 });
+      if (resBrowser.ok && resBrowser.contenido && resBrowser.contenido.length >= 80) {
+        return {
+          ok: true,
+          tipo: 'articulo_playwright',
+          titulo: resBrowser.titulo,
+          autor: resBrowser.autor,
+          fecha: resBrowser.fecha,
+          contenido: resBrowser.contenido,
+          url: url
+        };
+      }
+    } catch (errBrowser) {
+      console.warn(`⚠️ [Resumidor] Playwright falló (${errBrowser.message}). Aplicando fallback con Cheerio...`);
+    }
+
+    // 2. Fallback secundario: Cheerio + HTTP fetch estándar
+    console.log(`🌐 [Resumidor Cheerio Fallback] Analizando HTML plano: ${url}...`);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6000);
 
     const res = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
       },
       signal: controller.signal
@@ -95,7 +117,7 @@ export async function extraerTextoDeUrl(url) {
 
     return {
       ok: true,
-      tipo: 'articulo_web',
+      tipo: 'articulo_web_cheerio',
       titulo: titulo.replace(/\s+/g, ' ').trim(),
       contenido: texto.slice(0, 4500),
       url: url
@@ -113,10 +135,10 @@ export async function generarResumenInteligente(url) {
   const datos = await extraerTextoDeUrl(url);
 
   if (!datos.ok) {
-    return `⚠️ No pude leer el enlace: ${datos.error}`;
+    return `⚠️ David, no he podido leer el enlace: ${datos.error}`;
   }
 
-  console.log(`🤖 [Resumidor] Sintetizando con FRIDAY el contenido de "${datos.titulo}"...`);
+  console.log(`🤖 [Resumidor] Sintetizando con FRIDAY el contenido de "${datos.titulo}" (${datos.tipo})...`);
 
   const prompt = `Analiza y resume el siguiente contenido de forma clara y directa para leer en WhatsApp.
 
@@ -126,7 +148,7 @@ TEXTO:
 ${datos.contenido}
 
 INSTRUCCIONES DE FORMATO:
-- Sé conciso y objetivo al estilo de F.R.I.D.A.Y.
+- Sé conciso y objetivo al estilo de F.R.I.D.A.Y. (asistente táctica de Tony Stark).
 - Estructura exactamente así:
 📑 *RESUMEN TÁCTICO:* ${datos.titulo}
 🔗 ${datos.url}
@@ -144,18 +166,19 @@ INSTRUCCIONES DE FORMATO:
 
   try {
     const respuesta = await ollama.chat({
-      model: 'jarvis',
+      model: config?.ollamaModel || 'jarvis',
       messages: [
-        { role: 'system', content: 'Eres F.R.I.D.A.Y., experta en sintetizar textos largos en resúmenes ejecutivos rápidos y claros para WhatsApp.' },
+        { role: 'system', content: 'Eres F.R.I.D.A.Y., la asistente táctica de Tony Stark, experta en sintetizar textos largos y noticias en resúmenes ejecutivos rápidos y claros para David.' },
         { role: 'user', content: prompt }
       ],
       options: {
-        num_predict: 350
+        num_predict: 350,
+        num_thread: 4
       }
     });
 
     return respuesta.message.content.trim();
   } catch (err) {
-    return `Error generando el resumen con el modelo: ${err.message}`;
+    return `Error generando el resumen táctico: ${err.message}`;
   }
 }
