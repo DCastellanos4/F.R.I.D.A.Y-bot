@@ -5,13 +5,28 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
 
+const defaultProvider = (process.env.LLM_PROVIDER || (process.env.OPENAI_API_KEY ? 'openai' : 'ollama')).toLowerCase();
+
 export const config = {
-  // Identidades Telefónicas (WhatsApp)
+  // Identidades Telefónicas (WhatsApp Multi-Device Baileys)
   userPhone: process.env.AUTHORIZED_USER_PHONE || '34635605605',
   botPhone: process.env.BOT_PHONE || '34711222006',
   userLid: process.env.AUTHORIZED_USER_LID || '149868706304033',
 
-  // Servidor de Inteligencia Artificial (Ollama)
+  // Configuración de Proveedor de Inteligencia Artificial
+  // 'ollama' (self-hosted local) | 'openai' | 'groq' | 'openrouter' | 'deepseek'
+  llm: {
+    provider: defaultProvider,
+    // Configuración Local Ollama
+    ollamaHost: process.env.OLLAMA_HOST || 'http://127.0.0.1:11434',
+    ollamaModel: process.env.OLLAMA_MODEL || 'jarvis',
+    // Configuración Cloud API (OpenAI, Groq, OpenRouter, DeepSeek, Together, vLLM)
+    apiKey: process.env.OPENAI_API_KEY || '',
+    baseUrl: process.env.OPENAI_BASE_URL || '',
+    model: process.env.OPENAI_MODEL || ''
+  },
+
+  // Compatibilidad hacia atrás directa
   ollamaHost: process.env.OLLAMA_HOST || 'http://127.0.0.1:11434',
   ollamaModel: process.env.OLLAMA_MODEL || 'jarvis',
 

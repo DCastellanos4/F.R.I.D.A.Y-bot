@@ -1,5 +1,5 @@
-import { Ollama } from 'ollama';
 import { config } from './config.js';
+import { chatCompletion, getLlmProviderInfo } from './llmService.js';
 import { herramientasJarvis } from './tools.js';
 import { obtenerNoticiasEstructuradas } from './newsService.js';
 import {
@@ -26,8 +26,6 @@ import {
   cancelarVigilancia
 } from './sniperService.js';
 import { consultarClima } from './weatherService.js';
-
-const ollama = new Ollama({ host: config.ollamaHost });
 
 /**
  * Detecta si David pide poner más tabaco a la cachimba (Easter Egg Tony Stark)
@@ -227,22 +225,15 @@ ${memoriasProactivas.map(m => `- [${m.sujeto.toUpperCase()}]: ${m.dato}`).join('
     { role: 'user', content: mensajeUsuario }
   ];
 
-  const payloadChat = {
-    model: config.ollamaModel,
+  const respuesta = await chatCompletion({
     messages: mensajes,
-    keep_alive: -1,
+    tools: herramientasActivas.length > 0 ? herramientasActivas : undefined,
     options: {
       num_ctx: 2048,
       temperature: 0.1,
       num_thread: 4
     }
-  };
-
-  if (herramientasActivas.length > 0) {
-    payloadChat.tools = herramientasActivas;
-  }
-
-  const respuesta = await ollama.chat(payloadChat);
+  });
 
   // Si el modelo decide ejecutar herramientas
   if (respuesta.message.tool_calls && respuesta.message.tool_calls.length > 0) {
@@ -251,7 +242,11 @@ ${memoriasProactivas.map(m => `- [${m.sujeto.toUpperCase()}]: ${m.dato}`).join('
 
     for (const llamada of respuesta.message.tool_calls) {
       const nombreFuncion = llamada.function.name;
-      const args = llamada.function.arguments || {};
+      let args = llamada.function.arguments || {};
+      if (typeof args === 'string') {
+        try { args = JSON.parse(args); } catch { args = {}; }
+      }
+      const toolCallId = llamada.id || `call_${Date.now()}`;
       console.log(`⚙️ [FRIDAY Tool Call] Invocando: ${nombreFuncion} con argumentos:`, args);
 
       let resultadoTool = '';
@@ -375,23 +370,23 @@ ${memoriasProactivas.map(m => `- [${m.sujeto.toUpperCase()}]: ${m.dato}`).join('
 
       mensajes.push({
         role: 'tool',
+        tool_call_id: toolCallId,
         content: resultadoTool
       });
     }
 
     console.log(`💬 [FRIDAY] Sintetizando respuesta final...`);
-    const respuestaFinal = await ollama.chat({
-      model: config.ollamaModel,
+    const respuestaFinal = await chatCompletion({
       messages: mensajes,
-      keep_alive: -1,
       options: {
         num_ctx: 2048,
-        num_predict: 250,
+        max_tokens: 300,
+        temperature: 0.2,
         num_thread: 4
       }
     });
 
-    let textoFinal = respuestaFinal.message.content.trim();
+    let textoFinal = (respuestaFinal.message.content || '').trim();
 
     if (enlacesParaAdjuntar.length > 0) {
       textoFinal += '\n\n═════════════════════\n📰 *Enlaces para leer completas:*';
@@ -407,5 +402,5 @@ ${memoriasProactivas.map(m => `- [${m.sujeto.toUpperCase()}]: ${m.dato}`).join('
 
   const duracionSeg = ((Date.now() - tiempoInicio) / 1000).toFixed(2);
   console.log(`⏱️ [FRIDAY] Petición conversacional completada en ${duracionSeg}s`);
-  return respuesta.message.content;
+  return respuesta.message.content || '';
 }

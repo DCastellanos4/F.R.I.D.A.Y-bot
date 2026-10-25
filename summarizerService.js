@@ -1,10 +1,8 @@
 import * as cheerio from 'cheerio';
 import { YoutubeTranscript } from 'youtube-transcript';
-import { Ollama } from 'ollama';
+import { chatCompletion } from './llmService.js';
 import { config } from './config.js';
 import { navegarYExtraerArticulo } from './browserService.js';
-
-const ollama = new Ollama({ host: config?.ollamaHost || 'http://127.0.0.1:11434' });
 
 /**
  * Extrae el ID de un vídeo de YouTube
@@ -165,19 +163,18 @@ INSTRUCCIONES DE FORMATO:
 [1 frase de cierre o conclusión final]`;
 
   try {
-    const respuesta = await ollama.chat({
-      model: config?.ollamaModel || 'jarvis',
+    const respuesta = await chatCompletion({
       messages: [
         { role: 'system', content: 'Eres F.R.I.D.A.Y., la asistente táctica de Tony Stark, experta en sintetizar textos largos y noticias en resúmenes ejecutivos rápidos y claros para David.' },
         { role: 'user', content: prompt }
       ],
       options: {
-        num_predict: 350,
-        num_thread: 4
+        max_tokens: 350,
+        temperature: 0.2
       }
     });
 
-    return respuesta.message.content.trim();
+    return (respuesta.message.content || '').trim();
   } catch (err) {
     return `Error generando el resumen táctico: ${err.message}`;
   }
