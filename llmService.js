@@ -147,26 +147,27 @@ export function getLlmProviderInfo() {
 }
 
 /**
- * Normalizes message formats for each provider (tool calls, stringified arguments, role tags).
+ * Normalizes message formats for each provider (Ollama vs OpenAI / Cloud).
  */
-export function prepareMessagesForProvider(messages, isOllama) {
+export function prepareMessagesForProvider(messages = [], isOllama = false) {
   return messages.map(msg => {
     const formatted = { ...msg };
 
-    if (msg.role === 'assistant' && msg.tool_calls && Array.isArray(msg.tool_calls)) {
-      formatted.tool_calls = msg.tool_calls.map(tc => {
-        let args = tc.function.arguments;
+    if (msg.role === 'assistant' && msg.tool_calls) {
+      formatted.tool_calls = msg.tool_calls.map((tc, idx) => {
+        let args = tc.function?.arguments;
         if (isOllama) {
           if (typeof args === 'string') {
-            try { args = JSON.parse(args); } catch { args = {}; }
+            try { args = JSON.parse(args); } catch {}
           }
         } else {
-          if (typeof args !== 'string') {
-            try { args = JSON.stringify(args || {}); } catch { args = '{}'; }
+          if (typeof args === 'object' && args !== null) {
+            args = JSON.stringify(args);
           }
         }
+
         return {
-          id: tc.id || `call_${Math.random().toString(36).slice(2, 10)}`,
+          id: tc.id || `call_${idx}_${Date.now()}`,
           type: 'function',
           function: {
             name: tc.function.name,
@@ -175,9 +176,6 @@ export function prepareMessagesForProvider(messages, isOllama) {
         };
       });
 
-      // OpenAI-compatible providers require content: null (or non-empty reasoning string) when tool_calls are present.
-      // Empty string "" triggers 400 Bad Request on strict endpoints (Groq, OpenRouter).
-      // Local Ollama expects content: "" (string).
       if (isOllama) {
         formatted.content = formatted.content || '';
       } else {
@@ -202,16 +200,58 @@ export function prepareMessagesForProvider(messages, isOllama) {
 }
 
 /**
+ * Robust Fallback Tool Parser:
+ * If a small or local model emits a function call as plain text (e.g. `consultar_clima {"ubicacion": "Madrid"}`)
+ * instead of populating `message.tool_calls`, this extracts and transforms it into a formal tool call.
+ */
+export function extractToolCallsFromText(content, toolsList = []) {
+  if (!content || typeof content !== 'string') return null;
+
+  const toolNames = toolsList.map(t => typeof t === 'string' ? t : (t.function?.name || t.name)).filter(Boolean);
+  if (toolNames.length === 0) return null;
+
+  // Pattern 1: tool_name { ...json... } or tool_name({ ...json... })
+  for (const name of toolNames) {
+    const pattern = new RegExp(`(?:^|[\\s\\n\`])${name}\\s*\\(?\\s*(\\{[\\s\\S]*?\\})\\s*\\)?`, 'i');
+    const m = content.match(pattern);
+    if (m) {
+      try {
+        const args = JSON.parse(m[1]);
+        return [{
+          id: `call_${Math.random().toString(36).slice(2, 10)}`,
+          type: 'function',
+          function: { name, arguments: args }
+        }];
+      } catch (e) {
+        // Continue
+      }
+    }
+  }
+
+  // Pattern 2: JSON block with name and arguments / parameters
+  try {
+    const jsonMatch = content.match(/\{[\s\S]*"name"\s*:\s*"([a-zA-Z0-9_]+)"[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (toolNames.includes(parsed.name)) {
+        return [{
+          id: `call_${Math.random().toString(36).slice(2, 10)}`,
+          type: 'function',
+          function: {
+            name: parsed.name,
+            arguments: parsed.arguments || parsed.parameters || {}
+          }
+        }];
+      }
+    }
+  } catch {}
+
+  return null;
+}
+
+/**
  * Unified Chat Completion API:
  * Executes chat completions across local Ollama and Cloud OpenAI-compatible endpoints with full tool calling support.
- *
- * @param {Object} params
- * @param {Array} params.messages - Array of chat messages
- * @param {Array} [params.tools] - Optional tool definitions
- * @param {Object} [params.options] - Hyperparameters (temperature, max_tokens, num_ctx, num_thread)
- * @param {string} [params.provider] - Optional provider override ('ollama' | 'openai')
- * @param {string} [params.model] - Optional model override
- * @returns {Promise<{ message: { role: string, content: string, tool_calls?: Array }, provider: string, model: string }>}
  */
 export async function chatCompletion({
   messages = [],
@@ -253,7 +293,9 @@ export async function chatCompletion({
 
     const res = await ollama.chat(payload);
 
+    let rawContent = res.message?.content || '';
     let toolCalls = undefined;
+
     if (res.message?.tool_calls && res.message.tool_calls.length > 0) {
       toolCalls = res.message.tool_calls.map(tc => {
         let args = tc.function.arguments;
@@ -269,12 +311,19 @@ export async function chatCompletion({
           }
         };
       });
+    } else if (tools && tools.length > 0 && rawContent) {
+      // Fallback: Si el modelo emitió la llamada a función como texto plano en el contenido
+      const extracted = extractToolCallsFromText(rawContent, tools);
+      if (extracted && extracted.length > 0) {
+        toolCalls = extracted;
+        rawContent = ''; // Limpiar para que no se filtre código al usuario
+      }
     }
 
     return {
       message: {
         role: 'assistant',
-        content: res.message?.content || '',
+        content: rawContent,
         tool_calls: toolCalls
       },
       provider: 'ollama',
@@ -311,7 +360,9 @@ export async function chatCompletion({
     throw new Error('Cloud LLM provider returned empty choices.');
   }
 
+  let rawContent = choice.content || '';
   let toolCalls = undefined;
+
   if (choice.tool_calls && choice.tool_calls.length > 0) {
     toolCalls = choice.tool_calls.map(tc => {
       let args = tc.function.arguments;
@@ -327,12 +378,19 @@ export async function chatCompletion({
         }
       };
     });
+  } else if (tools && tools.length > 0 && rawContent) {
+    // Fallback: Si el modelo cloud emitió la llamada en texto plano
+    const extracted = extractToolCallsFromText(rawContent, tools);
+    if (extracted && extracted.length > 0) {
+      toolCalls = extracted;
+      rawContent = '';
+    }
   }
 
   return {
     message: {
       role: 'assistant',
-      content: choice.content || '',
+      content: rawContent,
       tool_calls: toolCalls
     },
     provider: cloudConfig.provider,

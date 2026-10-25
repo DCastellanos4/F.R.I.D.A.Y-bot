@@ -3,18 +3,22 @@ export const herramientasJarvis = [
     type: 'function',
     function: {
       name: 'consultar_clima',
-      description: 'OBLIGATORIA: Consulta el estado meteorológico actual y la previsión (temperatura, probabilidad de lluvia, viento, estado del cielo) para cualquier ciudad, pueblo o lugar del mundo (ej: Madrid, Barcelona, Valencia, Londres, etc.).',
+      description: 'OBLIGATORIA: Consulta el estado meteorológico actual y la previsión (temperatura, probabilidad de lluvia, viento, estado del cielo) para cualquier ciudad, pueblo o lugar del mundo tanto de hoy como de mañana, incluyendo horas específicas si se solicitan (ej: Madrid, Barcelona, Valencia, Londres).',
       parameters: {
         type: 'object',
         properties: {
           ubicacion: {
             type: 'string',
-            description: 'Nombre de la ciudad, pueblo o lugar a consultar (ej: Madrid, Barcelona, Valencia, Londres, Buenos Aires, Tokio). Por defecto Madrid.'
+            description: 'Nombre de la ciudad, pueblo o lugar a consultar (ej: Madrid, Barcelona, Valencia). Por defecto Madrid.'
           },
           momento: {
             type: 'string',
             enum: ['hoy', 'mañana', 'semana'],
             description: 'Momento de la previsión: "hoy", "mañana" o "semana". Por defecto "hoy".'
+          },
+          hora: {
+            type: 'string',
+            description: 'Hora específica opcional si el usuario menciona una hora (ej: "7", "07:00", "7 de la mañana", "15:00", "tarde", "noche").'
           }
         },
         required: ['ubicacion']
@@ -59,7 +63,7 @@ export const herramientasJarvis = [
     type: 'function',
     function: {
       name: 'resumir_enlace',
-      description: 'Descarga, lee con navegador Playwright y sintetiza en un resumen ejecutivo táctico de WhatsApp cualquier página web, noticia o vídeo de YouTube proporcionado mediante una URL.',
+      description: 'Descarga, lee con navegador Playwright y sintetiza en un resumen ejecutivo táctico cualquier página web, noticia o vídeo de YouTube proporcionado mediante una URL.',
       parameters: {
         type: 'object',
         properties: {
@@ -162,7 +166,7 @@ export const herramientasJarvis = [
           },
           precioObjetivo: {
             type: 'number',
-            description: 'Precio en euros al que se desea que FRIDAY avise si baja'
+            description: 'Precio en euros al que se desea que J.A.R.V.I.S. avise si baja'
           },
           nombre: {
             type: 'string',

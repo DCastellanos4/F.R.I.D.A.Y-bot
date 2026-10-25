@@ -38,18 +38,13 @@ let jidDavidActivo = `${LID_DAVID_CONOCIDO}@lid`;
 
 /**
  * Valida si el mensaje entrante procede exclusivamente de David
- * Soporta tanto formato clásico (@s.whatsapp.net) como el nuevo formato LID (@lid) de WhatsApp Multi-Device
  */
 function esMensajeDeDavid(jid) {
   if (!jid) return false;
 
-  // 1. Coincidencia por número telefónico autorizado
   if (NUMERO_DAVID_AUTORIZADO && jid.includes(NUMERO_DAVID_AUTORIZADO)) return true;
-
-  // 2. Coincidencia por LID conocido
   if (LID_DAVID_CONOCIDO && jid.includes(LID_DAVID_CONOCIDO)) return true;
 
-  // 3. Comprobación dinámica en los archivos de mapeo LID de Baileys
   try {
     const rawId = jid.split('@')[0].split(':')[0];
     const archivoMapeo = path.join(CARPETA_AUTH, `lid-mapping-${rawId}_reverse.json`);
@@ -59,15 +54,13 @@ function esMensajeDeDavid(jid) {
         return true;
       }
     }
-  } catch (err) {
-    // ignorar error de lectura
-  }
+  } catch (err) {}
 
   return false;
 }
 
 /**
- * Extrae texto de forma exhaustiva desempaquetando mensajes estándar, efímeros y viewOnce
+ * Extrae texto desempaquetando cualquier estructura de mensaje de Baileys
  */
 function extraerTextoMensaje(msg) {
   let m = msg.message;
@@ -86,13 +79,12 @@ function extraerTextoMensaje(msg) {
 }
 
 /**
- * Detecta solicitudes de David para poner más tabaco a la cachimba (Easter Egg Tony Stark)
+ * Detecta solicitudes de David para poner más tabaco a la cachimba (Easter Egg Iron Man)
  */
 export function esPeticionCachimba(texto) {
   if (!texto) return false;
   const t = normalizarTexto(texto);
 
-  // No interceptar si es un recordatorio o alarma programada ("recuérdame comprar tabaco...")
   if (/^(recuerda|recuerdame|acuerdate|avisame|pon un recordatorio)/.test(t)) {
     return false;
   }
@@ -119,21 +111,21 @@ let serviciosIniciados = false;
  */
 export async function enviarMensajeADavid(contenido) {
   if (!sock || !estaConectado) {
-    console.warn('⚠️ [WhatsApp] Intento de envío proactivo pero el cliente no está en línea.');
+    console.warn('[WhatsApp] Intento de envío proactivo pero el cliente no está en línea.');
     return false;
   }
   const payload = typeof contenido === 'string' ? { text: contenido } : contenido;
   try {
     await sock.sendMessage(jidDavidActivo, payload);
-    console.log(`📤 [WhatsApp Alerta Enviada a David] Destino: ${jidDavidActivo}`);
+    console.log(`[WhatsApp Alerta Enviada a David] Destino: ${jidDavidActivo}`);
     return true;
   } catch (err) {
-    console.warn(`⚠️ Error enviando alerta a ${jidDavidActivo}, probando canal @s.whatsapp.net:`, err.message);
+    console.warn(`Aviso: Error enviando alerta a ${jidDavidActivo}, probando canal alternativo:`, err.message);
     try {
       await sock.sendMessage(`${NUMERO_DAVID_AUTORIZADO}@s.whatsapp.net`, payload);
       return true;
     } catch (err2) {
-      console.error(`❌ Error fatal enviando alerta proactiva a David:`, err2.message);
+      console.error(`Error fatal enviando alerta proactiva a David:`, err2.message);
       return false;
     }
   }
@@ -146,22 +138,22 @@ function inicializarServiciosProactivos() {
   if (serviciosIniciados) return;
   serviciosIniciados = true;
 
-  console.log(`🚀 [Servicios Proactivos] Vinculando alertas proactivas al chat de David...`);
+  console.log(`[Servicios Proactivos] Vinculando alertas proactivas al chat de David...`);
 
   // 1. Monitor del servidor Oracle y Minecraft (cada 5 minutos)
   iniciarVigilanteProactivo(async (alerta) => {
-    await enviarMensajeADavid(`🚨 *ALERTA TÁCTICA F.R.I.D.A.Y.:*\n\n${alerta}`);
+    await enviarMensajeADavid(`[ALERTA DEL SISTEMA]\n\n${alerta}`);
   }, 5 * 60 * 1000);
 
   // 2. Monitor de recordatorios programados (cada 30 segundos)
   iniciarMonitorRecordatorios(async (recordatorio) => {
-    const textoAviso = `⏰ *RECORDATORIO TÁCTICO DE F.R.I.D.A.Y.:*\n\nDavid, tal como me programó: *"${recordatorio.mensaje}"*.\n\n_Tarea completada y archivada, señor._`;
+    const textoAviso = `[RECORDATORIO]\n\nSeñor, tal como me solicitó: "${recordatorio.mensaje}".\n\nTarea completada y archivada, señor.`;
     await enviarMensajeADavid(textoAviso);
   }, 30 * 1000);
 
   // 3. Sniper Watchdog de artículos y ofertas (cada 20 minutos)
   iniciarSniperWatchdog(async (alertaOferta) => {
-    await enviarMensajeADavid(alertaOferta);
+    await enviarMensajeADavid(`[AVISO DE PRECIO]\n\n${alertaOferta}`);
   }, 20 * 60 * 1000);
 
   // 4. Briefing matutino (07:00 AM hora peninsular de Madrid)
@@ -169,7 +161,7 @@ function inicializarServiciosProactivos() {
     await enviarMensajeADavid(textoBriefing);
   });
 
-  console.log(`✅ [Servicios Proactivos] Todos los monitores conectados al WhatsApp de David (+${NUMERO_DAVID_AUTORIZADO}).`);
+  console.log(`[Servicios Proactivos] Todos los monitores conectados al WhatsApp de David (+${NUMERO_DAVID_AUTORIZADO}).`);
 }
 
 /**
@@ -179,7 +171,7 @@ export async function iniciarWhatsApp() {
   const { state, saveCreds } = await useMultiFileAuthState(CARPETA_AUTH);
   const { version } = await fetchLatestBaileysVersion();
 
-  console.log(`📡 Conectando WhatsApp con Baileys (v${version.join('.')})...`);
+  console.log(`Conectando WhatsApp con Baileys (v${version.join('.')})...`);
 
   const tieneFlagPairing = process.argv.includes('--pairing') || process.argv.includes('--code');
   const argNumero = process.argv.find(arg => arg.startsWith('--numero=') || arg.startsWith('--phone='));
@@ -196,7 +188,7 @@ export async function iniciarWhatsApp() {
     auth: state,
     printQRInTerminal: false,
     logger: pino({ level: 'silent' }),
-    browser: ['FRIDAY Linux', 'Chrome', '122.0.0']
+    browser: ['JARVIS Linux', 'Chrome', '124.0.0']
   });
 
   if (pairingNumber && !sock.authState.creds.registered) {
@@ -204,8 +196,8 @@ export async function iniciarWhatsApp() {
       try {
         const code = await sock.requestPairingCode(pairingNumber);
         console.log('\n======================================================');
-        console.log(`🔑 CÓDIGO DE VINCULACIÓN PARA LA SIM (+${pairingNumber}):`);
-        console.log(`👉  ${code}  👈`);
+        console.log(`CODIGO DE VINCULACION PARA LA SIM (+${pairingNumber}):`);
+        console.log(`>>  ${code}  <<`);
         console.log('Introduce este código en WhatsApp (Dispositivos vinculados > Vincular con el número de teléfono)');
         console.log('======================================================\n');
       } catch (err) {
@@ -219,7 +211,7 @@ export async function iniciarWhatsApp() {
 
     if (qr && !pairingNumber) {
       console.log('\n======================================================');
-      console.log('📱 ESCANEA ESTE CÓDIGO QR CON EL WHATSAPP DEL BOT:');
+      console.log('ESCANEA ESTE CODIGO QR CON EL WHATSAPP DEL BOT:');
       console.log('Abre WhatsApp > Ajustes > Dispositivos vinculados > Vincular un dispositivo');
       console.log('======================================================\n');
       qrcode.generate(qr, { small: true });
@@ -229,21 +221,21 @@ export async function iniciarWhatsApp() {
       estaConectado = false;
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const razon = DisconnectReason[statusCode] || statusCode;
-      console.log(`⚠️ Conexión de WhatsApp cerrada. Razón: ${razon} (${statusCode})`);
+      console.log(`Conexión de WhatsApp cerrada. Razón: ${razon} (${statusCode})`);
 
       if (statusCode !== DisconnectReason.loggedOut) {
-        console.log('🔄 Reconectando WhatsApp en 5 segundos...');
+        console.log('Reconectando WhatsApp en 5 segundos...');
         setTimeout(() => iniciarWhatsApp(), 5000);
       } else {
-        console.log('❌ Sesión cerrada por WhatsApp. Para volver a vincular, elimina data/auth_info_baileys.');
+        console.log('Sesión cerrada por WhatsApp. Para volver a vincular, elimina data/auth_info_baileys.');
       }
     } else if (connection === 'open') {
       estaConectado = true;
       console.log('\n======================================================');
-      console.log('🟢 ¡F.R.I.D.A.Y. CONECTADA Y EN LÍNEA!');
-      console.log(`🤖 Asistente Táctica: +${NUMERO_BOT_SIMYO}`);
-      console.log(`👤 Jefe / Usuario Autorizado: David (+${NUMERO_DAVID_AUTORIZADO})`);
-      console.log(`🆔 LID Reconocido de David: ${LID_DAVID_CONOCIDO}@lid`);
+      console.log('J.A.R.V.I.S. CONECTADO Y EN LINEA');
+      console.log(`Asistente personal: +${NUMERO_BOT_SIMYO}`);
+      console.log(`Usuario autorizado: David (+${NUMERO_DAVID_AUTORIZADO})`);
+      console.log(`LID reconocido de David: ${LID_DAVID_CONOCIDO}@lid`);
       console.log('======================================================\n');
 
       inicializarServiciosProactivos();
@@ -264,7 +256,7 @@ export async function iniciarWhatsApp() {
 
       // Filtro de seguridad estricto: solo mensajes de David
       if (!esMensajeDeDavid(remoteJid)) {
-        console.log(`🔒 [WhatsApp] Mensaje bloqueado de remitente no autorizado: ${remoteJid}`);
+        console.log(`[WhatsApp] Mensaje bloqueado de remitente no autorizado: ${remoteJid}`);
         continue;
       }
 
@@ -274,9 +266,9 @@ export async function iniciarWhatsApp() {
       let texto = null;
       let esAudio = false;
 
-      // Manejo inteligente de notas de voz con Whisper
+      // Manejo de notas de voz con Whisper
       if (msg.message.audioMessage) {
-        console.log('🎤 [WhatsApp] Nota de voz recibida de David. Procesando audio con Whisper...');
+        console.log('[WhatsApp] Nota de voz recibida de David. Procesando audio con Whisper...');
         try {
           await sock.sendPresenceUpdate('recording', remoteJid);
 
@@ -292,18 +284,18 @@ export async function iniciarWhatsApp() {
           if (resVoz.ok && resVoz.texto && resVoz.texto.length > 1) {
             texto = resVoz.texto;
             esAudio = true;
-            console.log(`🎤 [Audio Transcrito]: "${texto}"`);
+            console.log(`[Audio Transcrito]: "${texto}"`);
           } else {
-            console.warn('⚠️ Audio no pudo ser transcrito con claridad.');
+            console.warn('Aviso: Audio no pudo ser transcrito con claridad.');
             await sock.sendMessage(remoteJid, {
-              text: '🎤 David, he recibido tu nota de voz pero no he podido transcribirla con claridad. ¿Podrías repetírmela o escribírmela?'
+              text: 'Señor, he recibido su nota de voz pero no he podido transcribirla con claridad. ¿Podría repetírmela, por favor?'
             }, { quoted: msg });
             continue;
           }
         } catch (errAudio) {
-          console.error('❌ Error descargando/transcribiendo nota de voz:', errAudio);
+          console.error('Error procesando nota de voz:', errAudio);
           await sock.sendMessage(remoteJid, {
-            text: `⚠️ David, ha ocurrido un error al procesar tu nota de voz: ${errAudio.message}`
+            text: `Ha ocurrido una anomalía al procesar su nota de voz, señor: ${errAudio.message}`
           }, { quoted: msg });
           continue;
         }
@@ -313,25 +305,25 @@ export async function iniciarWhatsApp() {
 
       if (!texto) continue;
 
-      console.log(`\n📩 [WhatsApp de David${esAudio ? ' (Audio)' : ''}]: "${texto}"`);
+      console.log(`\n[WhatsApp de David${esAudio ? ' (Audio)' : ''}]: "${texto}"`);
 
       // Easter Egg: Solicitud de más tabaco para la cachimba
       if (esPeticionCachimba(texto) && fs.existsSync(RUTA_IMAGEN_CACHIMBA)) {
-        console.log(`🎯 [Easter Egg Cachimba Activado] Solicitado por David: "${texto}"`);
+        console.log(`[Easter Egg Cachimba Activado] Solicitado por David: "${texto}"`);
         try {
           await sock.readMessages([msg.key]);
           await sock.sendPresenceUpdate('composing', remoteJid);
 
-          const frasesFriday = [
-            'A la orden, jefe. Calibrando cazoleta y aumentando la mezcla al 100%. Protocolo Stark activado.',
-            'Entendido, David. Presurizando la cámara y añadiendo más tabaco a la cachimba. Disfrute de la sesión, señor.',
-            'Sistemas térmicos al máximo, jefe. Más tabaco en la cazoleta y flujo de aire optimizado.',
-            'A la orden, David. Cachimba repuesta con mezcla premium y carbones al máximo rendimiento.'
+          const frasesJarvis = [
+            'A su servicio, señor. Ajustando la cazoleta y optimizando la mezcla al máximo rendimiento para su sesión.',
+            'Por supuesto, señor. Presurizando la cámara y suministrando tabaco a la cachimba. Disfrute de su descanso.',
+            'Parámetros térmicos estabilizados y mezcla renovada, señor. Disfrute de la sesión.',
+            'A la orden, señor. Cachimba repuesta con mezcla premium y carbones a temperatura óptima.'
           ];
-          const frase = frasesFriday[Math.floor(Math.random() * frasesFriday.length)];
+          const frase = frasesJarvis[Math.floor(Math.random() * frasesJarvis.length)];
           const bufferImagen = fs.readFileSync(RUTA_IMAGEN_CACHIMBA);
 
-          const pieDeFoto = esAudio ? `🎤 _"${texto}"_\n\n${frase}` : frase;
+          const pieDeFoto = esAudio ? `[Nota de voz]: "${texto}"\n\n${frase}` : frase;
 
           await sock.sendMessage(remoteJid, {
             image: bufferImagen,
@@ -339,10 +331,10 @@ export async function iniciarWhatsApp() {
           }, { quoted: msg });
 
           await sock.sendPresenceUpdate('paused', remoteJid);
-          console.log(`📤 [FRIDAY a David]: [Imagen Cachimba enviada con éxito - "${frase}"]\n`);
+          console.log(`[J.A.R.V.I.S. a David]: [Imagen Cachimba enviada - "${frase}"]\n`);
           continue;
         } catch (errEaster) {
-          console.error('❌ Error enviando imagen de cachimba:', errEaster);
+          console.error('Error enviando imagen de cachimba:', errEaster);
         }
       }
 
@@ -353,7 +345,7 @@ export async function iniciarWhatsApp() {
 
       if (tieneUrl && pideCaptura) {
         const urlCaptura = texto.match(/https?:\/\/[^\s]+/i)[0];
-        console.log(`📸 [WhatsApp Captura Web] Solicitada por David: ${urlCaptura}`);
+        console.log(`[WhatsApp Captura Web] Solicitada por David: ${urlCaptura}`);
         try {
           await sock.readMessages([msg.key]);
           await sock.sendPresenceUpdate('composing', remoteJid);
@@ -361,8 +353,8 @@ export async function iniciarWhatsApp() {
           const resCap = await capturarPantallaWeb(urlCaptura);
           if (resCap.ok && resCap.buffer) {
             const pieCaptura = esAudio
-              ? `🎤 _"${texto}"_\n\n📸 *Captura táctica realizada en vivo con Playwright Chromium:*\n🔗 ${urlCaptura}`
-              : `📸 *Captura táctica realizada en vivo con Playwright Chromium:*\n🔗 ${urlCaptura}`;
+              ? `[Nota de voz]: "${texto}"\n\nCaptura de pantalla realizada en vivo con Playwright Chromium:\n${urlCaptura}`
+              : `Captura de pantalla realizada en vivo con Playwright Chromium:\n${urlCaptura}`;
 
             await sock.sendMessage(remoteJid, {
               image: resCap.buffer,
@@ -370,17 +362,17 @@ export async function iniciarWhatsApp() {
             }, { quoted: msg });
 
             await sock.sendPresenceUpdate('paused', remoteJid);
-            console.log(`📤 [FRIDAY a David]: [Captura de pantalla de ${urlCaptura} enviada con éxito]\n`);
+            console.log(`[J.A.R.V.I.S. a David]: [Captura de pantalla de ${urlCaptura} enviada con éxito]\n`);
             continue;
           } else {
             console.warn(`Aviso: Error capturando pantalla: ${resCap.error}`);
           }
         } catch (errCap) {
-          console.error('❌ Error capturando pantalla web:', errCap);
+          console.error('Error capturando pantalla web:', errCap);
         }
       }
 
-      // Mantener el estado "escribiendo..." en WhatsApp mientras Ollama piensa
+      // Mantener el estado "escribiendo..." en WhatsApp mientras el LLM piensa
       const typingInterval = setInterval(() => {
         sock.sendPresenceUpdate('composing', remoteJid).catch(() => {});
       }, 4000);
@@ -400,18 +392,18 @@ export async function iniciarWhatsApp() {
         await sock.sendPresenceUpdate('paused', remoteJid);
 
         const respuestaFinal = esAudio
-          ? `🎤 _"${texto}"_\n\n${respuesta}`
+          ? `[Nota de voz]: "${texto}"\n\n${respuesta}`
           : respuesta;
 
         await sock.sendMessage(remoteJid, { text: respuestaFinal }, { quoted: msg });
 
-        console.log(`📤 [FRIDAY a David]: "${respuesta}"\n`);
+        console.log(`[J.A.R.V.I.S. a David]: "${respuesta}"\n`);
       } catch (err) {
         clearInterval(typingInterval);
-        console.error('❌ Error procesando mensaje de Jarvis:', err);
+        console.error('Error procesando mensaje:', err);
         await sock.sendPresenceUpdate('paused', remoteJid);
         await sock.sendMessage(remoteJid, {
-          text: `⚠️ David, ha ocurrido un error al procesar tu solicitud: ${err.message}`
+          text: `Señor, se ha producido una anomalía al procesar su solicitud: ${err.message}`
         }, { quoted: msg });
       }
     }
@@ -420,5 +412,5 @@ export async function iniciarWhatsApp() {
 
 // Iniciar automáticamente
 iniciarWhatsApp().catch(err => {
-  console.error('Error fatal iniciando el bot de WhatsApp:', err);
+  console.error('Error fatal iniciando el cliente de WhatsApp:', err);
 });
