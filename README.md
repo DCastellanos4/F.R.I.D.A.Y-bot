@@ -1,4 +1,4 @@
-# 🤖 F.R.I.D.A.Y. — Personal Tactical AI Assistant
+#  F.R.I.D.A.Y. — Personal Tactical AI Assistant
 
 [![Node.js](https://img.shields.io/badge/Node.js-20.x-green.svg)](https://nodejs.org/)
 [![WhatsApp Baileys](https://img.shields.io/badge/WhatsApp-Multi--Device%20(Baileys)-25D366.svg)](https://github.com/WhiskeySockets/Baileys)
@@ -9,23 +9,22 @@
 
 ---
 
-## ⚡ Capacidades y Módulos
+##  Capacidades y Módulos
 
-* **📱 WhatsApp Multi-Device 24/7 (`whatsappBot.js`):** Cliente de WhatsApp nativo con `@whiskeysockets/baileys`. Admite vinculación por código de 8 dígitos o código QR. Incluye filtro de seguridad estricto que solo responde al usuario autorizado (vía número y LID dinámico).
-* **🧠 Second Brain / Memoria Personal (`memoryService.js`):** Almacenamiento persistente de datos personales (claves, cumpleaños, tallas, contactos, preferencias). Cuenta con normalización de caracteres, expansión de sinónimos y búsqueda con scoring semántico. Inyección contextual proactiva en el prompt para respuestas instantáneas.
-* **⏰ Recordatorios y Alarmas Inteligentes (`reminderService.js`):** Detección en lenguaje natural de horas fijas (ej: *"a las 21:30"*, *"a las 9"*) y tiempos relativos (*"en 15 minutos"*, *"en 2 horas"*). Monitor proactivo en segundo plano que despacha alertas automáticas por WhatsApp al cumplirse.
-* **🎯 Price Sniper / Item Tracker (`sniperService.js`):** Vigilancia automática periódica de precios de productos en Amazon y tiendas web. Bypasses móviles para Amazon. Notificaciones automáticas cuando el precio cae por debajo del objetivo y soporte para modificar objetivos sin reintroducir la URL.
-* **🌦️ Radar Meteorológico Táctico (`weatherService.js`):** Integración con la API pública de Open-Meteo. Geocodificación inteligente en cascada para cualquier ciudad del mundo con soporte de comas y regiones. Previsiones actuales y para el día siguiente.
-* **☀️ Briefing Matutino Automatizado (`dailyBriefing.js`):** Programado diariamente a las 07:00 AM (hora de Madrid). Genera y envía por WhatsApp un informe ejecutivo con el clima del día, alertas de lluvia y titulares de actualidad curados.
-* **📰 Titulares y Noticias Curadas (`newsService.js`):** Extracción multirama (Tecnología, Política, Economía, Deportes, Internacional) a través de fuentes RSS de primer nivel, con filtros anti-clickbait y verificación de enlaces.
-* **📄 Resumidor de Enlaces y Vídeos (`summarizerService.js`):** Descarga, parsea y sintetiza páginas web y transcripciones de vídeos de YouTube con formato ejecutivo para WhatsApp.
-* **🛡️ Vigilante de Red y Salud del Servidor (`proactiveAlerts.js`):** Monitoreo continuo de puertos TCP (ej.: servidor de Minecraft), estado de la RAM/CPU del servidor y alertas meteorológicas.
-* **💨 Easter Egg Stark:** Detección de peticiones especiales (ej: recarga de cachimba) con despacho directo de recursos multimedia y frases en personaje.
-* **🌐 REST API Server (`api.js`):** Servidor HTTP con endpoints REST completos para chat, clima, memorias, recordatorios, tracker de productos y salud.
+* ** WhatsApp Multi-Device 24/7 (`whatsappBot.js`):** Cliente de WhatsApp nativo con `@whiskeysockets/baileys`. Admite vinculación por código de 8 dígitos o código QR. Incluye filtro de seguridad estricto que solo responde al usuario autorizado (vía número y LID dinámico).
+* ** Second Brain / Memoria Personal (`memoryService.js`):** Almacenamiento persistente de datos personales (claves, cumpleaños, tallas, contactos, preferencias). Cuenta con normalización de caracteres, expansión de sinónimos y búsqueda con scoring semántico. Inyección contextual proactiva en el prompt para respuestas instantáneas.
+* ** Recordatorios y Alarmas Inteligentes (`reminderService.js`):** Detección en lenguaje natural de horas fijas (ej: *"a las 21:30"*, *"a las 9"*) y tiempos relativos (*"en 15 minutos"*, *"en 2 horas"*). Monitor proactivo en segundo plano que despacha alertas automáticas por WhatsApp al cumplirse.
+* ** Price Sniper / Item Tracker (`sniperService.js`):** Vigilancia automática periódica de precios de productos en Amazon y tiendas web. Bypasses móviles para Amazon. Notificaciones automáticas cuando el precio cae por debajo del objetivo y soporte para modificar objetivos sin reintroducir la URL.
+* ** Radar Meteorológico Táctico (`weatherService.js`):** Integración con la API pública de Open-Meteo. Geocodificación inteligente en cascada para cualquier ciudad del mundo con soporte de comas y regiones. Previsiones actuales y para el día siguiente.
+* ** Briefing Matutino Automatizado (`dailyBriefing.js`):** Programado diariamente a las 07:00 AM (hora de Madrid). Genera y envía por WhatsApp un informe ejecutivo con el clima del día, alertas de lluvia y titulares de actualidad curados.
+* ** Titulares y Noticias Curadas (`newsService.js`):** Extracción multirama (Tecnología, Política, Economía, Deportes, Internacional) a través de fuentes RSS de primer nivel, con filtros anti-clickbait y verificación de enlaces.
+* ** Resumidor de Enlaces y Vídeos (`summarizerService.js`):** Descarga, parsea y sintetiza páginas web y transcripciones de vídeos de YouTube con formato ejecutivo para WhatsApp.
+* ** Vigilante de Red y Salud del Servidor (`proactiveAlerts.js`):** Monitoreo continuo de puertos TCP (ej.: servidor de Minecraft), estado de la RAM/CPU del servidor y alertas meteorológicas.
+* ** REST API Server (`api.js`):** Servidor HTTP con endpoints REST completos para chat, clima, memorias, recordatorios, tracker de productos y salud.
 
 ---
 
-## 🏗️ Arquitectura del Sistema
+##  Arquitectura del Sistema
 
 ```mermaid
 flowchart TD
@@ -52,7 +51,7 @@ flowchart TD
 
 ---
 
-## 🚀 Requisitos Previos
+##  Requisitos Previos
 
 * **Node.js** 20.x o superior.
 * **Ollama** instalado y ejecutándose localmente (`http://127.0.0.1:11434`).
@@ -61,7 +60,7 @@ flowchart TD
 
 ---
 
-## 🛠️ Instalación y Puesta en Marcha
+##  Instalación y Puesta en Marcha
 
 ### 1. Clonar el repositorio
 ```bash
@@ -115,7 +114,7 @@ Ejecuta el asistente de vinculación:
 
 ---
 
-## 🚀 Ejecución 24/7 con PM2
+##  Ejecución 24/7 con PM2
 
 Para mantener a F.R.I.D.A.Y. en ejecución permanente con autoreinicio tras caídas o reinicios del servidor:
 
@@ -131,7 +130,7 @@ pm2 startup
 
 ---
 
-## 🌐 Endpoints de la API REST
+##  Endpoints de la API REST
 
 | Método | Endpoint | Descripción |
 | :--- | :--- | :--- |
@@ -152,7 +151,7 @@ pm2 startup
 
 ---
 
-## 🔒 Privacidad y Seguridad
+##  Privacidad y Seguridad
 
 * **Sin fuga de credenciales:** Todas las sesiones de autenticación de WhatsApp (`data/auth_info_baileys/`), registros de memoria personal (`data/brain_memory.json`) y claves privadas están excluidos en `.gitignore`.
 * **Filtro de remitente estricto:** El bot descarta automáticamente mensajes de cualquier remitente que no coincida con el número o LID autorizado en `.env`.
@@ -160,6 +159,6 @@ pm2 startup
 
 ---
 
-## 📜 Licencia
+##  Licencia
 
 Distribuido bajo la Licencia MIT. Consulta el archivo `LICENSE` para más información.
