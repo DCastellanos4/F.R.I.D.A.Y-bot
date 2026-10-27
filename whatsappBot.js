@@ -163,7 +163,7 @@ function inicializarServiciosProactivos() {
 
   // 1. Monitor del servidor Oracle y Minecraft (cada 5 minutos)
   iniciarVigilanteProactivo(async (alerta) => {
-    await enviarMensajeADavid(`[ALERTA DEL SISTEMA]\n\n${alerta}`);
+    await enviarMensajeADavid(`[D.A.V.I.S. - ALERTA DEL SISTEMA]\n\n${alerta}`);
   }, 5 * 60 * 1000);
 
   // 2. Monitor de recordatorios programados (cada 30 segundos)
@@ -171,7 +171,7 @@ function inicializarServiciosProactivos() {
     const notaMensaje = (recordatorio && recordatorio.mensaje)
       ? recordatorio.mensaje
       : (typeof recordatorio === 'string' ? recordatorio : 'Recordatorio programado');
-    const textoAviso = `[RECORDATORIO]\n\nSeñor, tal como me solicitó: "${notaMensaje}".\n\nTarea completada y archivada, señor.`;
+    const textoAviso = `[D.A.V.I.S. - RECORDATORIO]\n\nTal como me pediste, David: "${notaMensaje}".\n\nAsunto completado y archivado.`;
     await enviarMensajeADavid(textoAviso);
   }, 30 * 1000);
 
@@ -181,19 +181,19 @@ function inicializarServiciosProactivos() {
     try {
       const exito = await enviarMensajeWhatsApp(m.destinatarioJid, m.mensaje);
       if (exito) {
-        await enviarMensajeADavid(`[MENSAJE PROGRAMADO ENTREGADO]\n\nSeñor, el mensaje programado para el número +${m.numero} ha sido transmitido con éxito:\n"${m.mensaje}".`);
+        await enviarMensajeADavid(`[D.A.V.I.S. - MENSAJE ENTREGADO]\n\nEl mensaje para el número +${m.numero} ha sido transmitido con éxito:\n"${m.mensaje}".`);
       } else {
-        await enviarMensajeADavid(`[AVISO DE DISPACHO]\n\nSeñor, no se ha podido entregar el mensaje programado al número +${m.numero}.`);
+        await enviarMensajeADavid(`[D.A.V.I.S. - AVISO DE DISPACHO]\n\nNo se ha podido entregar el mensaje programado al número +${m.numero}.`);
       }
     } catch (errEnvio) {
       console.error(`Error en despacho de mensaje programado a +${m.numero}:`, errEnvio.message);
-      await enviarMensajeADavid(`[AVISO DE DISPACHO]\n\nSeñor, se ha producido una anomalía al entregar el mensaje al número +${m.numero}: ${errEnvio.message}`);
+      await enviarMensajeADavid(`[D.A.V.I.S. - AVISO DE DISPACHO]\n\nSe ha producido una anomalía al entregar el mensaje al número +${m.numero}: ${errEnvio.message}`);
     }
   }, 15 * 1000);
 
   // 4. Sniper Watchdog de artículos y ofertas (cada 20 minutos)
   iniciarSniperWatchdog(async (alertaOferta) => {
-    await enviarMensajeADavid(`[AVISO DE PRECIO]\n\n${alertaOferta}`);
+    await enviarMensajeADavid(`[D.A.V.I.S. - AVISO DE PRECIO]\n\n${alertaOferta}`);
   }, 20 * 60 * 1000);
 
   // 5. Briefing matutino (07:00 AM hora peninsular de Madrid)
@@ -228,7 +228,7 @@ export async function iniciarWhatsApp() {
     auth: state,
     printQRInTerminal: false,
     logger: pino({ level: 'silent' }),
-    browser: ['JARVIS Linux', 'Chrome', '124.0.0']
+    browser: ['DAVIS Linux', 'Chrome', '124.0.0']
   });
 
   if (pairingNumber && !sock.authState.creds.registered) {
@@ -272,8 +272,8 @@ export async function iniciarWhatsApp() {
     } else if (connection === 'open') {
       estaConectado = true;
       console.log('\n======================================================');
-      console.log('J.A.R.V.I.S. CONECTADO Y EN LINEA');
-      console.log(`Asistente personal: +${NUMERO_BOT_SIMYO}`);
+      console.log('D.A.V.I.S. CONECTADO Y EN LINEA');
+      console.log(`Copiloto táctico de David: +${NUMERO_BOT_SIMYO}`);
       console.log(`Usuario autorizado: David (+${NUMERO_DAVID_AUTORIZADO})`);
       console.log(`LID reconocido de David: ${LID_DAVID_CONOCIDO}@lid`);
       console.log('======================================================\n');
@@ -301,7 +301,7 @@ export async function iniciarWhatsApp() {
         const textoExterno = extraerTextoMensaje(msg);
         if (textoExterno) {
           console.log(`[WhatsApp Buzón] Retransmitiendo a David respuesta de +${remitenteLimpio}: "${textoExterno}"`);
-          await enviarMensajeADavid(`[MENSAJE EXTERNO RECIBIDO]\n\nSeñor, el contacto +${remitenteLimpio} ha respondido al bot con el siguiente mensaje:\n"${textoExterno}".`);
+          await enviarMensajeADavid(`[D.A.V.I.S. - RESPUESTA EXTERNA]\n\nDavid, el contacto +${remitenteLimpio} acaba de responder:\n"${textoExterno}".`);
         }
         continue;
       }
