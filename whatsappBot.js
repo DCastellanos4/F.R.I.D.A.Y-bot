@@ -13,6 +13,7 @@ import { fileURLToPath } from 'url';
 import { config } from './config.js';
 import { consultarJarvis } from './jarvisAgent.js';
 import { iniciarMonitorRecordatorios } from './reminderService.js';
+import { iniciarMonitorMensajesProgramados } from './scheduledMessageService.js';
 import { iniciarVigilanteProactivo } from './proactiveAlerts.js';
 import { iniciarSniperWatchdog } from './sniperService.js';
 import { programarEnvioMatutino } from './dailyBriefing.js';
@@ -132,7 +133,27 @@ export async function enviarMensajeADavid(contenido) {
 }
 
 /**
- * Registra los disparadores proactivos en segundo plano (vigilante, recordatorios, sniper y briefing)
+ * Envía un mensaje de WhatsApp a cualquier destinatario (JID o número canónico internacional)
+ */
+export async function enviarMensajeWhatsApp(jidODestino, contenido) {
+  if (!sock || !estaConectado) {
+    console.warn('[WhatsApp] Intento de envío pero el cliente no está en línea.');
+    return false;
+  }
+  const payload = typeof contenido === 'string' ? { text: contenido } : contenido;
+  const jid = jidODestino.includes('@') ? jidODestino : `${jidODestino}@s.whatsapp.net`;
+  try {
+    await sock.sendMessage(jid, payload);
+    console.log(`[WhatsApp Mensaje Enviado] Destino: ${jid}`);
+    return true;
+  } catch (err) {
+    console.error(`Error enviando mensaje WhatsApp a ${jid}:`, err.message);
+    return false;
+  }
+}
+
+/**
+ * Registra los disparadores proactivos en segundo plano (vigilante, recordatorios, mensajes programados, sniper y briefing)
  */
 function inicializarServiciosProactivos() {
   if (serviciosIniciados) return;
@@ -146,17 +167,36 @@ function inicializarServiciosProactivos() {
   }, 5 * 60 * 1000);
 
   // 2. Monitor de recordatorios programados (cada 30 segundos)
-  iniciarMonitorRecordatorios(async (recordatorio) => {
-    const textoAviso = `[RECORDATORIO]\n\nSeñor, tal como me solicitó: "${recordatorio.mensaje}".\n\nTarea completada y archivada, señor.`;
+  iniciarMonitorRecordatorios(async (recordatorio, alertaTexto) => {
+    const notaMensaje = (recordatorio && recordatorio.mensaje)
+      ? recordatorio.mensaje
+      : (typeof recordatorio === 'string' ? recordatorio : 'Recordatorio programado');
+    const textoAviso = `[RECORDATORIO]\n\nSeñor, tal como me solicitó: "${notaMensaje}".\n\nTarea completada y archivada, señor.`;
     await enviarMensajeADavid(textoAviso);
   }, 30 * 1000);
 
-  // 3. Sniper Watchdog de artículos y ofertas (cada 20 minutos)
+  // 3. Monitor de mensajes de WhatsApp programados a terceros (cada 15 segundos)
+  iniciarMonitorMensajesProgramados(async (m) => {
+    console.log(`[WhatsApp Programado] Despachando mensaje programado para +${m.numero}...`);
+    try {
+      const exito = await enviarMensajeWhatsApp(m.destinatarioJid, m.mensaje);
+      if (exito) {
+        await enviarMensajeADavid(`[MENSAJE PROGRAMADO ENTREGADO]\n\nSeñor, el mensaje programado para el número +${m.numero} ha sido transmitido con éxito:\n"${m.mensaje}".`);
+      } else {
+        await enviarMensajeADavid(`[AVISO DE DISPACHO]\n\nSeñor, no se ha podido entregar el mensaje programado al número +${m.numero}.`);
+      }
+    } catch (errEnvio) {
+      console.error(`Error en despacho de mensaje programado a +${m.numero}:`, errEnvio.message);
+      await enviarMensajeADavid(`[AVISO DE DISPACHO]\n\nSeñor, se ha producido una anomalía al entregar el mensaje al número +${m.numero}: ${errEnvio.message}`);
+    }
+  }, 15 * 1000);
+
+  // 4. Sniper Watchdog de artículos y ofertas (cada 20 minutos)
   iniciarSniperWatchdog(async (alertaOferta) => {
     await enviarMensajeADavid(`[AVISO DE PRECIO]\n\n${alertaOferta}`);
   }, 20 * 60 * 1000);
 
-  // 4. Briefing matutino (07:00 AM hora peninsular de Madrid)
+  // 5. Briefing matutino (07:00 AM hora peninsular de Madrid)
   programarEnvioMatutino(async (textoBriefing) => {
     await enviarMensajeADavid(textoBriefing);
   });

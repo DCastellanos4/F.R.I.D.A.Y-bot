@@ -209,7 +209,7 @@ export const herramientasJarvis = [
     type: 'function',
     function: {
       name: 'crear_recordatorio',
-      description: 'OBLIGATORIA: Guarda y programa en el sistema un recordatorio, aviso o alarma cuando el usuario dice recuérdame, recuerdame, avísame, ponme una alarma, acuérdate de, etc.',
+      description: 'OBLIGATORIA: Guarda y programa en el sistema un recordatorio, aviso o alarma personal cuando el usuario dice recuérdame, recuerdame, avísame, ponme una alarma, acuérdate de, etc.',
       parameters: {
         type: 'object',
         properties: {
@@ -252,6 +252,67 @@ export const herramientasJarvis = [
           criterio: {
             type: 'string',
             description: 'ID del recordatorio, texto clave o "*"'
+          }
+        },
+        required: ['criterio']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'programar_mensaje_whatsapp',
+      description: 'OBLIGATORIA: Programa el envío automático de un mensaje de WhatsApp a un número de teléfono de destino (o contacto) a una hora específica o dentro de un número determinado de minutos.',
+      parameters: {
+        type: 'object',
+        properties: {
+          numero: {
+            type: 'string',
+            description: 'Número de teléfono de destino (ej: 612345678, +34612345678, 34612345678). Si no incluye código internacional, se aplicará por defecto el prefijo de España (+34).'
+          },
+          mensaje: {
+            type: 'string',
+            description: 'El texto exacto que se desea enviar al destinatario.'
+          },
+          minutosEnElFuturo: {
+            type: 'number',
+            description: 'Minutos en el futuro para realizar el envío (ej: 10 si dice en 10 minutos).'
+          },
+          hora: {
+            type: 'string',
+            description: 'Hora del día en formato HH:MM o H (ej: "18:00", "18", "08:30").'
+          },
+          fecha: {
+            type: 'string',
+            description: 'Fecha específica opcional si el envío no es hoy (ej: "mañana", "2026-10-28", "28/10/2026").'
+          }
+        },
+        required: ['numero', 'mensaje']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_mensajes_programados',
+      description: 'Consulta todos los mensajes de WhatsApp programados pendientes de ser enviados a números de teléfono.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'cancelar_mensaje_programado',
+      description: 'Cancela un mensaje de WhatsApp programado antes de su envío (o "*" para cancelar todos los pendientes).',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: {
+            type: 'string',
+            description: 'ID del mensaje programado, número de teléfono de destino o "*" para cancelar todos.'
           }
         },
         required: ['criterio']

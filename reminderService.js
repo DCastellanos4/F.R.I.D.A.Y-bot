@@ -133,7 +133,7 @@ export function crearRecordatorio({ mensaje, minutosEnElFuturo = null, hora = nu
 
   const nuevo = {
     id,
-    mensaje: mensaje ? mensaje.trim() : 'Recordatorio de FRIDAY',
+    mensaje: mensaje ? mensaje.trim() : 'Recordatorio',
     timestamp: fechaObjetivo.getTime(),
     fechaHoraLocal: formatoLocal,
     completado: false,
@@ -144,7 +144,7 @@ export function crearRecordatorio({ mensaje, minutosEnElFuturo = null, hora = nu
   lista.push(nuevo);
   guardarRecordatorios(lista);
 
-  console.log(`⏰ [Recordatorio Guardado] "${nuevo.mensaje}" programado para el ${nuevo.fechaHoraLocal}`);
+  console.log(`[Recordatorio Guardado] "${nuevo.mensaje}" programado para el ${nuevo.fechaHoraLocal}`);
 
   return {
     ok: true,
@@ -167,60 +167,79 @@ export function cancelarRecordatorio(criterio) {
   if (crit === '*' || crit === 'todos' || crit === 'todas' || crit.includes('todo') || crit.includes('toda')) {
     const pendientes = lista.filter(r => !r.completado).length;
     guardarRecordatorios([]);
-    return { ok: true, mensaje: `Se han cancelado todos los recordatorios del sistema (${pendientes} pendientes eliminados).` };
+    return { ok: true, mensaje: `Se han cancelado todos los recordatorios del sistema (${pendientes} pendientes eliminados), señor.` };
   }
 
   const index = lista.findIndex(r => r.id === crit || r.mensaje.toLowerCase().includes(crit));
   if (index === -1) {
-    return { ok: false, mensaje: 'No se encontró ningún recordatorio que coincida.' };
+    return { ok: false, mensaje: 'No se encontró ningún recordatorio que coincida, señor.' };
   }
 
   const [eliminado] = lista.splice(index, 1);
   guardarRecordatorios(lista);
 
-  return { ok: true, recordatorio: eliminado, mensaje: `Recordatorio cancelado con éxito: "${eliminado.mensaje}".` };
+  return { ok: true, recordatorio: eliminado, mensaje: `Recordatorio cancelado con éxito: "${eliminado.mensaje}", señor.` };
 }
 
 let intervaloMonitor = null;
 let callbackNotificacionGlobal = null;
 
-export function iniciarMonitorRecordatorios(callbackNotificacion = null) {
-  if (callbackNotificacion) callbackNotificacionGlobal = callbackNotificacion;
-  if (intervaloMonitor) return;
+/**
+ * Comprueba y despacha de inmediato cualquier recordatorio vencido.
+ */
+export async function despacharRecordatoriosPendientes() {
+  const lista = leerRecordatorios();
+  const ahora = Date.now();
+  let huboCambios = false;
+  const disparados = [];
 
-  intervaloMonitor = setInterval(() => {
-    const lista = leerRecordatorios();
-    const ahora = Date.now();
-    let huboCambios = false;
+  for (const r of lista) {
+    if (!r.completado && r.timestamp <= ahora) {
+      r.completado = true;
+      huboCambios = true;
+      disparados.push(r);
 
-    for (const r of lista) {
-      if (!r.completado && r.timestamp <= ahora) {
-        r.completado = true;
-        huboCambios = true;
+      const alertaTexto = `[RECORDATORIO]\n\nNota: ${r.mensaje}\nHora programada: ${r.fechaHoraLocal}`;
+      console.log(`\n========================================`);
+      console.log(`[ALERTA DISPARADA]`);
+      console.log(alertaTexto);
+      console.log(`========================================\n`);
 
-        const alertaTexto = `⏰ *RECORDATORIO DE F.R.I.D.A.Y.* ⏰\n\n📌 *Nota:* ${r.mensaje}\n🕒 *Hora programada:* ${r.fechaHoraLocal}`;
-        console.log(`\n========================================`);
-        console.log(`🔔 [¡ALERTA DISPARADA!]`);
-        console.log(alertaTexto);
-        console.log(`========================================\n`);
-
-        const entradaLog = `[${new Date().toISOString()}] ${r.mensaje} (${r.fechaHoraLocal})\n`;
+      const entradaLog = `[${new Date().toISOString()}] ${r.mensaje} (${r.fechaHoraLocal})\n`;
+      try {
         fs.appendFileSync(ARCHIVO_LOG_ALERTAS, entradaLog, 'utf-8');
+      } catch (err) {}
 
-        if (typeof callbackNotificacionGlobal === 'function') {
-          callbackNotificacionGlobal(alertaTexto, r).catch(err => {
-            console.error('Error enviando notificación WhatsApp:', err.message);
-          });
+      if (typeof callbackNotificacionGlobal === 'function') {
+        try {
+          await callbackNotificacionGlobal(r, alertaTexto);
+        } catch (err) {
+          console.error('Error enviando notificación WhatsApp:', err.message);
         }
       }
     }
-
-    if (huboCambios) {
-      guardarRecordatorios(lista);
-    }
-  }, 10000);
-
-  if (intervaloMonitor && typeof intervaloMonitor.unref === 'function') {
-    intervaloMonitor.unref();
   }
+
+  if (huboCambios) {
+    guardarRecordatorios(lista);
+  }
+
+  return disparados;
+}
+
+export function iniciarMonitorRecordatorios(callbackNotificacion = null, intervaloMs = 10000) {
+  if (callbackNotificacion) callbackNotificacionGlobal = callbackNotificacion;
+  if (intervaloMonitor) return;
+
+  intervaloMonitor = setInterval(async () => {
+    await despacharRecordatoriosPendientes();
+  }, intervaloMs);
+}
+
+export function detenerMonitorRecordatorios() {
+  if (intervaloMonitor) {
+    clearInterval(intervaloMonitor);
+    intervaloMonitor = null;
+  }
+  callbackNotificacionGlobal = null;
 }

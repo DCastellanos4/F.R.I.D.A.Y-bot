@@ -6,6 +6,11 @@ import {
   listarRecordatorios,
   cancelarRecordatorio
 } from './reminderService.js';
+import {
+  programarMensaje,
+  listarMensajesProgramados,
+  cancelarMensajeProgramado
+} from './scheduledMessageService.js';
 import { generarResumenInteligente } from './summarizerService.js';
 import { navegarYExtraerArticulo } from './browserService.js';
 import {
@@ -57,13 +62,16 @@ export function esPeticionCachimba(texto) {
 export function limpiarRespuestaJarvis(texto) {
   if (!texto) return '';
 
-  // 1. Quitar todos los emojis Unicode
-  let limpio = texto.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{1F1E6}-\u{1F1FF}\u{1F000}-\u{1F02F}\u{1FA70}-\u{1FAFF}]/gu, '');
+  // 1. Quitar todos los emojis Unicode (incluyendo Extended_Pictographic, alarmas \u2300-\u23FF, modificadores)
+  let limpio = texto
+    .replace(/\p{Extended_Pictographic}/gu, '')
+    .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{1F1E6}-\u{1F1FF}\u{1F000}-\u{1F02F}\u{1FA70}-\u{1FAFF}\u{2300}-\u{23FF}\u{2B50}\u{200D}\u{FE0F}]/gu, '');
 
   // 2. Si el modelo escupió residualmente una línea de llamada a función en texto plano (ej: "consultar_clima {...}"), eliminarla
   limpio = limpio.replace(/^[a-zA-Z0-9_]+\s*\{[\s\S]*?\}\s*$/gm, '');
 
-  // 3. Normalizar espacios
+  // 3. Normalizar espacios y signos de puntuación huérfanos
+  limpio = limpio.replace(/\s+,/g, ',').replace(/\s+\./g, '.');
   return limpio.replace(/\n{3,}/g, '\n\n').replace(/[ \t]{2,}/g, ' ').trim();
 }
 
@@ -92,7 +100,10 @@ export function seleccionarHerramientasPorIntencion(mensaje) {
     // Second Brain (Memoria personal permanente)
     esHechoMemoria: /(recuerda que|apunta que|guarda que|anota que|no te olvides de que|apunta:|a partir de ahora|desde ahora|mi hermano|mi hermana|mi madre|mi padre|mi mama|mi papa|mi amigo|mi amiga|mi novia|mi novio|mi mujer|mi marido|mi hijo|mi hija|calza|talla|numero de pie|pie|zapatillas?|zapatos?|cumpleanos|cumple|clave|contrasena|password|pin|codigo|wifi|correo|email|mail|direccion|vive en|trabaja en|le gusta|favorit[ao]|preferencia|segunda memoria|segundo cerebro|que sabes de|que calza|que talla|cuando es el cumple|cual es la clave|cual es el wifi|cual es el codigo|cual es mi correo|cual es mi email|mis recuerdos|banco de memoria|olvida que|borra de tu memoria|elimina de tu memoria)/i,
     
-    // Recordatorios, avisos y alarmas temporales
+    // Mensajes programados de WhatsApp a números externos
+    mensajeProgramado: /(programa(r)?\s+(un\s+)?mensaje|manda(r)?\s+(un\s+)?mensaje|envia(r)?\s+(un\s+)?mensaje|escribe(le)?\s+a\s+(\+?\d+|[a-zA-Z]+)|mandale\s+(un\s+)?mensaje|enviale\s+(un\s+)?mensaje|mensajes?\s+programados?|cancela(r)?\s+(el\s+)?mensaje\s+programado)/i,
+
+    // Recordatorios, avisos y alarmas temporales personales
     esRecordatorio: /(recuerda|record|acuerda|acord|avis|alarm|despiert|agend|cita|evento|tareas? pendientes?|que (tengo|hay) (pendiente|que hacer)|a las \d+|en \d+\s*(min|hora|dia|seg)|manana a las|pon (un )?(recordatorio|aviso|alarma)|cancela.*recordatorio|elimina.*recordatorio|borra.*recordatorio)/i,
 
     // Sniper de precios (Item Tracker)
@@ -110,14 +121,15 @@ export function seleccionarHerramientasPorIntencion(mensaje) {
 
   let matchClima = intents.clima.test(sinNombre);
   let matchMemoria = intents.esHechoMemoria.test(sinNombre) || esClaveAlarma || esRecuerdaQueDato;
-  let matchRecordatorio = (intents.esRecordatorio.test(sinNombre) && !esClaveAlarma && !esRecuerdaQueDato);
+  let matchMensajeProgramado = intents.mensajeProgramado.test(sinNombre) || (/(programa|manda|envia|escribe).*(mensaje|whatsapp)/i.test(sinNombre) && /\d{6,}/.test(sinNombre));
+  let matchRecordatorio = (intents.esRecordatorio.test(sinNombre) && !esClaveAlarma && !esRecuerdaQueDato && !matchMensajeProgramado);
   let matchSniper = intents.sniper.test(sinNombre);
   let matchNoticias = intents.noticias.test(sinNombre);
   let matchNavegacion = intents.navegacion.test(sinNombre) || tieneUrl;
   let matchServidor = intents.servidor.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
-  if (tieneChitChat && !matchClima && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor) {
+  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor) {
     return [];
   }
 
@@ -125,6 +137,10 @@ export function seleccionarHerramientasPorIntencion(mensaje) {
 
   if (matchClima) {
     tools.push(...herramientasJarvis.filter(h => h.function.name === 'consultar_clima'));
+  }
+
+  if (matchMensajeProgramado) {
+    tools.push(...herramientasJarvis.filter(h => h.function.name.includes('mensaje_programado') || h.function.name.includes('programar_mensaje')));
   }
 
   if (matchRecordatorio) {
@@ -219,11 +235,12 @@ Dispones de herramientas nativas para consultar datos externos y realizar accion
 
 Directrices de selección:
 1. CLIMA Y METEOROLOGÍA: Para consultar el tiempo, temperatura o lluvia de hoy o de mañana en cualquier ciudad o localidad (ej: Madrid), invoca "consultar_clima".
-2. RECORDATORIOS Y ALARMAS: Para programar avisos o alarmas, invoca "crear_recordatorio". Para consultarlos, "listar_recordatorios". Para cancelar, "cancelar_recordatorio".
-3. SECOND BRAIN (MEMORIA PERSONAL): Para guardar hechos o datos personales (claves, cumpleaños, tallas, correos), invoca "guardar_memoria". Para consultar datos del pasado, "buscar_memoria". Para borrar, "olvidar_memoria".
-4. SNIPER DE PRECIOS: Para vigilar un producto u oferta si baja de precio, invoca "vigilar_producto". Para listar, "listar_productos_vigilados".
-5. NOTICIAS Y NAVEGADOR PLAYWRIGHT: Para noticias de actualidad, invoca "obtener_noticias_actuales". Para abrir o inspeccionar un enlace o artículo web con el navegador, invoca "navegar_y_leer_noticia" o "resumir_enlace".
-6. ESTADO DEL SISTEMA: Para consultar la salud del servidor o el estado de Minecraft, invoca "consultar_estado_servidor".`;
+2. MENSAJES PROGRAMADOS DE WHATSAPP: Para programar el envío de un mensaje de WhatsApp a un número de teléfono en una fecha u hora específica (o en X minutos), invoca "programar_mensaje_whatsapp". Para consultar los mensajes programados pendientes, "listar_mensajes_programados". Para cancelar uno, "cancelar_mensaje_programado".
+3. RECORDATORIOS Y ALARMAS PERSONALES: Para programar avisos o alarmas personales de David, invoca "crear_recordatorio". Para consultarlos, "listar_recordatorios". Para cancelar, "cancelar_recordatorio".
+4. SECOND BRAIN (MEMORIA PERSONAL): Para guardar hechos o datos personales (claves, cumpleaños, tallas, correos), invoca "guardar_memoria". Para consultar datos del pasado, "buscar_memoria". Para borrar, "olvidar_memoria".
+5. SNIPER DE PRECIOS: Para vigilar un producto u oferta si baja de precio, invoca "vigilar_producto". Para listar, "listar_productos_vigilados".
+6. NOTICIAS Y NAVEGADOR PLAYWRIGHT: Para noticias de actualidad, invoca "obtener_noticias_actuales". Para abrir o inspeccionar un enlace o artículo web con el navegador, invoca "navegar_y_leer_noticia" o "resumir_enlace".
+7. ESTADO DEL SISTEMA: Para consultar la salud del servidor o el estado de Minecraft, invoca "consultar_estado_servidor".`;
   }
 
   const mensajes = [
@@ -268,6 +285,33 @@ Directrices de selección:
         } else {
           resultadoTool = `Error al consultar el clima: ${res.error}`;
         }
+      } else if (nombreFuncion === 'programar_mensaje_whatsapp') {
+        const res = programarMensaje({
+          numero: args.numero,
+          mensaje: args.mensaje,
+          minutosEnElFuturo: args.minutosEnElFuturo,
+          hora: args.hora,
+          fecha: args.fecha
+        });
+        if (res.ok) {
+          resultadoTool = `Mensaje programado con éxito, señor. Destinatario: +${res.programado.numero}. Programado para: ${res.programado.fechaHoraLocal}. Mensaje: "${res.programado.mensaje}". (ID: ${res.programado.id})`;
+        } else {
+          resultadoTool = `No ha sido posible programar el mensaje, señor. Detalle: ${res.error}`;
+        }
+      } else if (nombreFuncion === 'listar_mensajes_programados') {
+        const lista = listarMensajesProgramados();
+        if (lista.length === 0) {
+          resultadoTool = 'No hay ningún mensaje de WhatsApp programado pendiente de envío, señor.';
+        } else {
+          resultadoTool = 'Mensajes de WhatsApp programados pendientes:\n' + lista.map((m, i) => `${i + 1}. [${m.fechaHoraLocal}] Para +${m.numero}: "${m.mensaje}" (ID: ${m.id})`).join('\n');
+        }
+      } else if (nombreFuncion === 'cancelar_mensaje_programado') {
+        const res = cancelarMensajeProgramado(args.criterio);
+        if (res.ok) {
+          resultadoTool = res.mensaje || 'Mensaje programado cancelado con éxito, señor.';
+        } else {
+          resultadoTool = res.mensaje || res.error || 'No se encontró ningún mensaje programado que coincida con ese criterio, señor.';
+        }
       } else if (nombreFuncion === 'guardar_memoria') {
         const res = guardarMemoria({
           sujeto: args.sujeto,
@@ -308,11 +352,11 @@ Directrices de selección:
           resultadoTool = `Error al añadir al Sniper: ${res.error}`;
         }
       } else if (nombreFuncion === 'listar_productos_vigilados') {
-        const lista = listarProductosVigilados();
-        if (lista.length === 0) {
-          resultadoTool = 'Actualmente no hay productos en seguimiento activo, señor.';
+        const items = listarProductosVigilados();
+        if (items.length === 0) {
+          resultadoTool = 'No hay ningún producto bajo vigilancia en este momento, señor.';
         } else {
-          resultadoTool = 'Artículos en seguimiento activo:\n' + lista.map((item, i) => `${i + 1}. [${item.nombre}] - Precio actual: ${item.precioActual}€ -> Meta: ${item.precioObjetivo}€\n   ${item.url}`).join('\n');
+          resultadoTool = 'Productos vigilados en el Sniper:\n' + items.map((item, i) => `${i + 1}. [${item.id}] ${item.nombre}: ${item.precioActual}€ -> Meta: ${item.precioObjetivo}€\n   ${item.url}`).join('\n');
         }
       } else if (nombreFuncion === 'cancelar_vigilancia') {
         const res = cancelarVigilancia(args.criterio);

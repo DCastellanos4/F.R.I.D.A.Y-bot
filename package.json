@@ -6,7 +6,9 @@
     "start": "node api.js",
     "whatsapp": "node whatsappBot.js",
     "chat": "node chat.js",
-    "test": "node test_llm_provider.js"
+    "test": "node test_scheduled_and_reminders.js && node test_llm_provider.js",
+    "test:scheduled": "node test_scheduled_and_reminders.js",
+    "test:llm": "node test_llm_provider.js"
   },
   "keywords": [
     "ai",
