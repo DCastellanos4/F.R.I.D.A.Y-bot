@@ -64,8 +64,8 @@ flowchart TD
 
 ### 1. Clonar el repositorio
 ```bash
-git clone https://github.com/tu-usuario/friday-ai.git
-cd friday-ai
+git clone https://github.com/DCastellanos4/F.R.I.D.A.Y-bot.git
+cd F.R.I.D.A.Y-bot
 npm install
 ```
 
