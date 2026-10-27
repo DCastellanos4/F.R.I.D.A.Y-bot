@@ -79,7 +79,7 @@ export function resolveCloudConfig(options = {}) {
 
   if (!model) {
     if (provider === 'groq' || baseUrl.includes('groq.com')) {
-      model = 'llama-3.3-70b-versatile';
+      model = 'openai/gpt-oss-120b';
     } else if (provider === 'deepseek' || baseUrl.includes('deepseek.com')) {
       model = 'deepseek-chat';
     } else if (provider === 'openrouter' || baseUrl.includes('openrouter.ai')) {
@@ -187,12 +187,8 @@ export function prepareMessagesForProvider(messages = [], isOllama = false) {
 
     if (msg.role === 'tool') {
       formatted.content = String(msg.content ?? '');
-      if (!formatted.tool_call_id && msg.toolCallId) {
-        formatted.tool_call_id = msg.toolCallId;
-      }
-      if (!formatted.tool_call_id) {
-        formatted.tool_call_id = 'call_default';
-      }
+      formatted.tool_call_id = msg.tool_call_id || msg.toolCallId || 'call_default';
+      delete formatted.toolCallId;
     }
 
     return formatted;

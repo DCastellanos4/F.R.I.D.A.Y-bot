@@ -428,7 +428,7 @@ Directrices de selección:
       mensajes.push({
         role: 'tool',
         content: resultadoTool,
-        toolCallId: llamada.id
+        tool_call_id: llamada.id
       });
     }
 
