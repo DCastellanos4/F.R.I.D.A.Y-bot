@@ -291,10 +291,15 @@ Directrices de selección:
           mensaje: args.mensaje,
           minutosEnElFuturo: args.minutosEnElFuturo,
           hora: args.hora,
-          fecha: args.fecha
+          fecha: args.fecha,
+          inmediato: args.inmediato
         });
         if (res.ok) {
-          resultadoTool = `Mensaje programado con éxito, señor. Destinatario: +${res.programado.numero}. Programado para: ${res.programado.fechaHoraLocal}. Mensaje: "${res.programado.mensaje}". (ID: ${res.programado.id})`;
+          if (res.inmediato) {
+            resultadoTool = `Mensaje tramitado para entrega inmediata a +${res.programado.numero}, señor. Contenido: "${res.programado.mensaje}". (ID: ${res.programado.id})`;
+          } else {
+            resultadoTool = `Mensaje programado con éxito, señor. Destinatario: +${res.programado.numero}. Programado para: ${res.programado.fechaHoraLocal}. Mensaje: "${res.programado.mensaje}". (ID: ${res.programado.id})`;
+          }
         } else {
           resultadoTool = `No ha sido posible programar el mensaje, señor. Detalle: ${res.error}`;
         }

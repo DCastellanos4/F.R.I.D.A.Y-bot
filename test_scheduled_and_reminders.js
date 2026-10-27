@@ -131,6 +131,20 @@ async function ejecutarPruebas() {
       assert.strictEqual(diffMin, 10);
     });
 
+    runTest('Calcula timestamp para envío inmediato (minutosEnElFuturo = 0 o inmediato = true)', () => {
+      const ahora = Date.now();
+      const fecha = calcularTimestampMensaje({ minutosEnElFuturo: 0, inmediato: true });
+      const diffSec = Math.abs(fecha.getTime() - ahora) / 1000;
+      assert.strictEqual(diffSec < 2, true);
+    });
+
+    runTest('Calcula timestamp inmediato por defecto si no se pasa hora ni minutos', () => {
+      const ahora = Date.now();
+      const fecha = calcularTimestampMensaje({});
+      const diffSec = Math.abs(fecha.getTime() - ahora) / 1000;
+      assert.strictEqual(diffSec < 2, true);
+    });
+
     runTest('Calcula timestamp para hora específica (ej: 18:30)', () => {
       const fecha = calcularTimestampMensaje({ hora: '18:30' });
       assert.strictEqual(fecha instanceof Date, true);

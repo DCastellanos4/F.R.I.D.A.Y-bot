@@ -294,9 +294,15 @@ export async function iniciarWhatsApp() {
       const remoteJid = msg.key.remoteJid;
       if (!remoteJid) continue;
 
-      // Filtro de seguridad estricto: solo mensajes de David
+      // Filtro de seguridad con Buzón de Respuestas de Terceros
       if (!esMensajeDeDavid(remoteJid)) {
-        console.log(`[WhatsApp] Mensaje bloqueado de remitente no autorizado: ${remoteJid}`);
+        const remitenteLimpio = remoteJid.split('@')[0].replace(/\D/g, '');
+        console.log(`[WhatsApp Mensaje Externo] Recibido de +${remitenteLimpio}: ${remoteJid}`);
+        const textoExterno = extraerTextoMensaje(msg);
+        if (textoExterno) {
+          console.log(`[WhatsApp Buzón] Retransmitiendo a David respuesta de +${remitenteLimpio}: "${textoExterno}"`);
+          await enviarMensajeADavid(`[MENSAJE EXTERNO RECIBIDO]\n\nSeñor, el contacto +${remitenteLimpio} ha respondido al bot con el siguiente mensaje:\n"${textoExterno}".`);
+        }
         continue;
       }
 

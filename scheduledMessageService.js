@@ -114,9 +114,15 @@ function obtenerFechaHoraMadrid(fecha = new Date()) {
 
 /**
  * Calcula el timestamp Unix de destino a partir de minutos relativos, hora y/o fecha.
+ * Soporta envío inmediato (ahora / inmediato / minutosEnElFuturo === 0).
  */
-export function calcularTimestampMensaje({ minutosEnElFuturo = null, hora = null, fecha = null }) {
+export function calcularTimestampMensaje({ minutosEnElFuturo = null, hora = null, fecha = null, inmediato = false }) {
   const ahora = new Date();
+
+  // Caso 0: Envío inmediato explícito ("ahora", "inmediato" o minutosEnElFuturo === 0)
+  if (inmediato || minutosEnElFuturo === 0) {
+    return new Date(ahora.getTime());
+  }
 
   // Caso 1: Minutos relativos en el futuro (ej: en 15 minutos)
   if (typeof minutosEnElFuturo === 'number' && minutosEnElFuturo > 0) {
@@ -126,6 +132,11 @@ export function calcularTimestampMensaje({ minutosEnElFuturo = null, hora = null
   // Caso 2: Hora fija en horario español (Europe/Madrid)
   if (hora && (typeof hora === 'string' || typeof hora === 'number')) {
     const texto = hora.toString().trim();
+
+    if (/ahora|ya|inmediat/i.test(texto)) {
+      return new Date(ahora.getTime());
+    }
+
     const match = texto.match(/(\d{1,2})(?::(\d{2}))?/);
     if (match) {
       let targetHour = parseInt(match[1], 10);
@@ -192,14 +203,14 @@ export function calcularTimestampMensaje({ minutosEnElFuturo = null, hora = null
     }
   }
 
-  // Por defecto si no se especificó hora válida: 15 minutos en el futuro
-  return new Date(ahora.getTime() + 15 * 60 * 1000);
+  // Por defecto, si no se especificó ni hora futura ni minutos futuros, se tramita para envío inmediato AHORA
+  return new Date(ahora.getTime());
 }
 
 /**
- * Programa un mensaje de WhatsApp para su entrega futura.
+ * Programa o envía un mensaje de WhatsApp para su entrega (inmediata o futura).
  */
-export function programarMensaje({ numero, mensaje, minutosEnElFuturo = null, hora = null, fecha = null }) {
+export function programarMensaje({ numero, mensaje, minutosEnElFuturo = null, hora = null, fecha = null, inmediato = false }) {
   if (!mensaje || !String(mensaje).trim()) {
     return { ok: false, error: 'Debe especificar el texto del mensaje a enviar.' };
   }
@@ -212,21 +223,26 @@ export function programarMensaje({ numero, mensaje, minutosEnElFuturo = null, ho
   // Detección automática en el mensaje si no se pasaron argumentos temporales explícitos
   let minCalc = minutosEnElFuturo;
   let horaCalc = hora;
+  let esInmediato = inmediato || (minutosEnElFuturo === 0);
 
-  if (!minCalc && !horaCalc && mensaje) {
+  if (!esInmediato && minCalc === null && horaCalc === null && mensaje) {
     const matchMin = mensaje.match(/en\s+(\d+)\s*(?:min|minuto|m\b)/i);
     const matchHoras = mensaje.match(/en\s+(\d+)\s*(?:hora|h\b)/i);
     const matchAHoras = mensaje.match(/a\s+las\s+(\d{1,2}(?::\d{2})?)/i);
+    const matchAhora = /\b(ahora|inmediatamente|ya\b|ahorita)/i.test(mensaje);
 
-    if (matchMin) minCalc = parseInt(matchMin[1], 10);
+    if (matchAhora) esInmediato = true;
+    else if (matchMin) minCalc = parseInt(matchMin[1], 10);
     else if (matchHoras) minCalc = parseInt(matchHoras[1], 10) * 60;
     else if (matchAHoras) horaCalc = matchAHoras[1];
+    else esInmediato = true; // Por defecto si solo se dice "envíale un mensaje a X diciendo Y" -> envío inmediato
   }
 
   const fechaObjetivo = calcularTimestampMensaje({
-    minutosEnElFuturo: minCalc,
+    minutosEnElFuturo: esInmediato ? 0 : minCalc,
     hora: horaCalc,
-    fecha
+    fecha,
+    inmediato: esInmediato
   });
 
   const id = `sch_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
@@ -254,11 +270,19 @@ export function programarMensaje({ numero, mensaje, minutosEnElFuturo = null, ho
   lista.push(nuevo);
   guardarMensajesProgramados(lista);
 
-  console.log(`[Mensaje Programado Guardado] Para +${nuevo.numero} ("${nuevo.mensaje}") el ${nuevo.fechaHoraLocal}`);
+  console.log(`[Mensaje ${esInmediato ? 'Inmediato' : 'Programado'} Guardado] Para +${nuevo.numero} ("${nuevo.mensaje}") [${esInmediato ? 'AHORA' : nuevo.fechaHoraLocal}]`);
+
+  // Si es entrega inmediata, disparar el monitor en background sin demoras
+  if (esInmediato || fechaObjetivo.getTime() <= Date.now()) {
+    setTimeout(() => {
+      despacharMensajesPendientes().catch(err => console.error('Error despachando inmediato:', err));
+    }, 50);
+  }
 
   return {
     ok: true,
-    programado: nuevo
+    programado: nuevo,
+    inmediato: esInmediato || fechaObjetivo.getTime() <= Date.now() + 5000
   };
 }
 
@@ -331,7 +355,7 @@ export async function despacharMensajesPendientes() {
       despachados.push(m);
 
       console.log(`\n========================================`);
-      console.log(`[DESPACHO DE MENSAJE PROGRAMADO]`);
+      console.log(`[DESPACHO DE MENSAJE WHATSAPP]`);
       console.log(`Destinatario: +${m.numero} (${m.destinatarioJid})`);
       console.log(`Mensaje: "${m.mensaje}"`);
       console.log(`Hora programada: ${m.fechaHoraLocal}`);
@@ -364,7 +388,7 @@ export async function despacharMensajesPendientes() {
 /**
  * Inicia el vigilante de fondo que comprueba cada N milisegundos si ha llegado la hora de despachar algún mensaje programado.
  */
-export function iniciarMonitorMensajesProgramados(callbackEnvio = null, intervaloMs = 15000) {
+export function iniciarMonitorMensajesProgramados(callbackEnvio = null, intervaloMs = 5000) {
   if (callbackEnvio) callbackEnvioGlobal = callbackEnvio;
   if (intervaloMonitorMensajes) return;
 

@@ -262,7 +262,7 @@ export const herramientasJarvis = [
     type: 'function',
     function: {
       name: 'programar_mensaje_whatsapp',
-      description: 'OBLIGATORIA: Programa el envío automático de un mensaje de WhatsApp a un número de teléfono de destino (o contacto) a una hora específica o dentro de un número determinado de minutos.',
+      description: 'OBLIGATORIA: Envía o programa un mensaje de WhatsApp a un número de teléfono de destino (o contacto), ya sea INMEDIATAMENTE (ahora / ya) o a una hora/fecha específica futura.',
       parameters: {
         type: 'object',
         properties: {
@@ -274,13 +274,17 @@ export const herramientasJarvis = [
             type: 'string',
             description: 'El texto exacto que se desea enviar al destinatario.'
           },
+          inmediato: {
+            type: 'boolean',
+            description: 'Establecer en true si el usuario solicita enviar el mensaje AHORA, ya o inmediatamente (o si no especificó ninguna hora futura).'
+          },
           minutosEnElFuturo: {
             type: 'number',
-            description: 'Minutos en el futuro para realizar el envío (ej: 10 si dice en 10 minutos).'
+            description: 'Minutos en el futuro para realizar el envío (0 si es ahora, 10 si dice en 10 minutos).'
           },
           hora: {
             type: 'string',
-            description: 'Hora del día en formato HH:MM o H (ej: "18:00", "18", "08:30").'
+            description: 'Hora del día en formato HH:MM o H (ej: "18:00", "18", "08:30"). Omitir si es para enviar ahora.'
           },
           fecha: {
             type: 'string',
