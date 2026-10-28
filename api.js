@@ -284,11 +284,18 @@ export async function handleApiRequest(req, res) {
 
 export const server = http.createServer(handleApiRequest);
 
-const isMainScript = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) &&
-  !process.argv.some(a => a.includes('--test') || a.includes('run_all')) &&
-  process.env.NODE_ENV !== 'test';
+const isTest = process.env.NODE_ENV === 'test' ||
+  process.argv.some(a => a.includes('--test') || a.includes('run_all'));
 
-if (isMainScript || process.env.RUN_API_SERVER === 'true') {
+const isDirectRun = Boolean(
+  process.argv[1] &&
+  (path.resolve(process.argv[1]) === fileURLToPath(import.meta.url) ||
+   process.argv[1].endsWith('api.js'))
+);
+
+const isPm2 = typeof process.env.pm_id !== 'undefined';
+
+if (!isTest && (isDirectRun || isPm2 || process.env.RUN_API_SERVER === 'true' || process.env.STANDALONE_API === 'true')) {
   server.listen(PUERTO, '0.0.0.0', () => {
     console.log(`[Web] Servidor API de FRIDAY escuchando en http://0.0.0.0:${PUERTO}`);
   });

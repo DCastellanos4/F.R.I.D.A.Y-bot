@@ -642,11 +642,18 @@ export async function iniciarWhatsApp() {
 }
 
 // Iniciar automáticamente
-const isMainScript = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) &&
-  !process.argv.some(a => a.includes('--test') || a.includes('run_all')) &&
-  process.env.NODE_ENV !== 'test';
+const isTest = process.env.NODE_ENV === 'test' ||
+  process.argv.some(a => a.includes('--test') || a.includes('run_all'));
 
-if (isMainScript || process.env.RUN_WHATSAPP_BOT === 'true') {
+const isDirectRun = Boolean(
+  process.argv[1] &&
+  (path.resolve(process.argv[1]) === fileURLToPath(import.meta.url) ||
+   process.argv[1].endsWith('whatsappBot.js'))
+);
+
+const isPm2 = typeof process.env.pm_id !== 'undefined';
+
+if (!isTest && (isDirectRun || isPm2 || process.env.RUN_WHATSAPP_BOT === 'true')) {
   iniciarWhatsApp().catch(err => {
     console.error('Error fatal iniciando el cliente de WhatsApp:', err);
   });
