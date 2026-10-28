@@ -73,7 +73,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      console.log(`💬 [HTTP API] Petición: "${mensaje}"`);
+      console.log(`[Chat] [HTTP API] Petición: "${mensaje}"`);
       const respuesta = await consultarJarvis(mensaje);
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -239,5 +239,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PUERTO, '0.0.0.0', () => {
-  console.log(`🌐 Servidor API de FRIDAY escuchando en http://0.0.0.0:${PUERTO}`);
+  console.log(`[Web] Servidor API de FRIDAY escuchando en http://0.0.0.0:${PUERTO}`);
 });

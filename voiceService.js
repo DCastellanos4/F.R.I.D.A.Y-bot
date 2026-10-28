@@ -57,7 +57,7 @@ export async function transcribirAudioBuffer(audioBuffer) {
       texto: textoTranscrito
     };
   } catch (err) {
-    console.error('❌ Error en transcribirAudioBuffer:', err.message);
+    console.error('[Error] Error en transcribirAudioBuffer:', err.message);
     return {
       ok: false,
       error: err.message

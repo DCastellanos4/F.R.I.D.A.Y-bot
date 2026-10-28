@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
-// Caché en memoria para evitar descargar la misma URL varias veces en corto tiempo (TTL: 15 minutos)
+// Cache en memoria para evitar descargar la misma URL varias veces en corto tiempo (TTL: 15 minutos)
 const cachePaginas = new Map();
 const TTL_CACHE_MS = 15 * 60 * 1000;
 
@@ -30,7 +30,7 @@ async function crearPaginaNavegador() {
 
   const page = await context.newPage();
 
-  // Bloqueo de imágenes, medios y fuentes pesadas para acelerar la navegación a < 2 segundos
+  // Bloqueo de imagenes, medios y fuentes pesadas para acelerar la navegacion a < 2 segundos
   await page.route('**/*', (route) => {
     const type = route.request().resourceType();
     if (['image', 'media', 'font'].includes(type)) {
@@ -43,17 +43,17 @@ async function crearPaginaNavegador() {
 }
 
 /**
- * Navega a una URL con Playwright Chromium, sortea muros/consentimiento y extrae el cuerpo completo del artículo
+ * Navega a una URL con Playwright Chromium, sortea muros/consentimiento y extrae el cuerpo completo del articulo
  */
 export async function navegarYExtraerArticulo(url, opciones = {}) {
   if (!url || !url.startsWith('http')) {
-    return { ok: false, error: 'URL inválida o no proporcionada.' };
+    return { ok: false, error: 'URL invalida o no proporcionada.' };
   }
 
-  // Comprobar caché en memoria
+  // Comprobar cache en memoria
   const cached = cachePaginas.get(url);
   if (cached && (Date.now() - cached.timestamp) < TTL_CACHE_MS) {
-    console.log(`⚡ [Playwright] Sirviendo artículo desde caché rápida: ${url}`);
+    console.log(`[Playwright] Sirviendo articulo desde cache rapida: ${url}`);
     return { ...cached.data, desdeCache: true };
   }
 
@@ -61,7 +61,7 @@ export async function navegarYExtraerArticulo(url, opciones = {}) {
   const timeoutMs = opciones.timeout || 15000;
 
   try {
-    console.log(`🌐 [Playwright] Navegando con Chromium real a: ${url}...`);
+    console.log(`[Playwright] Navegando con Chromium real a: ${url}...`);
     const instancias = await crearPaginaNavegador();
     browser = instancias.browser;
     const page = instancias.page;
@@ -69,7 +69,7 @@ export async function navegarYExtraerArticulo(url, opciones = {}) {
     // Navegar esperando la carga del DOM
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
 
-    // Breve pausa para asegurar la ejecución de JS inicial
+    // Breve pausa para asegurar la ejecucion de JS inicial
     await page.waitForTimeout(800);
 
     // Intentar neutralizar y remover overlays y banners de consentimiento (Didomi, OneTrust, CMP, etc.)
@@ -88,9 +88,9 @@ export async function navegarYExtraerArticulo(url, opciones = {}) {
       });
     } catch {}
 
-    // Extraer datos estructurados del artículo
+    // Extraer datos estructurados del articulo
     const resultado = await page.evaluate(() => {
-      // 1. Título
+      // 1. Titulo
       const metaTitle = document.querySelector('meta[property="og:title"]')?.getAttribute('content') ||
                         document.querySelector('meta[name="twitter:title"]')?.getAttribute('content') ||
                         document.querySelector('h1')?.innerText?.trim() ||
@@ -107,7 +107,7 @@ export async function navegarYExtraerArticulo(url, opciones = {}) {
                     document.querySelector('time')?.innerText?.trim() ||
                     null;
 
-      // 3. Contenedor principal del artículo
+      // 3. Contenedor principal del articulo
       const contenedor = document.querySelector('article') ||
                          document.querySelector('[itemprop="articleBody"]') ||
                          document.querySelector('.article-body') ||
@@ -130,7 +130,7 @@ export async function navegarYExtraerArticulo(url, opciones = {}) {
       ];
       clon.querySelectorAll(selectoresAEliminar.join(', ')).forEach(el => el.remove());
 
-      // Extraer párrafos y subtítulos en orden de lectura
+      // Extraer parrafos y subtitulos en orden de lectura
       const bloques = Array.from(clon.querySelectorAll('h2, h3, p'))
         .map(el => {
           const tag = el.tagName.toLowerCase();
@@ -168,7 +168,7 @@ export async function navegarYExtraerArticulo(url, opciones = {}) {
         ok: false,
         url,
         titulo: resultado.titulo,
-        error: 'El navegador no encontró contenido legible suficiente en la página.'
+        error: 'El navegador no encontro contenido legible suficiente en la pagina.'
       };
     }
 
@@ -178,20 +178,20 @@ export async function navegarYExtraerArticulo(url, opciones = {}) {
       titulo: resultado.titulo,
       autor: resultado.autor,
       fecha: resultado.fecha,
-      contenido: textoLimpio.slice(0, 5000), // Límite seguro para contexto de Ollama
+      contenido: textoLimpio.slice(0, 5000),
       longitudTotal: textoLimpio.length
     };
 
-    // Guardar en caché
+    // Guardar en cache
     cachePaginas.set(url, { timestamp: Date.now(), data: respuestaFinal });
 
     return respuestaFinal;
   } catch (err) {
-    console.error(`❌ [Playwright] Error navegando a ${url}:`, err.message);
+    console.error(`[Playwright] Error navegando a ${url}:`, err.message);
     return {
       ok: false,
       url,
-      error: `Error de navegación: ${err.message}`
+      error: `Error de navegacion: ${err.message}`
     };
   } finally {
     if (browser) {
@@ -203,12 +203,12 @@ export async function navegarYExtraerArticulo(url, opciones = {}) {
 }
 
 /**
- * Captura una captura de pantalla (screenshot) de la página web con Playwright
+ * Captura una captura de pantalla (screenshot) de la pagina web con Playwright
  */
 export async function capturarPantallaWeb(url) {
   let browser = null;
   try {
-    console.log(`📸 [Playwright Screenshot] Capturando página web: ${url}...`);
+    console.log(`[Playwright Screenshot] Capturando pagina web: ${url}...`);
     const instancias = await crearPaginaNavegador();
     browser = instancias.browser;
     const page = instancias.page;
@@ -228,7 +228,7 @@ export async function capturarPantallaWeb(url) {
       url
     };
   } catch (err) {
-    console.error(`❌ [Playwright Screenshot] Error capturando ${url}:`, err.message);
+    console.error(`[Playwright Screenshot] Error capturando ${url}:`, err.message);
     return {
       ok: false,
       error: err.message

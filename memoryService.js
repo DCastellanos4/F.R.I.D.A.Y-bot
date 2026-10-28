@@ -150,13 +150,13 @@ export function guardarMemoria({ sujeto, dato, categoria = 'general', tags = [] 
     const idAnterior = lista[idxExistente].id;
     lista[idxExistente] = { ...nuevaMemoria, id: idAnterior };
     guardarMemorias(lista);
-    console.log(`🧠 [Memoria Actualizada] "${nuevaMemoria.sujeto}": ${nuevaMemoria.dato}`);
+    console.log(`[Memoria] [Memoria Actualizada] "${nuevaMemoria.sujeto}": ${nuevaMemoria.dato}`);
     return { ok: true, accion: 'actualizada', memoria: lista[idxExistente] };
   }
 
   lista.push(nuevaMemoria);
   guardarMemorias(lista);
-  console.log(`🧠 [Memoria Guardada] "${nuevaMemoria.sujeto}": ${nuevaMemoria.dato}`);
+  console.log(`[Memoria] [Memoria Guardada] "${nuevaMemoria.sujeto}": ${nuevaMemoria.dato}`);
 
   return { ok: true, accion: 'creada', memoria: nuevaMemoria };
 }
@@ -235,7 +235,7 @@ export function olvidarMemoria(criterio) {
   if (rawCrit === '*' || rawCrit === 'todos' || rawCrit === 'todas' || rawCrit.includes('todo') || rawCrit.includes('toda')) {
     const total = lista.length;
     guardarMemorias([]);
-    console.log(`🧠 [Memoria Vaciada] Se eliminaron todos los recuerdos (${total}).`);
+    console.log(`[Memoria] [Memoria Vaciada] Se eliminaron todos los recuerdos (${total}).`);
     return { ok: true, mensaje: `Se han eliminado todos los recuerdos del Second Brain (${total} registros).` };
   }
 
@@ -252,6 +252,6 @@ export function olvidarMemoria(criterio) {
 
   const [eliminada] = lista.splice(idx, 1);
   guardarMemorias(lista);
-  console.log(`🧠 [Memoria Olvidada] "${eliminada.sujeto}": ${eliminada.dato}`);
+  console.log(`[Memoria] [Memoria Olvidada] "${eliminada.sujeto}": ${eliminada.dato}`);
   return { ok: true, memoria: eliminada, mensaje: `Recuerdo olvidado con éxito: "${eliminada.sujeto}".` };
 }

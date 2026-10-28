@@ -176,7 +176,7 @@ export async function vigilarProducto({ url, nombre = null, precioObjetivo }) {
         itemExistente.precioObjetivo = precioObj;
         itemExistente.alertaDisparada = false;
         guardarItems(lista);
-        console.log(`🎯 [Sniper Actualizado] "${itemExistente.nombre}" -> Precio objetivo modificado: ${precioViejo}€ ➔ ${precioObj}€`);
+        console.log(`[Sniper] [Sniper Actualizado] "${itemExistente.nombre}" -> Precio objetivo modificado: ${precioViejo}€ ➔ ${precioObj}€`);
         return {
           ok: true,
           accion: 'actualizado',
@@ -188,7 +188,7 @@ export async function vigilarProducto({ url, nombre = null, precioObjetivo }) {
     return { ok: false, error: 'Debes proporcionar un enlace web válido (URL con http:// o https://) del producto a vigilar.' };
   }
 
-  console.log(`🎯 [Sniper] Analizando producto en ${url}...`);
+  console.log(`[Sniper] [Sniper] Analizando producto en ${url}...`);
   const data = await extraerPrecioYTitulo(url);
 
   const nombreFinal = (nombre && nombre.trim().length > 2) ? nombre.trim() : (data.titulo || 'Artículo sin nombre');
@@ -231,7 +231,7 @@ export async function vigilarProducto({ url, nombre = null, precioObjetivo }) {
   lista.push(nuevo);
   guardarItems(lista);
 
-  console.log(`🎯 [Sniper Activado] "${nuevo.nombre}" -> Precio actual: ${nuevo.precioActual}€ | Meta: ${nuevo.precioObjetivo}€`);
+  console.log(`[Sniper] [Sniper Activado] "${nuevo.nombre}" -> Precio actual: ${nuevo.precioActual}€ | Meta: ${nuevo.precioObjetivo}€`);
 
   return {
     ok: true,
@@ -269,7 +269,7 @@ export async function ejecutarRondaSniper(callbackAlerta = null) {
   const activos = lista.filter(i => i.activo);
   if (activos.length === 0) return [];
 
-  console.log(`🎯 [Sniper] Comprobando precios de ${activos.length} productos vigilados...`);
+  console.log(`[Sniper] [Sniper] Comprobando precios de ${activos.length} productos vigilados...`);
   const alertasGeneradas = [];
 
   for (const item of activos) {
@@ -283,7 +283,7 @@ export async function ejecutarRondaSniper(callbackAlerta = null) {
         item.alertaDisparada = true;
         const ahorro = (item.precioInicial - item.precioActual).toFixed(2);
 
-        const textoAlerta = `🎯 *¡ALERTA TÁCTICA DE FRIDAY (SNIPER)!* 🎯\n\nJefe, el objetivo que teníamos fijado acaba de caer a tu precio deseado:\n\n📦 *${item.nombre}*\n🏷️ *Precio actual:* ${item.precioActual}€ (Meta: ${item.precioObjetivo}€)\n💰 *Ahorro respecto al inicio:* ${ahorro > 0 ? ahorro + '€' : 'En precio objetivo'}\n\n🛒 *Comprar antes de que se agote:* ${item.url}`;
+        const textoAlerta = `[Sniper] *¡ALERTA TÁCTICA DE FRIDAY (SNIPER)!* [Sniper]\n\nJefe, el objetivo que teníamos fijado acaba de caer a tu precio deseado:\n\n *${item.nombre}*\n *Precio actual:* ${item.precioActual}€ (Meta: ${item.precioObjetivo}€)\n *Ahorro respecto al inicio:* ${ahorro > 0 ? ahorro + '€' : 'En precio objetivo'}\n\n *Comprar antes de que se agote:* ${item.url}`;
 
         console.log(`\n========================================\n${textoAlerta}\n========================================\n`);
         alertasGeneradas.push(textoAlerta);
@@ -310,7 +310,7 @@ export function iniciarSniperWatchdog(callbackAlerta = null) {
   if (callbackAlerta) callbackSniperGlobal = callbackAlerta;
   if (intervaloSniper) return;
 
-  console.log('🎯 [Sniper Watchdog] Vigilancia automática de ofertas y stock iniciada (revisión cada 20 min).');
+  console.log('[Sniper] [Sniper Watchdog] Vigilancia automática de ofertas y stock iniciada (revisión cada 20 min).');
 
   intervaloSniper = setInterval(() => {
     ejecutarRondaSniper(callbackSniperGlobal).catch(err => {

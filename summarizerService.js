@@ -22,7 +22,7 @@ export async function extraerTextoDeUrl(url) {
 
     // Si es YouTube: intentar extraer la transcripción (subtítulos)
     if (ytId) {
-      console.log(`🎬 [Resumidor] Detectado vídeo de YouTube (ID: ${ytId}). Extrayendo subtítulos...`);
+      console.log(`[Video] [Resumidor] Detectado vídeo de YouTube (ID: ${ytId}). Extrayendo subtítulos...`);
       try {
         const transcript = await YoutubeTranscript.fetchTranscript(ytId, { lang: 'es' })
           .catch(() => YoutubeTranscript.fetchTranscript(ytId)); // Fallback a cualquier idioma
@@ -59,7 +59,7 @@ export async function extraerTextoDeUrl(url) {
 
     // 1. Para páginas web y noticias: Usar primero Playwright Chromium real
     try {
-      console.log(`🌐 [Resumidor] Leyendo artículo con Playwright Chromium: ${url}...`);
+      console.log(`[Web] [Resumidor] Leyendo artículo con Playwright Chromium: ${url}...`);
       const resBrowser = await navegarYExtraerArticulo(url, { timeout: 15000 });
       if (resBrowser.ok && resBrowser.contenido && resBrowser.contenido.length >= 80) {
         return {
@@ -73,11 +73,11 @@ export async function extraerTextoDeUrl(url) {
         };
       }
     } catch (errBrowser) {
-      console.warn(`⚠️ [Resumidor] Playwright falló (${errBrowser.message}). Aplicando fallback con Cheerio...`);
+      console.warn(`[Aviso] [Resumidor] Playwright falló (${errBrowser.message}). Aplicando fallback con Cheerio...`);
     }
 
     // 2. Fallback secundario: Cheerio + HTTP fetch estándar
-    console.log(`🌐 [Resumidor Cheerio Fallback] Analizando HTML plano: ${url}...`);
+    console.log(`[Web] [Resumidor Cheerio Fallback] Analizando HTML plano: ${url}...`);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6000);
 
@@ -133,10 +133,10 @@ export async function generarResumenInteligente(url) {
   const datos = await extraerTextoDeUrl(url);
 
   if (!datos.ok) {
-    return `⚠️ David, no he podido leer el enlace: ${datos.error}`;
+    return `[Aviso] David, no he podido leer el enlace: ${datos.error}`;
   }
 
-  console.log(`🤖 [Resumidor] Sintetizando con FRIDAY el contenido de "${datos.titulo}" (${datos.tipo})...`);
+  console.log(`[D.A.V.I.S.] [Resumidor] Sintetizando con FRIDAY el contenido de "${datos.titulo}" (${datos.tipo})...`);
 
   const prompt = `Analiza y resume el siguiente contenido de forma clara y directa para leer en WhatsApp.
 
@@ -148,18 +148,18 @@ ${datos.contenido}
 INSTRUCCIONES DE FORMATO:
 - Sé conciso y objetivo al estilo de F.R.I.D.A.Y. (asistente táctica de Tony Stark).
 - Estructura exactamente así:
-📑 *RESUMEN TÁCTICO:* ${datos.titulo}
-🔗 ${datos.url}
+ *RESUMEN TÁCTICO:* ${datos.titulo}
+ ${datos.url}
 
-💡 *Idea Principal:*
+ *Idea Principal:*
 [1 o 2 frases explicando de qué trata y por qué es relevante]
 
-⚡ *Puntos Clave:*
+ *Puntos Clave:*
 • [Punto 1 destacado]
 • [Punto 2 destacado]
 • [Punto 3 destacado]
 
-🎯 *Conclusión:*
+[Sniper] *Conclusión:*
 [1 frase de cierre o conclusión final]`;
 
   try {

@@ -31,6 +31,15 @@ import {
 } from './sniperService.js';
 import { consultarClima } from './weatherService.js';
 import { chatCompletion } from './llmService.js';
+import {
+  setVipMode,
+  isVipModeActive,
+  addVipContact,
+  getVipContacts
+} from './vipFilterService.js';
+import { generateGroupSummary } from './groupSummarizerService.js';
+import { downloadMedia } from './mediaDownloaderService.js';
+import { savePersonalNote, listRecentNotes } from './notesService.js';
 
 /**
  * Detecta si David pide poner más tabaco a la cachimba (Easter Egg Iron Man)
@@ -116,7 +125,25 @@ export function seleccionarHerramientasPorIntencion(mensaje) {
     navegacion: /(navega|entra|abre|lee|inspecciona|mira|visita|accede)\s+(a\s+la|en\s+la|la)?\s*(noticia|web|pagina|enlace|link|articulo)|resum(e|ir)|qu[eé?] dice|de qu[eé?] va/i,
     
     // Servidor / Minecraft
-    servidor: /(servidor|server|minecraft|mc|ram|cpu|salud del servidor|sistema|como esta el server|esta online|puerto 25565)/i
+    servidor: /(servidor|server|minecraft|mc|ram|cpu|salud del servidor|sistema|como esta el server|esta online|puerto 25565)/i,
+
+    // Filtro VIP / No molestar
+    vip: /(modo\s+vip|filtro\s+vip|no\s+molestar|dnd|lista\s+blanca|contacto\s+vip|activar\s+vip|desactivar\s+vip|estado\s+vip)/i,
+
+    // Resúmenes de grupos de WhatsApp
+    grupo: /(resum(ir|e|en)\s+(el\s+)?grupo|mensajes\s+del\s+grupo|que\s+ha\s+pasado\s+en\s+el\s+grupo|actividad\s+del\s+grupo)/i,
+
+    // Descarga multimedia (YouTube, Reels, TikTok)
+    multimedia: /(descarga(r)?|bajar|extrae(r)?)\s+(el\s+)?(video|audio|cancion|reel|tiktok|youtube|mp3|mp4)/i,
+
+    // Notas personales del Second Brain
+    notas: /(guarda(r)?\s+(una\s+)?nota|apunta(r)?\s+(esta\s+)?nota|mis\s+notas|listar\s+notas|que\s+notas\s+tengo)/i,
+
+    // Contactos y vCards
+    vcard: /(manda(r)?|envia(r)?|pasa(me)?)\s+(el\s+)?(contacto|vcard|tarjeta)\s+de\s+/i,
+
+    // Encuestas
+    encuestas: /(crea(r)?|lanza(r)?|haz(me)?|pon(er)?)\s+(una\s+)?encuesta/i
   };
 
   let matchClima = intents.clima.test(sinNombre);
@@ -127,9 +154,15 @@ export function seleccionarHerramientasPorIntencion(mensaje) {
   let matchNoticias = intents.noticias.test(sinNombre);
   let matchNavegacion = intents.navegacion.test(sinNombre) || tieneUrl;
   let matchServidor = intents.servidor.test(sinNombre);
+  let matchVip = intents.vip.test(sinNombre);
+  let matchGrupo = intents.grupo.test(sinNombre);
+  let matchMultimedia = intents.multimedia.test(sinNombre);
+  let matchNotas = intents.notas.test(sinNombre);
+  let matchVCard = intents.vcard.test(sinNombre);
+  let matchEncuestas = intents.encuestas.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
-  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor) {
+  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas) {
     return [];
   }
 
@@ -167,6 +200,30 @@ export function seleccionarHerramientasPorIntencion(mensaje) {
     tools.push(...herramientasJarvis.filter(h => h.function.name === 'consultar_estado_servidor'));
   }
 
+  if (matchVip) {
+    tools.push(...herramientasJarvis.filter(h => h.function.name.includes('_vip')));
+  }
+
+  if (matchGrupo) {
+    tools.push(...herramientasJarvis.filter(h => h.function.name === 'resumir_grupo'));
+  }
+
+  if (matchMultimedia) {
+    tools.push(...herramientasJarvis.filter(h => h.function.name === 'descargar_multimedia'));
+  }
+
+  if (matchNotas) {
+    tools.push(...herramientasJarvis.filter(h => h.function.name.includes('nota')));
+  }
+
+  if (matchVCard) {
+    tools.push(...herramientasJarvis.filter(h => h.function.name === 'enviar_contacto_vcard'));
+  }
+
+  if (matchEncuestas) {
+    tools.push(...herramientasJarvis.filter(h => h.function.name === 'crear_encuesta_whatsapp'));
+  }
+
   // Safety Net: si no encajó en ninguna categoría pero tampoco es chit-chat, pasar todas las herramientas
   if (tools.length === 0) {
     console.log(`[Router Safety Net] Mensaje de intención ambigua: "${norm}". Pasando todas las herramientas.`);
@@ -186,7 +243,7 @@ export function seleccionarHerramientasPorIntencion(mensaje) {
   return unicas;
 }
 
-export async function consultarJarvis(mensajeUsuario, historial = []) {
+export async function consultarJarvis(mensajeUsuario, historial = [], opciones = {}) {
   const tiempoInicio = Date.now();
 
   // Detección directa de URLs para resumen rápido
@@ -236,6 +293,10 @@ REGLAS CRÍTICAS DE COMUNICACIÓN:
     systemPrompt += `\n\n[REGISTROS DEL SECOND BRAIN / BANCO DE MEMORIA]:
 ${memoriasProactivas.map(m => `- [${m.sujeto.toUpperCase()}]: ${m.dato}`).join('\n')}
 (DIRECTIVA: Si la consulta de David trata sobre alguno de estos temas, respóndele DIRECTAMENTE con esta información de forma sobria y elegante).`;
+  }
+
+  if (opciones.urgencyDirective) {
+    systemPrompt += `\n\n${opciones.urgencyDirective}`;
   }
 
   if (herramientasActivas.length > 0) {
@@ -430,6 +491,33 @@ Directrices de selección:
         const salud = consultarSaludServidor();
         const mcOnline = await comprobarPuertoTCP(config.minecraft.host, config.minecraft.port, 2000);
         resultadoTool = `Salud del sistema:\n- Memoria RAM: ${salud.libreRamGB} GB libres de ${salud.totalRamGB} GB (${salud.porcentajeUso}% en uso)\n- Procesador: ${salud.cpus} núcleos (Carga media: ${salud.loadAvg})\n- Servidor de Minecraft (${config.minecraft.host}:${config.minecraft.port}): ${mcOnline ? 'ONLINE' : 'CAIDO / APAGADO'}`;
+      } else if (nombreFuncion === 'activar_modo_vip') {
+        const activo = setVipMode(args.activar !== false);
+        if (args.contacto_vip) addVipContact(args.contacto_vip);
+        resultadoTool = `Modo Filtro VIP ${activo ? 'activado' : 'desactivado'}, señor. ${args.contacto_vip ? `Contacto ${args.contacto_vip} añadido a la lista blanca autorizada.` : ''}`;
+      } else if (nombreFuncion === 'estado_modo_vip') {
+        const activo = isVipModeActive();
+        const vips = getVipContacts();
+        resultadoTool = `Modo Filtro VIP: ${activo ? 'ACTIVO' : 'DESACTIVADO'}, señor. Contactos autorizados en lista blanca (${vips.length}): ${vips.join(', ') || 'ninguno'}.`;
+      } else if (nombreFuncion === 'agregar_contacto_vip') {
+        addVipContact(args.contacto);
+        resultadoTool = `Contacto ${args.contacto} registrado en la lista blanca del Filtro VIP con éxito, señor.`;
+      } else if (nombreFuncion === 'resumir_grupo') {
+        const res = await generateGroupSummary(args.id_grupo, args.horas_atras || 24, args.max_mensajes || 50);
+        resultadoTool = res.ok ? res.summaryText : `No ha sido posible generar el resumen del grupo: ${res.error}`;
+      } else if (nombreFuncion === 'descargar_multimedia') {
+        const res = await downloadMedia(args.url, { format: args.formato || 'video', audioOnly: args.formato === 'audio' });
+        resultadoTool = res.ok ? `Descarga completada con éxito: ${res.fileName} (${(res.fileSize / 1024 / 1024).toFixed(2)} MB). Tramitado para entrega directa al chat.` : `Error en la descarga multimedia: ${res.error}`;
+      } else if (nombreFuncion === 'guardar_nota_personal') {
+        const res = await savePersonalNote(args.texto, { category: args.categoria, tags: args.etiquetas });
+        resultadoTool = res.ok ? `Nota personal guardada en el Second Brain (${res.category}): ${res.filename}.` : `Error al guardar nota: ${res.error}`;
+      } else if (nombreFuncion === 'listar_notas_recientes') {
+        const notas = await listRecentNotes({ category: args.categoria, limit: args.limite || 10 });
+        resultadoTool = notas.length === 0 ? 'No hay notas registradas en esta categoría, señor.' : 'Notas registradas en el Second Brain:\n' + notas.map(n => `- [${n.category}] ${n.filename}: ${n.preview}`).join('\n');
+      } else if (nombreFuncion === 'enviar_contacto_vcard') {
+        resultadoTool = `Tarjeta vCard digital generada para ${args.nombre} (${args.telefono}${args.organizacion ? ' - ' + args.organizacion : ''}). Tramitado para envío al chat de WhatsApp.`;
+      } else if (nombreFuncion === 'crear_encuesta_whatsapp') {
+        resultadoTool = `Encuesta configurada con éxito: "${args.pregunta}" (${args.opciones?.length || 0} opciones). Publicada en el chat.`;
       } else {
         resultadoTool = 'Función no reconocida.';
       }

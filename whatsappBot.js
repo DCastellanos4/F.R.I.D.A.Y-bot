@@ -20,6 +20,13 @@ import { programarEnvioMatutino } from './dailyBriefing.js';
 import { normalizarTexto } from './memoryService.js';
 import { transcribirAudioBuffer } from './voiceService.js';
 import { capturarPantallaWeb } from './browserService.js';
+import { isVipModeActive, shouldFilterMessage } from './vipFilterService.js';
+import { recordGroupMessage, generateGroupSummary, isDavidMentioned } from './groupSummarizerService.js';
+import { isPersonalNote, savePersonalNote } from './notesService.js';
+import { isMediaUrl, downloadMedia, sendMediaMessage } from './mediaDownloaderService.js';
+import { synthesizeSpeech, sendVoiceNote } from './ttsService.js';
+import { classifyUrgency, getUrgencyPromptDirective } from './urgencyService.js';
+import { parseInteractiveResponse, parsePollVote } from './interactiveService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CARPETA_AUTH = path.join(__dirname, 'data', 'auth_info_baileys');
@@ -294,14 +301,30 @@ export async function iniciarWhatsApp() {
       const remoteJid = msg.key.remoteJid;
       if (!remoteJid) continue;
 
-      // Filtro de seguridad con Buzón de Respuestas de Terceros
+      // 1. Buffer de mensajes de grupo para el Resumidor Inteligente
+      if (remoteJid.endsWith('@g.us')) {
+        recordGroupMessage(msg);
+      }
+
+      // 2. Filtro de seguridad con Buzon VIP y Respuestas de Terceros
       if (!esMensajeDeDavid(remoteJid)) {
+        if (remoteJid.endsWith('@g.us')) continue;
+
         const remitenteLimpio = remoteJid.split('@')[0].replace(/\D/g, '');
         console.log(`[WhatsApp Mensaje Externo] Recibido de +${remitenteLimpio}: ${remoteJid}`);
         const textoExterno = extraerTextoMensaje(msg);
         if (textoExterno) {
-          console.log(`[WhatsApp Buzón] Retransmitiendo a David respuesta de +${remitenteLimpio}: "${textoExterno}"`);
-          await enviarMensajeADavid(`[D.A.V.I.S. - RESPUESTA EXTERNA]\n\nDavid, el contacto +${remitenteLimpio} acaba de responder:\n"${textoExterno}".`);
+          const filter = shouldFilterMessage(remoteJid, msg.key?.participant, textoExterno);
+          if (!filter.allowed) {
+            console.log(`[WhatsApp Filtro VIP] Mensaje bloqueado de +${remitenteLimpio}. Enviando autorrespuesta sobria.`);
+            await sock.sendMessage(remoteJid, { text: filter.autoReplyText }, { quoted: msg });
+          } else if (filter.isEmergency) {
+            console.log(`[WhatsApp Alerta VIP / Emergencia] Reenviando a David de +${remitenteLimpio}`);
+            await enviarMensajeADavid(`[D.A.V.I.S. - ALERTA VIP / EMERGENCIA]\n\nAtencion David: el contacto +${remitenteLimpio} ha enviado un mensaje urgente:\n"${textoExterno}".`);
+          } else {
+            console.log(`[WhatsApp Buzon] Retransmitiendo a David respuesta de +${remitenteLimpio}: "${textoExterno}"`);
+            await enviarMensajeADavid(`[D.A.V.I.S. - RESPUESTA EXTERNA]\n\nDavid, el contacto +${remitenteLimpio} acaba de responder:\n"${textoExterno}".`);
+          }
         }
         continue;
       }
@@ -311,8 +334,22 @@ export async function iniciarWhatsApp() {
 
       let texto = null;
       let esAudio = false;
+      let urgencyDirective = '';
 
-      // Manejo de notas de voz con Whisper
+      // 3. Procesamiento de componentes interactivos (encuestas, botones, listas)
+      const interactive = parseInteractiveResponse(msg);
+      if (interactive) {
+        if (interactive.type === 'poll_vote') {
+          console.log(`[WhatsApp Interactivo] Voto en encuesta registrado (${interactive.pollId}) de ${interactive.voterJid}.`);
+          continue;
+        }
+        if (interactive.type === 'button' || interactive.type === 'list') {
+          texto = interactive.id || interactive.text || interactive.title;
+          console.log(`[WhatsApp Interactivo] Seleccion de usuario recibida: "${texto}"`);
+        }
+      }
+
+      // 4. Manejo de notas de voz con Whisper y Clasificador de Urgencia
       if (msg.message.audioMessage) {
         console.log('[WhatsApp] Nota de voz recibida de David. Procesando audio con Whisper...');
         try {
@@ -331,6 +368,13 @@ export async function iniciarWhatsApp() {
             texto = resVoz.texto;
             esAudio = true;
             console.log(`[Audio Transcrito]: "${texto}"`);
+
+            const duracionSeg = msg.message.audioMessage?.seconds || 0;
+            const urg = classifyUrgency(texto, duracionSeg);
+            if (urg.isUrgent) {
+              console.log(`[WhatsApp Urgencia Audio] Nivel: ${urg.level} (${urg.reason})`);
+            }
+            urgencyDirective = getUrgencyPromptDirective(urg);
           } else {
             console.warn('Aviso: Audio no pudo ser transcrito con claridad.');
             await sock.sendMessage(remoteJid, {
@@ -345,13 +389,46 @@ export async function iniciarWhatsApp() {
           }, { quoted: msg });
           continue;
         }
-      } else {
+      } else if (!texto) {
         texto = extraerTextoMensaje(msg);
       }
 
       if (!texto) continue;
 
       console.log(`\n[WhatsApp de David${esAudio ? ' (Audio)' : ''}]: "${texto}"`);
+
+      // 5. Captura y persistencia automatica de Notas Personales
+      const esSelfChat = remoteJid.includes(NUMERO_DAVID_AUTORIZADO);
+      if (isPersonalNote(texto, esSelfChat)) {
+        console.log(`[WhatsApp Nota Personal] Detectada: "${texto}"`);
+        const resNota = await savePersonalNote(texto, {
+          source: esAudio ? 'audio' : 'text',
+          sender: remoteJid
+        });
+        if (resNota.ok) {
+          const confirmacion = `Nota archivada en el Second Brain (${resNota.category}):\n"${texto.slice(0, 90)}${texto.length > 90 ? '...' : ''}"\nArchivo: ${resNota.filename}`;
+          await sock.sendMessage(remoteJid, { text: confirmacion }, { quoted: msg });
+          continue;
+        }
+      }
+
+      // 6. Extractor y Descargador Multimedia Directo (YouTube / Reels / TikTok)
+      if (isMediaUrl(texto)) {
+        console.log(`[WhatsApp Multimedia] URL detectada: "${texto}"`);
+        await sock.sendPresenceUpdate('composing', remoteJid);
+        await sock.sendMessage(remoteJid, { text: 'Iniciando descarga y procesamiento de contenido multimedia...' }, { quoted: msg });
+        const mediaRes = await downloadMedia(texto, {
+          audioOnly: /solo audio|mp3|extrae audio/i.test(texto)
+        });
+        if (mediaRes.ok && mediaRes.filePath) {
+          await sendMediaMessage(sock, remoteJid, mediaRes, msg);
+          console.log(`[WhatsApp Multimedia] Contenido enviado con éxito: ${mediaRes.filePath}`);
+          continue;
+        } else {
+          await sock.sendMessage(remoteJid, { text: `Error en la descarga multimedia: ${mediaRes.error || 'Fallo desconocido'}` }, { quoted: msg });
+          continue;
+        }
+      }
 
       // Easter Egg: Solicitud de más tabaco para la cachimba
       if (esPeticionCachimba(texto) && fs.existsSync(RUTA_IMAGEN_CACHIMBA)) {
@@ -431,19 +508,27 @@ export async function iniciarWhatsApp() {
         await sock.sendPresenceUpdate('composing', remoteJid);
 
         // 3. Procesar consulta con el agente
-        const respuesta = await consultarJarvis(texto);
+        const respuesta = await consultarJarvis(texto, [], { urgencyDirective });
 
         // 4. Detener estado de escritura y enviar respuesta
         clearInterval(typingInterval);
         await sock.sendPresenceUpdate('paused', remoteJid);
 
-        const respuestaFinal = esAudio
-          ? `[Nota de voz]: "${texto}"\n\n${respuesta}`
-          : respuesta;
-
-        await sock.sendMessage(remoteJid, { text: respuestaFinal }, { quoted: msg });
-
-        console.log(`[J.A.R.V.I.S. a David]: "${respuesta}"\n`);
+        // 7. Respuesta en Nota de Voz Nativa PTT (si David envió audio o solicitó voz)
+        if (esAudio || /responde(me)?\s+(en|con)?\s*(audio|nota de voz|voz)/i.test(texto)) {
+          console.log('[WhatsApp Voz PTT] Sintetizando respuesta de voz con Edge-TTS en OGG Opus...');
+          try {
+            const oggBuffer = await synthesizeSpeech(respuesta, { voice: 'es-ES-AlvaroNeural' });
+            await sendVoiceNote(sock, remoteJid, oggBuffer, msg);
+            console.log(`[J.A.R.V.I.S. a David]: [Nota de voz PTT enviada con éxito]\n`);
+          } catch (errTts) {
+            console.error('Error generando nota de voz PTT, recurriendo a texto:', errTts.message);
+            await sock.sendMessage(remoteJid, { text: respuesta }, { quoted: msg });
+          }
+        } else {
+          await sock.sendMessage(remoteJid, { text: respuesta }, { quoted: msg });
+          console.log(`[J.A.R.V.I.S. a David]: "${respuesta}"\n`);
+        }
       } catch (err) {
         clearInterval(typingInterval);
         console.error('Error procesando mensaje:', err);

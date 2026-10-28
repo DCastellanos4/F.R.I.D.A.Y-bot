@@ -6,9 +6,8 @@
     "start": "node api.js",
     "whatsapp": "node whatsappBot.js",
     "chat": "node chat.js",
-    "test": "node test_scheduled_and_reminders.js && node test_llm_provider.js",
-    "test:scheduled": "node test_scheduled_and_reminders.js",
-    "test:llm": "node test_llm_provider.js"
+    "test": "node full_system_test.js",
+    "test:scheduled": "node test_scheduled_and_reminders.js"
   },
   "keywords": [
     "ai",
@@ -16,16 +15,12 @@
     "assistant",
     "baileys",
     "ollama",
-    "openai",
-    "groq",
-    "openrouter",
-    "deepseek",
     "friday",
     "second-brain"
   ],
   "author": "David",
   "license": "MIT",
-  "description": "F.R.I.D.A.Y. - Autonomous Tactical AI Assistant with WhatsApp Multi-Device, Multi-Provider LLMs (Ollama & OpenAI-Compatible), Second Brain & Hardware-Accelerated Audio Transcription",
+  "description": "F.R.I.D.A.Y. - Personal Tactical AI Assistant with WhatsApp Multi-Device, Local Ollama LLM, Second Brain & Proactive Automation",
   "type": "module",
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc14",
@@ -33,9 +28,8 @@
     "dotenv": "^17.3.1",
     "node-cron": "^4.6.0",
     "ollama": "^0.6.4",
-    "openai": "^6.49.0",
+    "openai": "^4.28.0",
     "pino": "^9.6.0",
-    "playwright": "^1.64.1",
     "qrcode-terminal": "^0.12.0",
     "rss-parser": "^3.13.0",
     "youtube-transcript": "^1.3.1"

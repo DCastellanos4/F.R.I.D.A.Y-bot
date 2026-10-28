@@ -297,11 +297,11 @@ async function ejecutarPruebas() {
     });
 
     runTest('limpiarRespuestaJarvis elimina emojis y slop residual', () => {
-      const textoConEmojis = '⏰ Buenos días señor 🤖, su mensaje ha sido programado con éxito. 👍';
+      const textoConEmojis = '\u23F0 Buenos días señor \u{1F916}, su mensaje ha sido programado con éxito. \u{1F44D}';
       const limpio = limpiarRespuestaJarvis(textoConEmojis);
-      assert.strictEqual(limpio.includes('⏰'), false);
-      assert.strictEqual(limpio.includes('🤖'), false);
-      assert.strictEqual(limpio.includes('👍'), false);
+      assert.strictEqual(limpio.includes('\u23F0'), false);
+      assert.strictEqual(limpio.includes('\u{1F916}'), false);
+      assert.strictEqual(limpio.includes('\u{1F44D}'), false);
       assert.strictEqual(limpio, 'Buenos días señor, su mensaje ha sido programado con éxito.');
     });
 

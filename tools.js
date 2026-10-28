@@ -333,5 +333,199 @@ export const herramientasJarvis = [
         properties: {}
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'activar_modo_vip',
+      description: 'Activa o desactiva el Modo Filtro VIP / No molestar de David, restringiendo llamadas y mensajes de personas externas salvo emergencias.',
+      parameters: {
+        type: 'object',
+        properties: {
+          activar: {
+            type: 'boolean',
+            description: 'true para activar el Modo VIP, false para desactivarlo.'
+          },
+          contacto_vip: {
+            type: 'string',
+            description: 'Opcional: Número de teléfono para añadir simultáneamente a la lista blanca autorizada.'
+          }
+        },
+        required: ['activar']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'estado_modo_vip',
+      description: 'Consulta el estado actual del Modo Filtro VIP y la lista de contactos en la lista blanca.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'agregar_contacto_vip',
+      description: 'Añade un número telefónico a la lista blanca del Filtro VIP para permitir que sus mensajes lleguen a David sin bloqueo.',
+      parameters: {
+        type: 'object',
+        properties: {
+          contacto: {
+            type: 'string',
+            description: 'Número de teléfono o identificador del contacto autorizar.'
+          }
+        },
+        required: ['contacto']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'resumir_grupo',
+      description: 'Genera un resumen inteligente y estructurado de los mensajes acumulados en un grupo de WhatsApp, destacando menciones a David y tareas pendientes.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id_grupo: {
+            type: 'string',
+            description: 'Identificador del grupo de WhatsApp (ej: 123456@g.us o nombre del grupo si está en memoria).'
+          },
+          horas_atras: {
+            type: 'number',
+            description: 'Ventana de tiempo en horas a analizar (por defecto 24).'
+          },
+          max_mensajes: {
+            type: 'number',
+            description: 'Número máximo de mensajes a analizar (por defecto 50).'
+          }
+        },
+        required: ['id_grupo']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'descargar_multimedia',
+      description: 'Descarga contenido multimedia de un enlace (YouTube, Instagram Reels, TikTok) y devuelve los datos del archivo descargado.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: {
+            type: 'string',
+            description: 'Enlace web del vídeo o audio a descargar.'
+          },
+          formato: {
+            type: 'string',
+            enum: ['video', 'audio'],
+            description: 'Formato de entrega: "video" (MP4 optimizado) o "audio" (MP3). Por defecto "video".'
+          }
+        },
+        required: ['url']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'guardar_nota_personal',
+      description: 'Guarda una nota, reflexión o apunte de David en formato Markdown en el almacenamiento local del sistema.',
+      parameters: {
+        type: 'object',
+        properties: {
+          texto: {
+            type: 'string',
+            description: 'Contenido completo de la nota o reflexión a archivar.'
+          },
+          categoria: {
+            type: 'string',
+            enum: ['ideas', 'tareas', 'personal', 'proyectos', 'general'],
+            description: 'Categoría para organizar la nota en el Second Brain.'
+          },
+          etiquetas: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Etiquetas temáticas opcionales (tags).'
+          }
+        },
+        required: ['texto']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_notas_recientes',
+      description: 'Consulta las últimas notas personales archivadas en el Second Brain local.',
+      parameters: {
+        type: 'object',
+        properties: {
+          categoria: {
+            type: 'string',
+            description: 'Filtrar notas por categoría opcional.'
+          },
+          limite: {
+            type: 'number',
+            description: 'Número máximo de notas a devolver (por defecto 10).'
+          }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'enviar_contacto_vcard',
+      description: 'Genera y envía una tarjeta digital de contacto vCard (.vcf) nativa a través de WhatsApp.',
+      parameters: {
+        type: 'object',
+        properties: {
+          nombre: {
+            type: 'string',
+            description: 'Nombre y apellidos del contacto.'
+          },
+          telefono: {
+            type: 'string',
+            description: 'Número de teléfono con prefijo internacional (ej: +34612345678).'
+          },
+          organizacion: {
+            type: 'string',
+            description: 'Empresa u organización opcional.'
+          }
+        },
+        required: ['nombre', 'telefono']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'crear_encuesta_whatsapp',
+      description: 'Publica una encuesta interactiva nativa de WhatsApp con pregunta y opciones de respuesta.',
+      parameters: {
+        type: 'object',
+        properties: {
+          pregunta: {
+            type: 'string',
+            description: 'La pregunta o título de la encuesta.'
+          },
+          opciones: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Lista de opciones de votación (mínimo 2, máximo 12).'
+          },
+          multiple: {
+            type: 'boolean',
+            description: 'Permitir selección múltiple de opciones (por defecto false).'
+          }
+        },
+        required: ['pregunta', 'opciones']
+      }
+    }
   }
 ];

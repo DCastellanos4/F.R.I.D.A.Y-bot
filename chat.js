@@ -8,7 +8,7 @@ const rl = readline.createInterface({
 
 console.clear();
 console.log('====================================================');
-console.log('🤖 F.R.I.D.A.Y. - TERMINAL TÁCTICA INTERACTIVA');
+console.log('[D.A.V.I.S.] F.R.I.D.A.Y. - TERMINAL TÁCTICA INTERACTIVA');
 console.log('====================================================');
 console.log('Puedes pedirle recordatorios, clima, noticias, memoria o charlar.');
 console.log('Escribe "salir" o pulsa Ctrl+C para terminar.\n');
@@ -16,7 +16,7 @@ console.log('Escribe "salir" o pulsa Ctrl+C para terminar.\n');
 const historial = [];
 
 function promptUsuario() {
-  rl.question('👤 David: ', async (entrada) => {
+  rl.question('[David] David: ', async (entrada) => {
     const texto = entrada.trim();
     if (!texto) {
       promptUsuario();
@@ -29,12 +29,12 @@ function promptUsuario() {
     }
 
     try {
-      console.log('\n🤖 FRIDAY está evaluando...');
+      console.log('\n[D.A.V.I.S.] FRIDAY está evaluando...');
       const inicio = Date.now();
       const respuesta = await consultarJarvis(texto, historial);
       const tiempo = ((Date.now() - inicio) / 1000).toFixed(1);
 
-      console.log(`\n💬 FRIDAY (${tiempo}s):`);
+      console.log(`\n[Chat] FRIDAY (${tiempo}s):`);
       console.log(respuesta);
       console.log('\n----------------------------------------------------');
 
@@ -45,7 +45,7 @@ function promptUsuario() {
         historial.splice(0, 2);
       }
     } catch (err) {
-      console.error('\n❌ Error al consultar a FRIDAY:', err.message);
+      console.error('\n[Error] Error al consultar a FRIDAY:', err.message);
     }
 
     promptUsuario();

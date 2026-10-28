@@ -146,7 +146,7 @@ export function iniciarVigilanteProactivo(callbackAlerta = null) {
   if (callbackAlerta) callbackAlertaGlobal = callbackAlerta;
   if (intervaloVigilante) return;
 
-  console.log('🛡️ [Modo Vigilante] Monitor proactivo iniciado (Minecraft, servidor y alertas climáticas).');
+  console.log('[Vigilante] [Modo Vigilante] Monitor proactivo iniciado (Minecraft, servidor y alertas climáticas).');
 
   const ejecutarRevisiones = async () => {
     const estado = leerEstado();
@@ -162,13 +162,13 @@ export function iniciarVigilanteProactivo(callbackAlerta = null) {
         let mensajeAlerta = '';
 
         if (nuevoEstado === 'CAIDO') {
-          mensajeAlerta = `⚠️ *ALERTA VIGILANTE DE F.R.I.D.A.Y.* ⚠️\n\nJefe, el *${estado.minecraft.nombre}* (${estado.minecraft.host}:${estado.minecraft.port}) ha dejado de responder a las ${ahoraStr}.\n\n¿Quieres que intente reiniciarlo?`;
+          mensajeAlerta = `[Aviso] *ALERTA VIGILANTE DE F.R.I.D.A.Y.* [Aviso]\n\nJefe, el *${estado.minecraft.nombre}* (${estado.minecraft.host}:${estado.minecraft.port}) ha dejado de responder a las ${ahoraStr}.\n\n¿Quieres que intente reiniciarlo?`;
         } else {
-          mensajeAlerta = `✅ *F.R.I.D.A.Y. INFORMA: SERVICIO RECUPERADO*\n\nEl *${estado.minecraft.nombre}* (${estado.minecraft.host}:${estado.minecraft.port}) vuelve a estar 100% operativo a las ${ahoraStr}.`;
+          mensajeAlerta = `[OK] *F.R.I.D.A.Y. INFORMA: SERVICIO RECUPERADO*\n\nEl *${estado.minecraft.nombre}* (${estado.minecraft.host}:${estado.minecraft.port}) vuelve a estar 100% operativo a las ${ahoraStr}.`;
         }
 
         console.log(`\n========================================`);
-        console.log(`🚨 [ALERTA PROACTIVA DISPARADA]`);
+        console.log(`[Alerta] [ALERTA PROACTIVA DISPARADA]`);
         console.log(mensajeAlerta);
         console.log(`========================================\n`);
 
@@ -188,7 +188,7 @@ export function iniciarVigilanteProactivo(callbackAlerta = null) {
     if (horaActual >= 7 && horaActual <= 9 && estado.clima.ultimoAvisoFecha !== hoyFechaStr) {
       const datosClima = await consultarAlertaLluvia(estado.clima.lat, estado.clima.lon);
       if (datosClima && datosClima.hayRiesgoLluvia) {
-        const alertaLluvia = `🌧️ *ALERTA METEOROLÓGICA DE F.R.I.D.A.Y.* 🌧️\n\nBuenos días David. Se prevé un *${datosClima.probabilidad}% de probabilidad de lluvia* hoy en ${estado.clima.ciudad} (Temp: ${datosClima.tempMin}°C - ${datosClima.tempMax}°C).\n\nTe sugiero coger paraguas antes de despegar.`;
+        const alertaLluvia = `[Lluvia] *ALERTA METEOROLÓGICA DE F.R.I.D.A.Y.* [Lluvia]\n\nBuenos días David. Se prevé un *${datosClima.probabilidad}% de probabilidad de lluvia* hoy en ${estado.clima.ciudad} (Temp: ${datosClima.tempMin}°C - ${datosClima.tempMax}°C).\n\nTe sugiero coger paraguas antes de despegar.`;
         console.log(`\n========================================\n${alertaLluvia}\n========================================\n`);
         registrarAlertaEnLog(alertaLluvia);
 
@@ -202,7 +202,7 @@ export function iniciarVigilanteProactivo(callbackAlerta = null) {
     // 3. REVISIÓN DE SALUD DEL SERVIDOR ORACLE
     const salud = consultarSaludServidor();
     if (salud.critico) {
-      const alertaRam = `⚠️ *ALERTA DE SISTEMA*: Memoria RAM del servidor Oracle en nivel crítico (Quedan solo ${salud.libreRamGB} GB libres de ${salud.totalRamGB} GB).`;
+      const alertaRam = `[Aviso] *ALERTA DE SISTEMA*: Memoria RAM del servidor Oracle en nivel crítico (Quedan solo ${salud.libreRamGB} GB libres de ${salud.totalRamGB} GB).`;
       console.warn(alertaRam);
       registrarAlertaEnLog(alertaRam);
       if (typeof callbackAlertaGlobal === 'function') {

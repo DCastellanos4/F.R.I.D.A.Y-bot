@@ -19,7 +19,7 @@ const PATRONES_SLOP = [
 
 export const RAMAS_CURADAS = {
   politica: {
-    nombre: '🏛️ Política y Actualidad Nacional',
+    nombre: '[Politica] Política y Actualidad Nacional',
     fuentes: [
       'https://rss.elconfidencial.com/espana/',
       'https://www.elperiodico.com/es/rss/politica/rss.xml',
@@ -27,7 +27,7 @@ export const RAMAS_CURADAS = {
     ]
   },
   economia: {
-    nombre: '💼 Economía, Empresas y Finanzas',
+    nombre: '[Economia] Economía, Empresas y Finanzas',
     fuentes: [
       'https://rss.elconfidencial.com/economia/',
       'https://www.elperiodico.com/es/rss/economia/rss.xml',
@@ -35,7 +35,7 @@ export const RAMAS_CURADAS = {
     ]
   },
   tecnologia: {
-    nombre: '💻 Tecnología, IA e Innovación',
+    nombre: '[Tecnologia] Tecnología, IA e Innovación',
     fuentes: [
       'https://rss.elconfidencial.com/tecnologia/',
       'https://www.xataka.com/feedburner.xml',
@@ -43,7 +43,7 @@ export const RAMAS_CURADAS = {
     ]
   },
   deportes: {
-    nombre: '⚽ Deportes de Élite',
+    nombre: '[Deportes] Deportes de Élite',
     fuentes: [
       'https://rss.elconfidencial.com/deportes/',
       'https://www.elperiodico.com/es/rss/deportes/rss.xml',
@@ -51,7 +51,7 @@ export const RAMAS_CURADAS = {
     ]
   },
   mundo: {
-    nombre: '🌍 Geopolítica e Internacional',
+    nombre: '[Mundo] Geopolítica e Internacional',
     fuentes: [
       'https://rss.elconfidencial.com/mundo/',
       'https://feeds.bbci.co.uk/mundo/rss.xml',
