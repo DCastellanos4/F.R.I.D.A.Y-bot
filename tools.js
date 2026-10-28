@@ -527,5 +527,157 @@ export const herramientasJarvis = [
         required: ['pregunta', 'opciones']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'execute_bash_command',
+      description: 'Ejecuta de forma controlada comandos de consola bash en el sistema. Los comandos de lectura se ejecutan de inmediato; los comandos criticos o de impacto generan un codigo OTP efimero de 6 digitos (validez 120 segundos) para autorizacion previa.',
+      parameters: {
+        type: 'object',
+        properties: {
+          comando: {
+            type: 'string',
+            description: 'El comando de terminal bash a ejecutar (ej: "uptime", "free -m", "df -h", "pm2 restart jarvis-api").'
+          }
+        },
+        required: ['comando']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'confirm_bash_otp',
+      description: 'Valida un codigo OTP numerico de 6 digitos para autorizar y ejecutar un comando critico de bash pendiente de confirmacion.',
+      parameters: {
+        type: 'object',
+        properties: {
+          otp: {
+            type: 'string',
+            description: 'Codigo numerico OTP de 6 digitos recibido para autorizacion.'
+          },
+          id_comando: {
+            type: 'string',
+            description: 'Identificador unico opcional de la orden pendiente si existen varias simultaneas.'
+          }
+        },
+        required: ['otp']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'generate_crypto_credential',
+      description: 'Genera credenciales criptograficas seguras mediante CSPRNG (contraseñas de alta entropia, PINs numericos, tokens aleatorios o claves simetricas AES) con opcion de guardado permanente en el Second Brain.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tipo: {
+            type: 'string',
+            enum: ['password', 'pin', 'token', 'key'],
+            description: 'Tipo de credencial a generar: "password", "pin", "token" o "key".'
+          },
+          longitud: {
+            type: 'number',
+            description: 'Longitud deseada en caracteres o digitos (por defecto 16 para passwords, 6 para PIN, 32 para token).'
+          },
+          algoritmo: {
+            type: 'string',
+            enum: ['aes-256', 'aes-512', 'aes-128'],
+            description: 'Algoritmo para clave criptografica (por defecto "aes-256").'
+          },
+          guardar_en_memoria: {
+            type: 'boolean',
+            description: 'Indica si la credencial generada debe persistirse de forma segura en el Second Brain bajo la categoria "clave".'
+          },
+          nombre_clave: {
+            type: 'string',
+            description: 'Nombre o sujeto descriptivo para archivar la credencial en el Second Brain (ej: "Servidor VPS Root", "Token API Prod").'
+          },
+          notas: {
+            type: 'string',
+            description: 'Notas adicionales o contexto asociadas al registro en el Second Brain.'
+          }
+        },
+        required: ['tipo']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_infrastructure_status',
+      description: 'Obtiene el estado integral de la infraestructura del sistema: salud de contenedores Docker, almacenamiento en disco con deteccion de umbrales, rendimiento y tasa de transferencia de red, y caducidad de certificados SSL.',
+      parameters: {
+        type: 'object',
+        properties: {
+          incluir_docker: {
+            type: 'boolean',
+            description: 'Inspeccionar estado de contenedores Docker (por defecto true).'
+          },
+          incluir_disco: {
+            type: 'boolean',
+            description: 'Inspeccionar espacio libre y ocupado en disco (por defecto true).'
+          },
+          incluir_red: {
+            type: 'boolean',
+            description: 'Calcular tasa de transferencia y consumo de red en MB/s (por defecto true).'
+          },
+          dominio_ssl: {
+            type: 'string',
+            description: 'Nombre de dominio opcional para verificar caducidad del certificado SSL (ej: "jarvis.davidcastellanos.es" o "google.com").'
+          }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'manage_tunnel',
+      description: 'Consulta el estado operativo o gestiona el arranque y detencion de tuneles seguros de comunicacion (Cloudflare Tunnel o Tailscale).',
+      parameters: {
+        type: 'object',
+        properties: {
+          tipo_tunel: {
+            type: 'string',
+            enum: ['cloudflare', 'tailscale'],
+            description: 'El tipo de tunel a gestionar: "cloudflare" o "tailscale".'
+          },
+          accion: {
+            type: 'string',
+            enum: ['status', 'start', 'stop'],
+            description: 'Accion a realizar: "status" para consultar estado, "start" para iniciar tunel, "stop" para detener tunel.'
+          },
+          nombre_tunel: {
+            type: 'string',
+            description: 'Nombre de configuracion del tunel Cloudflare (por defecto "jarvis-vps").'
+          }
+        },
+        required: ['tipo_tunel', 'accion']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'trigger_encrypted_backup',
+      description: 'Genera una copia de seguridad inmediata, comprimida y cifrada simetricamente con AES-256-GCM (contenedor DAVBAK01) que incluye el directorio data/ y configuraciones criticas del sistema.',
+      parameters: {
+        type: 'object',
+        properties: {
+          passphrase: {
+            type: 'string',
+            description: 'Clave o frase maestra de cifrado. Si se omite, se utiliza la configurada en el entorno del sistema.'
+          },
+          comentario: {
+            type: 'string',
+            description: 'Nota descriptiva u origen del backup manual.'
+          }
+        }
+      }
+    }
   }
 ];

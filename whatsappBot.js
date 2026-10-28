@@ -27,6 +27,11 @@ import { isMediaUrl, downloadMedia, sendMediaMessage } from './mediaDownloaderSe
 import { synthesizeSpeech, sendVoiceNote } from './ttsService.js';
 import { classifyUrgency, getUrgencyPromptDirective } from './urgencyService.js';
 import { parseInteractiveResponse, parsePollVote } from './interactiveService.js';
+import { drainAlerts, formatAlertText } from './alertQueueService.js';
+import { checkAndHealContainers } from './dockerMonitorService.js';
+import { checkAndPurgeIfExceeded } from './diskStorageService.js';
+import { scanFail2banLog } from './fail2banMonitorService.js';
+import { checkBandwidthSpike } from './networkMonitorService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CARPETA_AUTH = path.join(__dirname, 'data', 'auth_info_baileys');
@@ -160,6 +165,55 @@ export async function enviarMensajeWhatsApp(jidODestino, contenido) {
 }
 
 /**
+ * Permite inyectar un socket simulado para pruebas automatizadas.
+ */
+export function setMockSocket(mockSock) {
+  sock = mockSock;
+  estaConectado = Boolean(mockSock);
+}
+
+/**
+ * Drena y despacha las alertas pendientes de la cola entre procesos al chat de David.
+ */
+export async function drenarColaAlertas() {
+  const alertas = drainAlerts();
+  for (const alerta of alertas) {
+    const textoAlerta = formatAlertText(alerta);
+    await enviarMensajeADavid(textoAlerta);
+  }
+  return alertas;
+}
+
+/**
+ * Ejecuta una pasada de todos los vigilantes del Sector 2 (Docker, Disco, Fail2ban, Red).
+ */
+export async function ejecutarWatchdogsSector2(deps = {}) {
+  const resultados = {};
+  try {
+    resultados.docker = await checkAndHealContainers(deps.dockerDeps || {});
+  } catch (errDocker) {
+    resultados.docker = { error: errDocker.message };
+  }
+  try {
+    resultados.disco = await checkAndPurgeIfExceeded(85, deps.diskDeps || {});
+  } catch (errDisco) {
+    resultados.disco = { error: errDisco.message };
+  }
+  try {
+    const f2bState = deps.fail2banState || { offset: 0, deduplicationCache: new Map() };
+    resultados.fail2ban = await scanFail2banLog(deps.fail2banLog || '/var/log/fail2ban.log', f2bState, deps.fail2banDeps || {});
+  } catch (errF2b) {
+    resultados.fail2ban = { error: errF2b.message };
+  }
+  try {
+    resultados.red = await checkBandwidthSpike(10.0, deps.netDeps || {});
+  } catch (errRed) {
+    resultados.red = { error: errRed.message };
+  }
+  return resultados;
+}
+
+/**
  * Registra los disparadores proactivos en segundo plano (vigilante, recordatorios, mensajes programados, sniper y briefing)
  */
 function inicializarServiciosProactivos() {
@@ -207,6 +261,52 @@ function inicializarServiciosProactivos() {
   programarEnvioMatutino(async (textoBriefing) => {
     await enviarMensajeADavid(textoBriefing);
   });
+
+  // 6. Drenado periódico de la cola de alertas entre procesos (alertQueueService)
+  setInterval(async () => {
+    try {
+      await drenarColaAlertas();
+    } catch (errCola) {
+      console.error('Error drenando cola de alertas:', errCola.message);
+    }
+  }, 5 * 1000);
+
+  // 7. Watchdog de Docker y Auto-Healing (cada 60 segundos)
+  setInterval(async () => {
+    try {
+      await checkAndHealContainers();
+    } catch (errDocker) {
+      console.error('Error en watchdog de Docker:', errDocker.message);
+    }
+  }, 60 * 1000);
+
+  // 8. Vigilante de almacenamiento en disco con purga automatica al superar el 85% (cada 5 minutos)
+  setInterval(async () => {
+    try {
+      await checkAndPurgeIfExceeded(85);
+    } catch (errDisco) {
+      console.error('Error en vigilante de disco:', errDisco.message);
+    }
+  }, 5 * 60 * 1000);
+
+  // 9. Watchdog de seguridad Fail2ban para deteccion de intrusiones e IPs bloqueadas (cada 30 segundos)
+  const fail2banState = { offset: 0, deduplicationCache: new Map() };
+  setInterval(async () => {
+    try {
+      await scanFail2banLog('/var/log/fail2ban.log', fail2banState);
+    } catch (errF2b) {
+      // Ignorar si el fichero no esta presente en sistemas no Linux
+    }
+  }, 30 * 1000);
+
+  // 10. Watchdog de trafico de red y picos de ancho de banda (cada 30 segundos)
+  setInterval(async () => {
+    try {
+      await checkBandwidthSpike(10.0);
+    } catch (errNet) {
+      // Ignorar si /proc/net/dev no esta disponible
+    }
+  }, 30 * 1000);
 
   console.log(`[Servicios Proactivos] Todos los monitores conectados al WhatsApp de David (+${NUMERO_DAVID_AUTORIZADO}).`);
 }
@@ -542,6 +642,12 @@ export async function iniciarWhatsApp() {
 }
 
 // Iniciar automáticamente
-iniciarWhatsApp().catch(err => {
-  console.error('Error fatal iniciando el cliente de WhatsApp:', err);
-});
+const isMainScript = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) &&
+  !process.argv.some(a => a.includes('--test') || a.includes('run_all')) &&
+  process.env.NODE_ENV !== 'test';
+
+if (isMainScript || process.env.RUN_WHATSAPP_BOT === 'true') {
+  iniciarWhatsApp().catch(err => {
+    console.error('Error fatal iniciando el cliente de WhatsApp:', err);
+  });
+}

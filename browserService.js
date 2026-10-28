@@ -1,4 +1,14 @@
-import { chromium } from 'playwright';
+let chromiumModule = null;
+async function getChromium() {
+  if (chromiumModule) return chromiumModule;
+  try {
+    const pw = await import('playwright');
+    chromiumModule = pw.chromium;
+    return chromiumModule;
+  } catch (err) {
+    return null;
+  }
+}
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
@@ -10,6 +20,10 @@ const TTL_CACHE_MS = 15 * 60 * 1000;
  * Lanza una instancia ligera de Chromium headless optimizada para ARM64 / Oracle VPS
  */
 async function crearPaginaNavegador() {
+  const chromium = await getChromium();
+  if (!chromium) {
+    throw new Error('Playwright Chromium no esta instalado en este entorno.');
+  }
   const browser = await chromium.launch({
     headless: true,
     args: [

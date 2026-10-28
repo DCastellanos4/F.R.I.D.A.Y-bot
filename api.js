@@ -1,4 +1,6 @@
 import http from 'http';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { config } from './config.js';
 import { consultarJarvis } from './jarvisAgent.js';
 import {
@@ -25,6 +27,10 @@ import {
   iniciarSniperWatchdog
 } from './sniperService.js';
 import { consultarClima } from './weatherService.js';
+import {
+  verifySignature,
+  handleWebhookPayload
+} from './githubWebhookService.js';
 
 const PUERTO = config.port;
 
@@ -48,10 +54,10 @@ function parsearBody(req) {
   });
 }
 
-const server = http.createServer(async (req, res) => {
+export async function handleApiRequest(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Hub-Signature-256');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -60,6 +66,44 @@ const server = http.createServer(async (req, res) => {
   }
 
   const url = new URL(req.url, `http://${req.headers.host}`);
+
+  // Endpoint de Webhook de GitHub Actions (CI/CD)
+  if (req.method === 'POST' && url.pathname === '/api/webhook/github') {
+    try {
+      const chunks = [];
+      for await (const chunk of req) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      const rawBody = Buffer.concat(chunks);
+      const signatureHeader = req.headers['x-hub-signature-256'] || '';
+      const secret = process.env.GITHUB_WEBHOOK_SECRET || config.githubWebhookSecret || 'davis_ci_webhook_secret_998877';
+
+      const isValid = verifySignature(rawBody, signatureHeader, secret);
+      if (!isValid) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+        return;
+      }
+
+      let payload;
+      try {
+        payload = JSON.parse(rawBody.toString('utf8'));
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Invalid JSON payload' }));
+        return;
+      }
+
+      const result = handleWebhookPayload(payload, true);
+      res.writeHead(result.status || 200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, ...result }));
+    } catch (err) {
+      console.error('Error procesando /api/webhook/github:', err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: err.message }));
+    }
+    return;
+  }
 
   // Endpoint de chat
   if (req.method === 'POST' && url.pathname === '/api/chat') {
@@ -236,8 +280,16 @@ const server = http.createServer(async (req, res) => {
 
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: 'Ruta no encontrada' }));
-});
+}
 
-server.listen(PUERTO, '0.0.0.0', () => {
-  console.log(`[Web] Servidor API de FRIDAY escuchando en http://0.0.0.0:${PUERTO}`);
-});
+export const server = http.createServer(handleApiRequest);
+
+const isMainScript = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) &&
+  !process.argv.some(a => a.includes('--test') || a.includes('run_all')) &&
+  process.env.NODE_ENV !== 'test';
+
+if (isMainScript || process.env.RUN_API_SERVER === 'true') {
+  server.listen(PUERTO, '0.0.0.0', () => {
+    console.log(`[Web] Servidor API de FRIDAY escuchando en http://0.0.0.0:${PUERTO}`);
+  });
+}

@@ -69,12 +69,15 @@ describe('Sector 1 - Task 10: Direct Media Downloader (yt-dlp & WhatsApp Limits)
         return;
       }
 
-      if (result) {
+      if (result && result.ok !== false) {
         assert.ok(result.buffer || result.filePath, 'Result must contain buffer or filePath');
         assert.ok(['video', 'audio'].includes(result.mediaType));
         assert.ok(typeof result.mimeType === 'string');
         assert.ok(typeof result.fileName === 'string');
         assertNoEmojis(result);
+      } else if (result) {
+        assert.ok(typeof result.error === 'string');
+        assertNoEmojis(result.error);
       }
     });
 

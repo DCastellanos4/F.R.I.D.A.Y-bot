@@ -40,6 +40,20 @@ import {
 import { generateGroupSummary } from './groupSummarizerService.js';
 import { downloadMedia } from './mediaDownloaderService.js';
 import { savePersonalNote, listRecentNotes } from './notesService.js';
+import { requestExecution, confirmAndExecute } from './bashConsoleService.js';
+import {
+  generatePassword,
+  generatePin,
+  generateToken,
+  generateCryptoKey,
+  saveCredentialToMemory
+} from './cryptoGeneratorService.js';
+import { inspectContainers } from './dockerMonitorService.js';
+import { checkDiskUsage } from './diskStorageService.js';
+import { readNetworkBytes } from './networkMonitorService.js';
+import { checkCertificateExpiry } from './sslMonitorService.js';
+import { getTunnelStatus, startTunnel, stopTunnel } from './tunnelManagerService.js';
+import { createEncryptedBackup } from './backupService.js';
 
 /**
  * Detecta si David pide poner más tabaco a la cachimba (Easter Egg Iron Man)
@@ -143,7 +157,24 @@ export function seleccionarHerramientasPorIntencion(mensaje) {
     vcard: /(manda(r)?|envia(r)?|pasa(me)?)\s+(el\s+)?(contacto|vcard|tarjeta)\s+de\s+/i,
 
     // Encuestas
-    encuestas: /(crea(r)?|lanza(r)?|haz(me)?|pon(er)?)\s+(una\s+)?encuesta/i
+    encuestas: /(crea(r)?|lanza(r)?|haz(me)?|pon(er)?)\s+(una\s+)?encuesta/i,
+
+    // Terminal, consola bash y codigos 2FA OTP (Sector 2)
+    bash: /(consola|terminal|bash|comando|ejecuta|ejecutar|lanzar|shell|otp|2fa|autorizar|confirmar\s+otp|codigo\s+de\s+confirmacion|uptime|top|free|df|ps\s+aux|pm2\s+status|pm2\s+restart|systemctl)/i,
+
+    // Generacion criptografica y credenciales (Sector 2)
+    crypto: /(genera(r)?|crea(r)?|dame|necesito)\s+(una?\s+)?(contrase[nñ]a|password|clave|pin|token|key|credencial|secreto)|generador\s+criptografico|alta\s+entropia/i,
+
+    // Infraestructura: Docker, Disco, Red, SSL (Sector 2)
+    docker: /(docker|contenedor|contenedores|container|containers|auto-?healing|reiniciar\s+contenedor|levantar\s+contenedor|estado\s+docker)/i,
+    disco: /(espacio\s+en\s+disco|uso\s+de\s+disco|almacenamiento|disco\s+duro|purgar\s+disco|limpiar\s+disco|liberar\s+espacio|statfs|df\s+-h)/i,
+    infraestructura: /(infraestructura|estado\s+del\s+sistema|salud\s+del\s+sistema|monitor\s+ssl|certificado\s+ssl|caducidad\s+ssl|expiracion\s+ssl|ancho\s+de\s+banda|trafico\s+de\s+red|pico\s+de\s+red)/i,
+
+    // Gestion de tuneles Cloudflare / Tailscale (Sector 2)
+    tuneles: /(t[uú]nel(es)?|tunnel(s)?|cloudflare\s+tunnel|cloudflared|tailscale|abrir\s+t[uú]nel|cerrar\s+t[uú]nel|iniciar\s+t[uú]nel|detener\s+t[uú]nel|estado\s+del?\s+t[uú]nel)/i,
+
+    // Copias de seguridad cifradas DAVBAK (Sector 2)
+    backup: /(backup|copia\s+de\s+seguridad|respaldo|hacer\s+backup|crear\s+backup|backup\s+cifrado|davbak|restaurar\s+backup)/i
   };
 
   let matchClima = intents.clima.test(sinNombre);
@@ -160,9 +191,16 @@ export function seleccionarHerramientasPorIntencion(mensaje) {
   let matchNotas = intents.notas.test(sinNombre);
   let matchVCard = intents.vcard.test(sinNombre);
   let matchEncuestas = intents.encuestas.test(sinNombre);
+  let matchBash = intents.bash.test(sinNombre);
+  let matchCrypto = intents.crypto.test(sinNombre);
+  let matchDocker = intents.docker.test(sinNombre);
+  let matchDisco = intents.disco.test(sinNombre);
+  let matchInfra = intents.infraestructura.test(sinNombre);
+  let matchTunel = intents.tuneles.test(sinNombre);
+  let matchBackup = intents.backup.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
-  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas) {
+  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup) {
     return [];
   }
 
@@ -222,6 +260,26 @@ export function seleccionarHerramientasPorIntencion(mensaje) {
 
   if (matchEncuestas) {
     tools.push(...herramientasJarvis.filter(h => h.function.name === 'crear_encuesta_whatsapp'));
+  }
+
+  if (matchBash) {
+    tools.push(...herramientasJarvis.filter(h => h.function.name === 'execute_bash_command' || h.function.name === 'confirm_bash_otp'));
+  }
+
+  if (matchCrypto) {
+    tools.push(...herramientasJarvis.filter(h => h.function.name === 'generate_crypto_credential'));
+  }
+
+  if (matchDocker || matchDisco || matchInfra) {
+    tools.push(...herramientasJarvis.filter(h => h.function.name === 'get_infrastructure_status'));
+  }
+
+  if (matchTunel) {
+    tools.push(...herramientasJarvis.filter(h => h.function.name === 'manage_tunnel'));
+  }
+
+  if (matchBackup) {
+    tools.push(...herramientasJarvis.filter(h => h.function.name === 'trigger_encrypted_backup'));
   }
 
   // Safety Net: si no encajó en ninguna categoría pero tampoco es chit-chat, pasar todas las herramientas
@@ -310,7 +368,12 @@ Directrices de selección:
 4. SECOND BRAIN (MEMORIA PERSONAL): Para guardar hechos o datos personales (claves, cumpleaños, tallas, correos), invoca "guardar_memoria". Para consultar datos del pasado, "buscar_memoria". Para borrar, "olvidar_memoria".
 5. SNIPER DE PRECIOS: Para vigilar un producto u oferta si baja de precio, invoca "vigilar_producto". Para listar, "listar_productos_vigilados".
 6. NOTICIAS Y NAVEGADOR PLAYWRIGHT: Para noticias de actualidad, invoca "obtener_noticias_actuales". Para abrir o inspeccionar un enlace o artículo web con el navegador, invoca "navegar_y_leer_noticia" o "resumir_enlace".
-7. ESTADO DEL SISTEMA: Para consultar la salud del servidor o el estado de Minecraft, invoca "consultar_estado_servidor".`;
+7. ESTADO DEL SISTEMA: Para consultar la salud del servidor o el estado de Minecraft, invoca "consultar_estado_servidor".
+8. TERMINAL Y BASH: Para ejecutar comandos en consola bash, invoca "execute_bash_command". Para confirmar autorizaciones OTP pendientes, invoca "confirm_bash_otp".
+9. GENERADOR CRIPTOGRAFICO: Para generar contraseñas seguras, PINs, tokens o claves criptograficas, invoca "generate_crypto_credential".
+10. INFRAESTRUCTURA Y SERVICIOS: Para consultar el estado de Docker, espacio en disco, red o certificados SSL, invoca "get_infrastructure_status".
+11. GESTION DE TUNELES: Para consultar estado o arrancar/detener tuneles Cloudflare o Tailscale, invoca "manage_tunnel".
+12. COPIAS DE SEGURIDAD: Para generar backups cifrados AES-256-GCM inmediatos, invoca "trigger_encrypted_backup".`;
   }
 
   const mensajes = [
@@ -518,6 +581,137 @@ Directrices de selección:
         resultadoTool = `Tarjeta vCard digital generada para ${args.nombre} (${args.telefono}${args.organizacion ? ' - ' + args.organizacion : ''}). Tramitado para envío al chat de WhatsApp.`;
       } else if (nombreFuncion === 'crear_encuesta_whatsapp') {
         resultadoTool = `Encuesta configurada con éxito: "${args.pregunta}" (${args.opciones?.length || 0} opciones). Publicada en el chat.`;
+      } else if (nombreFuncion === 'execute_bash_command') {
+        const cmd = args.comando || '';
+        const res = await requestExecution(cmd);
+        if (res.status === 'EXECUTED') {
+          resultadoTool = `Comando ejecutado con exito (Codigo: ${res.exitCode}):\n${res.stdout || res.stderr || 'Comando completado sin salida'}`;
+        } else if (res.status === 'OTP_REQUIRED') {
+          resultadoTool = `El comando "${cmd}" es critico (${res.reason}). Se requiere confirmacion 2FA. Codigo OTP de 6 digitos generado: ${res.otpCode} (Validez: ${res.ttlSeconds} segundos, ID: ${res.commandId}). Confirma con confirm_bash_otp o "confirmar otp ${res.otpCode}".`;
+        } else if (res.status === 'FORBIDDEN') {
+          resultadoTool = `Comando denegado por politica de seguridad: ${res.reason}`;
+        } else {
+          resultadoTool = `Fallo en la ejecucion del comando: ${res.error || res.status}`;
+        }
+      } else if (nombreFuncion === 'confirm_bash_otp') {
+        const res = await confirmAndExecute(args.id_comando || args.otp, args.otp);
+        if (res.status === 'EXECUTED') {
+          resultadoTool = `Autorizacion 2FA confirmada con exito. Comando "${res.command}" ejecutado:\n${res.stdout || res.stderr || 'Comando completado sin salida'}`;
+        } else if (res.status === 'INVALID_OTP') {
+          resultadoTool = `Codigo OTP invalido: ${res.error}`;
+        } else if (res.status === 'EXPIRED') {
+          resultadoTool = `El codigo OTP ha expirado. Por favor, vuelve a solicitar el comando.`;
+        } else {
+          resultadoTool = `Error en autorizacion OTP: ${res.error || res.status}`;
+        }
+      } else if (nombreFuncion === 'generate_crypto_credential') {
+        const tipo = (args.tipo || 'password').toLowerCase();
+        let valorSecreto = '';
+        let info = '';
+
+        if (tipo === 'password') {
+          const resPwd = generatePassword(args.longitud || 16, { detailed: true });
+          valorSecreto = resPwd.password;
+          info = `Password generado (Longitud: ${resPwd.length}, Entropia: ${resPwd.entropy} bits): ${valorSecreto}`;
+        } else if (tipo === 'pin') {
+          valorSecreto = generatePin(args.longitud || 6);
+          info = `PIN numerico generado (${args.longitud || 6} digitos): ${valorSecreto}`;
+        } else if (tipo === 'token') {
+          valorSecreto = generateToken(args.longitud || 32);
+          info = `Token criptografico generado (${args.longitud || 32} bytes): ${valorSecreto}`;
+        } else if (tipo === 'key') {
+          const algo = args.algoritmo || 'aes-256';
+          const resKey = generateCryptoKey(algo, { detailed: true });
+          valorSecreto = resKey.key;
+          info = `Clave criptografica ${algo.toUpperCase()} (${resKey.bitLength} bits): ${valorSecreto}`;
+        } else {
+          valorSecreto = generatePassword(16);
+          info = `Credencial generada: ${valorSecreto}`;
+        }
+
+        if (args.guardar_en_memoria) {
+          const nombreClave = args.nombre_clave || `Credencial ${tipo.toUpperCase()}`;
+          const resMem = await saveCredentialToMemory(nombreClave, valorSecreto, args.notas || '');
+          if (resMem.ok) {
+            info += `\nCredencial archivada de forma segura en el Second Brain bajo la clave "${nombreClave}".`;
+          } else {
+            info += `\nAviso: No se pudo archivar en el Second Brain: ${resMem.error}`;
+          }
+        }
+        resultadoTool = info;
+      } else if (nombreFuncion === 'get_infrastructure_status') {
+        const lineas = ['[ESTADO DE INFRAESTRUCTURA]'];
+        
+        if (args.incluir_docker !== false) {
+          try {
+            const containers = await inspectContainers();
+            lineas.push(`Contenedores Docker (${containers.length}):`);
+            for (const c of containers) {
+              lineas.push(`- ${c.name} (${c.id.slice(0, 12)}): ${c.status} (Uptime: ${c.uptime || 'N/A'})`);
+            }
+          } catch (errDock) {
+            lineas.push(`Docker: Error al consultar estado (${errDock.message})`);
+          }
+        }
+
+        if (args.incluir_disco !== false) {
+          try {
+            const disco = checkDiskUsage('/');
+            const libreGB = (disco.freeBytes / (1024 ** 3)).toFixed(2);
+            const totalGB = (disco.totalBytes / (1024 ** 3)).toFixed(2);
+            lineas.push(`Almacenamiento en disco: ${disco.percentUsed}% en uso (${libreGB} GB libres de ${totalGB} GB)`);
+          } catch (errDisk) {
+            lineas.push(`Disco: Error al inspeccionar almacenamiento (${errDisk.message})`);
+          }
+        }
+
+        if (args.incluir_red !== false) {
+          try {
+            const net = await readNetworkBytes();
+            const rxMB = (net.rxBytes / (1024 ** 2)).toFixed(2);
+            const txMB = (net.txBytes / (1024 ** 2)).toFixed(2);
+            lineas.push(`Trafico de red acumulado (${net.iface}): RX ${rxMB} MB | TX ${txMB} MB`);
+          } catch (errNet) {
+            lineas.push(`Red: No disponible (${errNet.message})`);
+          }
+        }
+
+        if (args.dominio_ssl) {
+          try {
+            const ssl = await checkCertificateExpiry(args.dominio_ssl, 443);
+            lineas.push(`Certificado SSL (${ssl.host}): ${ssl.daysRemaining} dias restantes (Caduca: ${ssl.validTo})`);
+          } catch (errSsl) {
+            lineas.push(`SSL (${args.dominio_ssl}): Error al inspeccionar certificado (${errSsl.message})`);
+          }
+        }
+
+        resultadoTool = lineas.join('\n');
+      } else if (nombreFuncion === 'manage_tunnel') {
+        const tipo = args.tipo_tunel;
+        const accion = args.accion;
+        const nombre = args.nombre_tunel;
+
+        if (accion === 'status') {
+          const res = await getTunnelStatus(tipo, { tunnelName: nombre });
+          resultadoTool = `Estado del tunel ${tipo.toUpperCase()}: ${res.running ? 'ACTIVO Y EN LINEA' : 'DETENIDO'} (Instalado: ${res.installed ? 'SI' : 'NO'})`;
+        } else if (accion === 'start') {
+          const res = await startTunnel(tipo, { tunnelName: nombre });
+          resultadoTool = res.success ? `Tunel ${tipo} iniciado con exito: ${res.message}` : `Fallo al iniciar tunel ${tipo}: ${res.message}`;
+        } else if (accion === 'stop') {
+          const res = await stopTunnel(tipo, { tunnelName: nombre });
+          resultadoTool = res.success ? `Tunel ${tipo} detenido con exito: ${res.message}` : `Fallo al detener tunel ${tipo}: ${res.message}`;
+        } else {
+          resultadoTool = `Accion de tunel desconocida: ${accion}`;
+        }
+      } else if (nombreFuncion === 'trigger_encrypted_backup') {
+        const pass = args.passphrase || process.env.BACKUP_PASSPHRASE || process.env.DAVIS_BACKUP_KEY || 'davis_master_passphrase_2026';
+        try {
+          const res = await createEncryptedBackup({ passphrase: pass });
+          const tamanoKB = (res.sizeBytes / 1024).toFixed(2);
+          resultadoTool = `Copia de seguridad cifrada completada con exito (AES-256-GCM DAVBAK01).\nArchivo: ${res.backupPath}\nTamano: ${tamanoKB} KB (${res.fileCount} ficheros incluidos)\nSHA256: ${res.sha256}`;
+        } catch (errBak) {
+          resultadoTool = `Error al generar la copia de seguridad cifrada: ${errBak.message}`;
+        }
       } else {
         resultadoTool = 'Función no reconocida.';
       }
