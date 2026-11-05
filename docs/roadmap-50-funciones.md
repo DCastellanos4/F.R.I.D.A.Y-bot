@@ -10,8 +10,8 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ## Resumen
 
-- Implementadas: 11 de 50 operativas (nº 2 CRM, nº 5 planificador, nº 6 flashcards, nº 17 procesos, nº 25 resumen mensual, nº 26 suscripciones, nº 27 presupuestos, nº 29 traductor, nº 30 respuestas sugeridas, nº 31 buscador de historial, nº 33 resumen de enlaces) + 3 pendientes de config del propietario (nº 1 radar; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: via de texto operativa, lectura de imagen pendiente de configurar el adaptador).
-- Pendientes: 46 de 50.
+- Implementadas: 15 de 50 operativas (nº 2, 5, 6, 17, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36) + 3 pendientes de config del propietario (nº 1 radar; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: via de texto operativa, lectura de imagen pendiente de configurar el adaptador). La nº 36 lleva una dependencia externa relevante, ver su entrada.
+- Pendientes: 32 de 50 (50 - 15 operativas - 3 config-required).
 
 ## Detalle por funcion
 
@@ -87,15 +87,15 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 - **31. Buscador del historial** - Operativa (Bloque 5): herramienta buscar_en_historial busca un termino en el historial del chat (solo lectura, coincidencias mas recientes primero).
 
-- **32. Cumpleaños y fechas señaladas** - Pendiente. Bloque por priorizar.
+- **32. Cumpleaños y fechas señaladas** - Operativa (Bloque 6): registrar_fecha_senalada (dia y mes, anio opcional), listar y eliminar. Avisos proactivos solo con opt-in explicito (configurar_avisos_fechas con guard de intencion; registrar no implica opt-in): aviso el dia anterior y el mismo dia, una sola vez por fecha y anio, calendario Europe/Madrid.
 
 - **33. Resumen automático de enlaces** - Operativa (ya existia): herramienta resumir_enlace (y navegar_y_leer_noticia) resume enlaces con el modelo configurado.
 
-- **34. Snooze de conversaciones** - Pendiente. Bloque por priorizar.
+- **34. Snooze de conversaciones** - Operativa (Bloque 6): programar_snooze en el chat actual ("recuerdame este chat a las 18:00" o "en 2 horas"). Cada snooze es una peticion puntual de David: un solo aviso al llegar la hora, sin monitor permanente, y se puede cancelar.
 
-- **35. Estadísticas de grupos** - Pendiente. Bloque por priorizar.
+- **35. Estadísticas de grupos** - Operativa (Bloque 6): estadisticas_grupo cuenta mensajes, reparto por rol, actividad por dia y hora punta del historial que el bot ha visto de ese chat. Limitacion declarada: solo cubre lo que el bot ha procesado, no todo el historial de WhatsApp.
 
-- **36. Aviso de llegada** - Pendiente. Bloque por priorizar.
+- **36. Aviso de llegada** - Implementada (Bloque 6), con dependencia externa declarada: registrar_aviso_llegada con coordenadas del destino (si faltan, el bot pide el pin por WhatsApp). Vigila las ubicaciones (pin o en vivo) que llegan al chat; al entrar en el radio avisa una vez y se completa; caduca a las 12 h. DEPENDENCIA: el bot no tiene GPS propio; solo ve las ubicaciones que WhatsApp entrega al chat. Si la ubicacion en vivo se pausa, queda desactualizada o no se comparte, el aviso puede no dispararse. Probada con ubicaciones simuladas en la entrada real; el comportamiento con comparticion en vivo real queda por verificar en uso.
 
 ### Segundo cerebro
 
@@ -135,7 +135,9 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 2. **Bloque 2 - Estudio (nº 5 y 6)**: implementado en esta rama (planificador + flashcards sobre el sistema de recordatorios existente).
 3. **Bloque 3 - Finanzas (nº 24 a 27)**: registro de gastos, resumen mensual, suscripciones y presupuesto.
 4. **Bloque 4 - Servidor (nº 17 y 23)**: vigilante de CPU y watchdog externo del bot.
-5. **Resto**: se prioriza con David segun utilidad inmediata.
+5. **Bloque 5 - Comunicacion (nº 29 a 31, 33)**: traductor por chat, respuestas sugeridas, buscador de historial; resumen de enlaces ya existia.
+6. **Bloque 6 - Comunicacion (nº 32, 34, 35, 36)**: fechas senaladas, snooze de chats, estadisticas de grupos y aviso de llegada.
+7. **Resto**: se prioriza con David segun utilidad inmediata.
 
 ## Configuracion que necesita David para el bloque 1
 
