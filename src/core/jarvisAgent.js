@@ -41,6 +41,10 @@ import { registrarGasto, eliminarGasto, listarGastos, resumenMensual, registrarS
 import { registrarProceso, dejarDeVigilar, listarProcesos, configurarVigilancia } from '../services/processWatchdogService.js';
 import { activarTraductor, desactivarTraductor } from '../services/translatorModeService.js';
 import { buscarEnHistorial } from '../services/historySearchService.js';
+import { registrarFechaSenalada, listarFechasSenaladas, eliminarFechaSenalada, proximasFechas, configurarAvisosFechas } from '../services/specialDatesService.js';
+import { programarSnooze, listarSnoozes, cancelarSnooze } from '../services/snoozeService.js';
+import { estadisticasChat } from '../services/groupStatsService.js';
+import { registrarAvisoLlegada, listarAvisosLlegada, cancelarAvisoLlegada } from '../services/arrivalWatchService.js';
 import { escanearRadar, configurarRadar, leerConfigRadar, iniciarMonitorRadar } from '../services/jobRadarService.js';
 import {
   setVipMode,
@@ -185,7 +189,7 @@ export function analizarIntencion(mensaje) {
     estudio: /(ex[aá]men(es)?|\bestudiar\b|plan\s+de\s+estudio|temario|asignatura(s)?|flashcard(s)?|tarjeta(s)?\s+de\s+repaso|repaso\s+espaciado|\brepasar\b)/i,
     finanzas: /(\bgastos?\b|\bgast[eé]\b|\btickets?\b|recibo(s)?|suscripci[oó]n(es)?|presupuesto(s)?|\bfinanzas\b|cu[aá]nto\s+(he\s+|llevo\s+)?gastado|renovaci[oó]n\s+de)/i,
     procesos: /(\bvigil\w*\s+(el\s+|un\s+)?proceso|proceso\s+(caido|vivo|muerto|parado)|procesos\s+del\s+(vps|servidor)|vigilancia\s+de\s+procesos)/i,
-    comunicacion: /(\btraduc|\btraductor|qu[eé]\s+le\s+respondo|sugier\w*\s+respuesta|busca(r)?\s+en\s+(el\s+)?historial|qu[eé]\s+te\s+dije)/i,
+    comunicacion: /(\btraduc|\btraductor|qu[eé]\s+le\s+respondo|sugier\w*\s+respuesta|busca(r)?\s+en\s+(el\s+)?historial|qu[eé]\s+te\s+dije|cumplea[nñ]os|\bcumple\b|fecha\s+se[nñ]alada|aniversario|\bsnooze\b|recu[eé]rdame\s+(este|el|lo de este)\s+(chat|grupo)|estad[ií]sticas?\s+(del|de este|de este grupo|grupo)|cu[aá]ndo\s+(llegue|llego)|av[ií]sa(me)?\s+cuando\s+llegue|aviso\s+de\s+llegada)/i,
 
     // Terminal, consola bash y codigos 2FA OTP (Sector 2)
     bash: /(consola|terminal|bash|comando|ejecuta|ejecutar|lanzar|shell|otp|2fa|autorizar|confirmar\s+otp|codigo\s+de\s+confirmacion|uptime|top|free|df|ps\s+aux|pm2\s+status|pm2\s+restart|systemctl)/i,
@@ -328,7 +332,7 @@ export function analizarIntencion(mensaje) {
     tools.push(...herramientasJarvis.filter(h => ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'].includes(h.function.name)));
   }
   if (matchComunicacion) {
-    tools.push(...herramientasJarvis.filter(h => ['activar_traductor', 'desactivar_traductor', 'sugerir_respuestas', 'buscar_en_historial'].includes(h.function.name)));
+    tools.push(...herramientasJarvis.filter(h => ['activar_traductor', 'desactivar_traductor', 'sugerir_respuestas', 'buscar_en_historial', 'registrar_fecha_senalada', 'listar_fechas_senaladas', 'eliminar_fecha_senalada', 'configurar_avisos_fechas', 'programar_snooze', 'listar_snoozes', 'cancelar_snooze', 'estadisticas_grupo', 'registrar_aviso_llegada', 'listar_avisos_llegada', 'cancelar_aviso_llegada'].includes(h.function.name)));
   }
 
   // Safety Net: si no encajó en ninguna categoría pero tampoco es chit-chat, pasar todas las herramientas
@@ -664,6 +668,60 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
             ? (res.activo ? 'Avisos de suscripciones activados, David: te avisare 3 dias antes de cada renovacion.' : 'Avisos de suscripciones desactivados, David.')
             : `No he podido cambiar los avisos: ${res.error}`;
         }
+      } else if (nombreFuncion === 'registrar_fecha_senalada') {
+        const res = registrarFechaSenalada({ nombre: args.nombre, dia: args.dia, mes: args.mes, anio: args.anio, descripcion: args.descripcion }, { rutaArchivo: opciones.rutaArchivoFechas });
+        resultadoTool = res.ok
+          ? `Apuntado, David: ${res.fecha.nombre}, ${res.fecha.dia}/${res.fecha.mes}${res.fecha.anio ? '/' + res.fecha.anio : ''}. Si quieres que te avise, dimelo: "activa los avisos de fechas".`
+          : `No lo he podido apuntar: ${res.error}`;
+      } else if (nombreFuncion === 'listar_fechas_senaladas') {
+        const proximas = proximasFechas({ dias: 366 }, { rutaArchivo: opciones.rutaArchivoFechas });
+        resultadoTool = proximas.length === 0
+          ? 'No tienes fechas senaladas apuntadas. Dime por ejemplo: "apunta el cumple de Ana, 15 de marzo".'
+          : 'Fechas senaladas (por proximidad):\n' + proximas.map((f) => `- ${f.nombre}: ${String(f.dia).padStart(2, '0')}/${String(f.mes).padStart(2, '0')}${f.anio ? '/' + f.anio : ''} (en ${f.diasQueFaltan} dia(s))`).join('\n');
+      } else if (nombreFuncion === 'eliminar_fecha_senalada') {
+        const res = eliminarFechaSenalada(args.criterio, { rutaArchivo: opciones.rutaArchivoFechas });
+        resultadoTool = res.ok ? `Borrada, David: ${res.fecha.nombre} (${res.fecha.dia}/${res.fecha.mes}).` : res.error;
+      } else if (nombreFuncion === 'configurar_avisos_fechas') {
+        const pideActivarFechas = /(activa(r|s|do)?|enciend(e|er)|pon\s+en\s+marcha)\s+.{0,30}(aviso|fecha|cumplea)/i.test(opciones.mensajeUsuario || '');
+        if (args.activo === true && !pideActivarFechas) {
+          resultadoTool = 'Para activar los avisos de fechas senaladas necesito que me lo pidas tu directamente (por ejemplo: "activa los avisos de fechas").';
+        } else {
+          const res = configurarAvisosFechas({ activo: args.activo === true }, { rutaArchivo: opciones.rutaArchivoFechas });
+          resultadoTool = res.ok
+            ? (res.activo ? 'Avisos de fechas activados, David: te avisare el dia anterior y el mismo dia.' : 'Avisos de fechas desactivados, David.')
+            : `No he podido cambiar los avisos: ${res.error}`;
+        }
+      } else if (nombreFuncion === 'programar_snooze') {
+        const res = programarSnooze({ chatId: opciones.chatId, minutos: args.minutos, hora: args.hora, nota: args.nota }, { rutaArchivo: opciones.rutaArchivoSnoozes });
+        resultadoTool = res.ok
+          ? `Anotado, David: te recordare volver a este chat el ${new Date(res.snooze.activarEn).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })}.`
+          : res.error;
+      } else if (nombreFuncion === 'listar_snoozes') {
+        const pendientes = listarSnoozes({ rutaArchivo: opciones.rutaArchivoSnoozes });
+        resultadoTool = pendientes.length === 0
+          ? 'No tienes recordatorios de chats pendientes.'
+          : 'Recordatorios de chats pendientes:\n' + pendientes.map((s) => `- ${new Date(s.activarEn).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })}${s.nota ? ': ' + s.nota : ''}`).join('\n');
+      } else if (nombreFuncion === 'cancelar_snooze') {
+        const res = cancelarSnooze({ chatId: opciones.chatId, id: args.id }, { rutaArchivo: opciones.rutaArchivoSnoozes });
+        resultadoTool = res.ok ? 'Cancelado, David: ya no te recordare ese chat.' : res.error;
+      } else if (nombreFuncion === 'estadisticas_grupo') {
+        const res = estadisticasChat({ chatId: opciones.chatId });
+        resultadoTool = !res.ok
+          ? res.error
+          : `Estadisticas de este chat, David (ojo: solo cuento lo que he visto desde que estoy conectado, ${res.cobertura}):\n- Total de mensajes: ${res.total} (tuyos: ${res.tuyos}, mios: ${res.mios})${res.horaMasActiva ? `\n- Hora mas activa: sobre las ${res.horaMasActiva.hora}:00 (${res.horaMasActiva.mensajes} mensajes)` : ''}\n- Por dia: ${Object.entries(res.porDia).map(([d, n]) => `${d}: ${n}`).join(', ') || 'sin fechas registradas'}`;
+      } else if (nombreFuncion === 'registrar_aviso_llegada') {
+        const res = registrarAvisoLlegada({ chatId: opciones.chatId, nombre: args.nombre, latitud: args.latitud, longitud: args.longitud, radioMetros: args.radioMetros }, { rutaArchivo: opciones.rutaArchivoLlegada });
+        resultadoTool = res.ok
+          ? `Aviso de llegada activo, David: cuando la ubicacion de este chat entre a ${res.aviso.radioMetros} m de ${res.aviso.nombre}, te aviso una vez. Caduca en 12 horas.`
+          : res.error;
+      } else if (nombreFuncion === 'listar_avisos_llegada') {
+        const activos = listarAvisosLlegada({ rutaArchivo: opciones.rutaArchivoLlegada });
+        resultadoTool = activos.length === 0
+          ? 'No hay avisos de llegada activos.'
+          : 'Avisos de llegada activos:\n' + activos.map((a) => `- ${a.nombre} (radio ${a.radioMetros} m, caduca ${new Date(a.caducaEn).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })})`).join('\n');
+      } else if (nombreFuncion === 'cancelar_aviso_llegada') {
+        const res = cancelarAvisoLlegada(args.criterio, { rutaArchivo: opciones.rutaArchivoLlegada });
+        resultadoTool = res.ok ? `Cancelado el aviso de llegada a ${res.aviso.nombre}, David.` : res.error;
       } else if (nombreFuncion === 'estado_presupuestos') {
         const filas = estadoPresupuestos({ mes: args.mes }, { rutaArchivo: opciones.rutaArchivoFinanzas });
         resultadoTool = filas.length === 0
@@ -1105,6 +1163,7 @@ Directrices de selección:
 13b. ESTUDIO: Para crear planes de estudio, "planificar_estudio" (asignatura, fechaExamen AAAA-MM-DD, temas; la hora de estudio solo si David la indica, nunca inventada); si ya hay plan sin recordatorios, "programar_recordatorios_estudio" con la hora elegida. Consulta con "listar_planes_estudio" y avance con "registrar_avance_estudio". Para tarjetas: "crear_flashcard", "repasar_flashcards" y "responder_flashcard"; las rondas proactivas se configuran con "configurar_repaso_flashcards" y solo se activan si David lo pide textualmente.
 13c. FINANZAS: Los gastos se anotan con "registrar_gasto" (importe y comercio obligatorios; fecha por defecto hoy), se consultan con "listar_gastos" y "resumen_gastos_mes". Suscripciones con "registrar_suscripcion"/"listar_suscripciones" (el vigilante avisa 3 dias antes de renovar, solo si David las registro el). Presupuestos con "configurar_presupuesto"/"estado_presupuestos" (alerta al 80%). Los avisos de renovacion solo se activan si David lo pide textualmente ("configurar_avisos_suscripciones"). Nunca inventes importes, comercios ni fechas: si faltan, preguntalos.
 13d. PROCESOS: David registra procesos del VPS a vigilar con "vigilar_proceso" (nombre, patron opcional, limites de CPU/memoria opcionales) y los consulta con "listar_procesos_vigilados"/"dejar_vigilar_proceso". La vigilancia proactiva solo se activa si el la pide textualmente ("activa la vigilancia de procesos", herramienta "configurar_vigilante_procesos"). El vigilante solo mide y avisa; nunca reinicia ni mata procesos.
+13f. FECHAS Y CHATS: fechas senaladas (registrar_fecha_senalada con dia y mes; los avisos proactivos solo con configurar_avisos_fechas y peticion textual de David), snooze de chats (programar_snooze en este chat, un solo aviso), estadisticas del chat (estadisticas_grupo, solo lo que el bot ha visto) y aviso de llegada (registrar_aviso_llegada necesita latitud/longitud; si faltan, pide a David que comparta el pin del destino).
 13e. COMUNICACION: modo traductor por chat ("activar_traductor" con el idioma; David lo desactiva con "desactivar_traductor"), sugerencias de respuesta ("sugerir_respuestas": propon 3, nunca las envies) y buscador del historial del chat ("buscar_en_historial").
 14. EMPLEO Y PRACTICAS: Para registrar o actualizar candidaturas, "registrar_candidatura" y "actualizar_candidatura"; para consultarlas, "listar_candidaturas". Para lanzar el radar de ofertas, "escanear_ofertas_empleo"; para configurarlo (palabras clave, ubicacion, activacion), "configurar_radar_ofertas". Si una fuente requiere credenciales, informa a David de que configuracion falta en lugar de simular resultados.`;
   }

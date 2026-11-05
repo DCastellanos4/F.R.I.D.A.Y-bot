@@ -1050,6 +1050,143 @@ export const herramientasJarvis = [
         required: ['termino']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'registrar_fecha_senalada',
+      description: 'Apunta un cumpleanos o fecha senalada (dia y mes; anio opcional). Registrarla NO activa avisos proactivos: eso es aparte con configurar_avisos_fechas.',
+      parameters: {
+        type: 'object',
+        properties: {
+          nombre: { type: 'string', description: 'De quien o de que es la fecha (ej: "cumple de Ana").' },
+          dia: { type: 'number', description: 'Dia del mes (1-31).' },
+          mes: { type: 'number', description: 'Mes (1-12).' },
+          anio: { type: 'number', description: 'Anio opcional (ej: ano de nacimiento).' },
+          descripcion: { type: 'string', description: 'Detalle opcional.' }
+        },
+        required: ['nombre', 'dia', 'mes']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_fechas_senaladas',
+      description: 'Lista las fechas senaladas registradas, ordenadas por proximidad en el calendario.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'eliminar_fecha_senalada',
+      description: 'Borra una fecha senalada por nombre o id.',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string', description: 'Nombre o id de la fecha.' }
+        },
+        required: ['criterio']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'configurar_avisos_fechas',
+      description: 'Activa o desactiva los avisos proactivos de fechas senaladas (aviso el dia anterior y el mismo dia). Solo el propietario puede activarlos pidiendolo textualmente.',
+      parameters: {
+        type: 'object',
+        properties: {
+          activo: { type: 'boolean', description: 'true para activar, false para desactivar.' }
+        },
+        required: ['activo']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'programar_snooze',
+      description: 'Recuerda a David volver a este chat mas tarde ("recuerdame este chat a las 18:00" o "en 2 horas"). Un solo aviso, a la hora pedida.',
+      parameters: {
+        type: 'object',
+        properties: {
+          minutos: { type: 'number', description: 'Minutos en el futuro (alternativa a hora).' },
+          hora: { type: 'string', description: 'Hora concreta HH:MM en horario de Madrid (alternativa a minutos).' },
+          nota: { type: 'string', description: 'Nota opcional sobre de que iba el chat.' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_snoozes',
+      description: 'Lista los recordatorios de chats pendientes.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'cancelar_snooze',
+      description: 'Cancela el recordatorio pendiente de este chat (o por id).',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Id del snooze; sin id, el de este chat.' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'estadisticas_grupo',
+      description: 'Estadisticas del historial que el bot ha visto de este chat o grupo: total de mensajes, reparto por rol, actividad por dia y hora punta. Solo cubre lo que el bot ha procesado, no todo WhatsApp.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'registrar_aviso_llegada',
+      description: 'Avisa cuando la ubicacion de este chat entre en el radio de un destino ("avisame cuando llegue a casa"). Necesita coordenadas (latitud/longitud); si faltan, pide a David que comparta el pin del destino. Un solo aviso; caduca a las 12 horas.',
+      parameters: {
+        type: 'object',
+        properties: {
+          nombre: { type: 'string', description: 'Nombre del destino (ej: "casa").' },
+          latitud: { type: 'number', description: 'Latitud del destino.' },
+          longitud: { type: 'number', description: 'Longitud del destino.' },
+          radioMetros: { type: 'number', description: 'Radio en metros (50-5000, por defecto 200).' }
+        },
+        required: ['nombre', 'latitud', 'longitud']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_avisos_llegada',
+      description: 'Lista los avisos de llegada activos.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'cancelar_aviso_llegada',
+      description: 'Cancela un aviso de llegada activo por nombre o id.',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string', description: 'Nombre o id del aviso.' }
+        },
+        required: ['criterio']
+      }
+    }
   }
 ];
 
@@ -1082,7 +1219,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   backup: ['trigger_encrypted_backup'],
   empleo: ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura', 'escanear_ofertas_empleo', 'configurar_radar_ofertas'],
   estudio: ['planificar_estudio', 'listar_planes_estudio', 'registrar_avance_estudio', 'programar_recordatorios_estudio', 'crear_flashcard', 'repasar_flashcards', 'responder_flashcard', 'configurar_repaso_flashcards'],
-  comunicacion: ['activar_traductor', 'desactivar_traductor', 'sugerir_respuestas', 'buscar_en_historial'],
+  comunicacion: ['activar_traductor', 'desactivar_traductor', 'sugerir_respuestas', 'buscar_en_historial', 'registrar_fecha_senalada', 'listar_fechas_senaladas', 'eliminar_fecha_senalada', 'configurar_avisos_fechas', 'programar_snooze', 'listar_snoozes', 'cancelar_snooze', 'estadisticas_grupo', 'registrar_aviso_llegada', 'listar_avisos_llegada', 'cancelar_aviso_llegada'],
   procesos: ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'],
   finanzas: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'],
   conversacion: []
