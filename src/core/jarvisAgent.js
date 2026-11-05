@@ -60,6 +60,10 @@ import { recomendarSeriePelicula } from '../services/recommenderService.js';
 import { crearQuedada, listarQuedadas, redactarInvitacion } from '../services/quedadasService.js';
 import { resumenDeportivo } from '../services/sportsService.js';
 import { configurarModoNocturno } from '../services/quietHoursService.js';
+import { iniciarEntrevista, terminarEntrevista } from '../services/interviewService.js';
+import { analizarCvContraOferta } from '../services/cvAnalyzerService.js';
+import { resumirApuntes } from '../services/notesSummarizerService.js';
+import { registrarEntrega, listarEntregas, eliminarEntrega } from '../services/deadlinesService.js';
 import { escanearRadar, configurarRadar, leerConfigRadar, iniciarMonitorRadar } from '../services/jobRadarService.js';
 import {
   setVipMode,
@@ -210,6 +214,8 @@ export function analizarIntencion(mensaje) {
     cerebro: /(contacto\s+de|agenda\s+de\s+contactos|qu[eé]\s+(s[eé]|tengo)\s+(de|sobre)\s+\w|busca(r)?\s+(en\s+)?(mis\s+)?(recuerdos|memorias|notas)|digest|resumen\s+(de\s+)?(mi\s+)?segundo\s+cerebro|\bwiki\b|guarda(r)?\s+(esta\s+)?(p[aá]gina|pagina|web|enlace)\s+en\s+(mis\s+)?notas|captura(r)?\s+(esta\s+)?(p[aá]gina|web)|qu[eé]\s+dicen\s+mis\s+(apuntes|notas|documentos)|pregunta\s+(a|sobre)\s+mis\s+(apuntes|notas|documentos))/i,
     // Bienestar (nº 43-50): diario, habitos, menus, compra, recomendaciones, quedadas, deporte y modo nocturno
     bienestar: /(\bdiario\b|apunta(r)?\s+en\s+(el\s+|mi\s+)?diario|qu[eé]\s+(escrib[ií]|puse)\s+(en\s+)?(el\s+)?diario|\bh[aá]bito|h[aá]bitos|racha\s+de\s+d[ií]as|men[uú]\s+(de\s+la\s+)?semana|men[uú]s?\s+semanal|qu[eé]\s+(como|cenamos?|comemos)|lista\s+de\s+la\s+compra|a[nñ]ade\s+.\s+a\s+la\s+compra|tacha(r)?\s+.\s+de\s+la\s+compra|recomi[eé]nda(me)?\s+(una\s+)?(pel[ií]cula|peli|serie)|qu[eé]\s+(veo|me\s+pongo\s+a\s+ver)|\bquedada\b|organiza(r)?\s+(una\s+)?quedada|invitaci[oó]n\s+(a\s+|de\s+)?(la\s+)?quedada|resumen\s+deportivo|qu[eé]\s+(ha\s+pasado|pasa)\s+en\s+(el\s+)?deporte|resultados?\s+deportiv|modo\s+(nocturno|desconexi[oó]n)|no\s+me\s+molestes\s+por\s+la\s+noche|silencia\s+los\s+avisos)/i,
+    // Carrera y estudios (nº 3, 4, 7, 8): simulacro de entrevista, CV contra oferta, resumen de apuntes y calendario de entregas
+    carrera: /(simulacro\s+de\s+entrevista|practica(r)?\s+(una\s+)?entrevista|entrevista\s+(t[eé]cnica|de\s+trabajo)|analiza(r)?\s+(mi\s+)?cv|encaja(r)?\s+(mi\s+)?cv|mi\s+cv\s+(con|para)|resume(me)?\s+(mis\s+)?apuntes|resumen\s+de\s+(mis\s+)?apuntes|apunta(r)?\s+(un(a)?\s+)?(entrega|ex[aá]men)|\bentregas?\b\s+(y|o)\s+ex[aá]menes|qu[eé]\s+(entregas|ex[aá]menes)\s+(tengo|hay)|cu[aá]ndo\s+(es|tengo)\s+(el|la|mi)\s+(ex[aá]men|entrega)|calendario\s+de\s+(entregas|ex[aá]menes))/i,
     comunicacion: /(\btraduc|\btraductor|qu[eé]\s+le\s+respondo|sugier\w*\s+respuesta|busca(r)?\s+en\s+(el\s+)?historial|qu[eé]\s+te\s+dije|cumplea[nñ]os|\bcumple\b|fecha\s+se[nñ]alada|aniversario|\bsnooze\b|recu[eé]rdame\s+(este|el|lo de este)\s+(chat|grupo)|estad[ií]sticas?\s+(del|de este|de este grupo|grupo)|cu[aá]ndo\s+(llegue|llego)|av[ií]sa(me)?\s+cuando\s+llegue|aviso\s+de\s+llegada)/i,
 
     // Terminal, consola bash y codigos 2FA OTP (Sector 2)
@@ -259,9 +265,10 @@ export function analizarIntencion(mensaje) {
   let matchTransporte = intents.transporte.test(sinNombre);
   let matchCerebro = intents.cerebro.test(sinNombre);
   let matchBienestar = intents.bienestar.test(sinNombre);
+  let matchCarrera = intents.carrera.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
-  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro && !matchBienestar) {
+  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro && !matchBienestar && !matchCarrera) {
     return { herramientas: [], intenciones: ['conversacion'], safetyNet: false, esChitChat: true };
   }
 
@@ -367,6 +374,9 @@ export function analizarIntencion(mensaje) {
   if (matchBienestar) {
     tools.push(...herramientasJarvis.filter(h => ['escribir_diario', 'leer_diario', 'registrar_habito', 'marcar_habito', 'listar_habitos', 'poner_menu', 'ver_menu', 'sugerir_menu', 'anadir_compra', 'listar_compra', 'tachar_compra', 'vaciar_compra', 'recomendar_serie_pelicula', 'crear_quedada', 'listar_quedadas', 'redactar_invitacion', 'resumen_deportivo', 'configurar_modo_nocturno'].includes(h.function.name)));
   }
+  if (matchCarrera) {
+    tools.push(...herramientasJarvis.filter(h => ['iniciar_simulacro_entrevista', 'analizar_cv_oferta', 'resumir_apuntes', 'registrar_entrega', 'listar_entregas', 'eliminar_entrega'].includes(h.function.name)));
+  }
 
   // Safety Net: si no encajó en ninguna categoría pero tampoco es chit-chat, pasar todas las herramientas
   if (tools.length === 0) {
@@ -404,6 +414,7 @@ export function analizarIntencion(mensaje) {
   if (matchTransporte) intenciones.push('transporte');
   if (matchCerebro) intenciones.push('cerebro');
   if (matchBienestar) intenciones.push('bienestar');
+  if (matchCarrera) intenciones.push('carrera');
 
   // Eliminar duplicados
   const unicas = [];
@@ -904,6 +915,32 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
             ? `Modo desconexion nocturno activado, David: de ${res.config.desde} a ${res.config.hasta} silencio los avisos proactivos no urgentes (esperan a que acabe la franja). Tus recordatorios puntuales suenan igual.`
             : 'Modo desconexion nocturno desactivado, David.')
           : res.error;
+      } else if (nombreFuncion === 'iniciar_simulacro_entrevista') {
+        const res = await iniciarEntrevista({ rol: args.rol, nivel: args.nivel }, { rutaArchivo: opciones.rutaArchivoEntrevistas, chatId: opciones.chatId, chatCompletion: opciones.chatCompletion });
+        resultadoTool = res.ok
+          ? `Simulacro abierto (${res.total} preguntas; se sale con "terminar entrevista"). Pregunta 1:\n${res.pregunta}`
+          : res.error;
+      } else if (nombreFuncion === 'analizar_cv_oferta') {
+        const res = await analizarCvContraOferta({ oferta: args.oferta, cvTexto: args.cvTexto }, { carpetaNotas: opciones.carpetaNotas, chatCompletion: opciones.chatCompletion });
+        resultadoTool = res.ok ? `Analisis del CV (fuente: ${res.fuenteCv}):\n${res.analisis}` : res.error;
+      } else if (nombreFuncion === 'resumir_apuntes') {
+        const res = await resumirApuntes({ texto: args.texto, criterio: args.criterio }, { carpetaNotas: opciones.carpetaNotas, chatCompletion: opciones.chatCompletion });
+        resultadoTool = res.ok
+          ? res.resumen + (res.fuentes && res.fuentes.length ? `\n\nApuntes usados: ${res.fuentes.join(', ')}` : '')
+          : res.error;
+      } else if (nombreFuncion === 'registrar_entrega') {
+        const res = registrarEntrega({ titulo: args.titulo, fecha: args.fecha, tipo: args.tipo }, { rutaArchivo: opciones.rutaArchivoEntregas });
+        resultadoTool = res.ok
+          ? `Apuntado, David: ${res.entrega.tipo} "${res.entrega.titulo}" el ${res.entrega.fecha}. Si quieres un aviso concreto, pideme un recordatorio para cuando te venga bien.`
+          : res.error;
+      } else if (nombreFuncion === 'listar_entregas') {
+        const lista = listarEntregas({ rutaArchivo: opciones.rutaArchivoEntregas });
+        resultadoTool = lista.length === 0
+          ? 'No tienes entregas ni examenes apuntados. Dime por ejemplo: "apunta un examen de estadistica el 2026-12-15".'
+          : 'Tus entregas y examenes:\n' + lista.map((e) => `- [${e.tipo}] ${e.titulo}: ${e.fecha} (${e.dias < 0 ? `paso hace ${-e.dias} dias` : e.dias === 0 ? 'HOY' : `quedan ${e.dias} dias`})`).join('\n');
+      } else if (nombreFuncion === 'eliminar_entrega') {
+        const res = eliminarEntrega(args.criterio, { rutaArchivo: opciones.rutaArchivoEntregas });
+        resultadoTool = res.ok ? `Eliminada, David: "${res.borrada.titulo}" del ${res.borrada.fecha}.` : res.error;
       } else if (nombreFuncion === 'estado_presupuestos') {
         const filas = estadoPresupuestos({ mes: args.mes }, { rutaArchivo: opciones.rutaArchivoFinanzas });
         resultadoTool = filas.length === 0
@@ -1347,6 +1384,7 @@ Directrices de selección:
 13d. PROCESOS: David registra procesos del VPS a vigilar con "vigilar_proceso" (nombre, patron opcional, limites de CPU/memoria opcionales) y los consulta con "listar_procesos_vigilados"/"dejar_vigilar_proceso". La vigilancia proactiva solo se activa si el la pide textualmente ("activa la vigilancia de procesos", herramienta "configurar_vigilante_procesos"). El vigilante solo mide y avisa; nunca reinicia ni mata procesos.
 13h. SEGUNDO CEREBRO: contactos (registrar_contacto / buscar_contacto / listar_contactos), busqueda semantica en memorias y notas (buscar_recuerdo_semantico), digest bajo demanda (generar_digest_cerebro; el envio semanal solo con configurar_digest_semanal y peticion textual de David), wiki navegable (generar_wiki), captura de paginas a notas (capturar_pagina) y preguntas a sus documentos (preguntar_documentos, siempre citando fuentes y sin inventar).
 13i. BIENESTAR: diario (escribir_diario/leer_diario), habitos con racha (registrar_habito/marcar_habito/listar_habitos, sin avisos proactivos), menu semanal (poner_menu/ver_menu; sugerir_menu solo propone, se guarda lo que David confirme), lista de la compra (anadir_compra/listar_compra/tachar_compra; vaciar_compra solo con peticion textual de David), recomendador de series y peliculas (recomendar_serie_pelicula, sin repetir), quedadas (crear_quedada/listar_quedadas; redactar_invitacion devuelve SOLO un borrador que David revisa y envia el: nunca lo mandes a terceros), resumen deportivo (resumen_deportivo, solo lo que digan los titulares reales) y modo desconexion nocturno (configurar_modo_nocturno: silencia avisos proactivos no urgentes en la franja; los recordatorios puntuales suenan igual).
+13j. CARRERA: simulacro de entrevista tecnica (iniciar_simulacro_entrevista: 5 preguntas por voz o texto; mientras este activo, cada mensaje de David se evalua; se sale con "terminar entrevista"), analisis de CV contra oferta (analizar_cv_oferta; el CV se pega o se busca en sus notas, nunca se inventa), resumen de apuntes (resumir_apuntes, citando las notas usadas) y calendario de entregas y examenes (registrar_entrega/listar_entregas/eliminar_entrega, con dias restantes; los avisos puntuales se piden como recordatorios normales).
 13g. TRANSPORTE MADRID (extra): paradas favoritas con registrar_parada_favorita (emt o cercanias; el Metro no tiene fuente publica de llegadas en vivo, dilo si lo piden) y consulta bajo demanda con proximas_llegadas_transporte. NUNCA programes avisos automaticos de transporte. Si la EMT responde config-required, explica que falta el acceso gratuito de MobilityLabs, no inventes llegadas.
 13f. FECHAS Y CHATS: fechas senaladas (registrar_fecha_senalada con dia y mes; los avisos proactivos solo con configurar_avisos_fechas y peticion textual de David), snooze de chats (programar_snooze en este chat, un solo aviso), estadisticas del chat (estadisticas_grupo, solo lo que el bot ha visto) y aviso de llegada (registrar_aviso_llegada necesita latitud/longitud; si faltan, pide a David que comparta el pin del destino).
 13e. COMUNICACION: modo traductor por chat ("activar_traductor" con el idioma; David lo desactiva con "desactivar_traductor"), sugerencias de respuesta ("sugerir_respuestas": propon 3, nunca las envies) y buscador del historial del chat ("buscar_en_historial").
