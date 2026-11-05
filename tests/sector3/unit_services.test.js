@@ -359,3 +359,45 @@ test('[Unit] Historial: redacta OTP y credenciales antes de persistir', () => {
   assert.ok(!conjunto.includes('123456'), 'el OTP no debe persistirse');
   assert.ok(conjunto.includes('[redactado: dato sensible]'));
 });
+
+// --- scheduledMessageService: acuse perdido (hallazgo revision 3, punto 2) ---
+test('[Unit] Programados: enviado sin acuse pasa a incierto sin reintentar', async () => {
+  const antiguo = programados.programarMensaje({
+    numero: '+34600999001',
+    mensaje: 'fixture acuse perdido antiguo',
+    minutosEnElFuturo: 120
+  });
+  const fresco = programados.programarMensaje({
+    numero: '+34600999002',
+    mensaje: 'fixture acuse perdido fresco',
+    minutosEnElFuturo: 120
+  });
+  assert.equal(antiguo.ok, true);
+  assert.equal(fresco.ok, true);
+
+  const lista = programados.leerMensajesProgramados();
+  const fA = lista.find((m) => m.id === antiguo.programado.id);
+  const fF = lista.find((m) => m.id === fresco.programado.id);
+  fA.enviado = true;
+  fA.estado = 'enviado';
+  fA.enviadoEn = new Date(Date.now() - programados.TIMEOUT_ACUSE_MS - 60000).toISOString();
+  fF.enviado = true;
+  fF.estado = 'enviado';
+  fF.enviadoEn = new Date().toISOString();
+  programados.guardarMensajesProgramados(lista);
+
+  const despachados = await programados.despacharMensajesPendientes();
+  const inciertos = despachados.fallidos.filter((m) => m.estado === 'incierto');
+
+  const listaFinal = programados.leerMensajesProgramados();
+  const rA = listaFinal.find((m) => m.id === antiguo.programado.id);
+  const rF = listaFinal.find((m) => m.id === fresco.programado.id);
+  assert.equal(rA.estado, 'incierto', 'el enviado antiguo sin acuse queda incierto');
+  assert.ok(inciertos.some((m) => m.id === antiguo.programado.id), 'se notifica para revision manual');
+  assert.equal(rA.enviado, true, 'sin reintento: sigue marcado como salido de la cola de pendientes');
+  assert.equal(rF.estado, 'enviado', 'el enviado reciente conserva su estado y su acuse puede llegar');
+  assert.equal(rF.intentos || 0, 0, 'no hubo reintentos');
+
+  programados.cancelarMensajeProgramado(antiguo.programado.id);
+  programados.cancelarMensajeProgramado(fresco.programado.id);
+});
