@@ -10,8 +10,8 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ## Resumen
 
-- Implementadas: 41 de 50 operativas (nº 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 19, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50) + 8 pendientes de config del propietario (nº 1 radar; nº 16 backup: cifrado local GCM operativo, subida externa pendiente de URL PAR; nº 18 WoL: falta DAVIS_WOL_MAC; nº 20 domotica: falta Home Assistant; nº 21 descargas: disco operativo, falta qBittorrent; nº 22 factura Oracle: falta OCI CLI; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: via de texto operativa, lectura de imagen pendiente del adaptador). La nº 36 lleva una dependencia externa relevante, ver su entrada.
-- Pendientes: 1 de 50 (50 - 41 operativas - 8 config-required): nº 28 vuelos y trenes.
+- Implementadas: 41 de 50 operativas (nº 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 19, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50) + 9 pendientes de config del propietario (nº 1 radar; nº 16 backup: cifrado local GCM operativo, subida externa pendiente de URL PAR; nº 18 WoL: falta DAVIS_WOL_MAC; nº 20 domotica: falta Home Assistant; nº 21 descargas: disco operativo, falta qBittorrent; nº 22 factura Oracle: falta OCI CLI; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: via de texto operativa, lectura de imagen pendiente del adaptador; nº 28 vuelos/trenes: registro y avisos operativos, fuente de precios en vivo pendiente de proveedor). La nº 36 lleva una dependencia externa relevante, ver su entrada.
+- Pendientes: 0 de 50 (41 operativas + 9 config-required = 50).
 
 ## Detalle por funcion
 
@@ -77,7 +77,7 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 - **27. Presupuesto mensual con alertas** - Operativa (Bloque 3): presupuesto por categoria con alerta al superar el 80% del limite (configurar_presupuesto / estado_presupuestos).
 
-- **28. Seguimiento de vuelos y trenes** - Pendiente. Bloque por priorizar.
+- **28. Seguimiento de vuelos y trenes** - Implementada parcialmente, requiere config (bloque 15). Registro de rutas (vuelo/tren, origen/destino/fecha AAAA-MM-DD, precio objetivo), historial, aviso de bajadas por cola y registro manual de precios operativos ya; cada ruta nace de peticion textual. La FUENTE DE PRECIOS EN VIVO es config-required: no hay fuente gratuita sin alta (Amadeus/Kiwi exigen cuenta; Renfe sin API publica) y no se simula - sin proveedor el comprobador no consulta nada ni inventa cifras, y todo precio se presenta como referencia a confirmar antes de comprar. Herramientas: vigilar_ruta, listar_rutas_vigiladas, cancelar_vigilancia_ruta, registrar_precio_ruta.
 
 ### Comunicación y WhatsApp
 
