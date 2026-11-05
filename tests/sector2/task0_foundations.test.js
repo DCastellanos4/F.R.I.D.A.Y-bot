@@ -12,8 +12,8 @@ import {
   clearQueue,
   formatAlertText,
   DEFAULT_QUEUE_FILE
-} from '../../alertQueueService.js';
-import { runCommand, runSystemCommand } from '../../sysCommandRunner.js';
+} from '../../src/services/alertQueueService.js';
+import { runCommand, runSystemCommand } from '../../src/system/sysCommandRunner.js';
 
 describe('Sector 2 - Task 0: Foundations (Alert Queue & Command Runner)', () => {
   let tempDir;

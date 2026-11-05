@@ -21,7 +21,7 @@ import {
   scrubSecrets,
   DEFAULT_OTP_TTL_MS,
   MAX_OTP_ATTEMPTS
-} from '../../bashConsoleService.js';
+} from '../../src/system/bashConsoleService.js';
 
 describe('Sector 2 - Task 12: Secure Remote Bash Console with 2FA OTP', () => {
   let mockRunner;

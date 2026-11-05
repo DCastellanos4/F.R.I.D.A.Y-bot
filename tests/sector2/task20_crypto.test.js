@@ -24,8 +24,8 @@ import {
   calculateShannonEntropy,
   estimatePoolSize,
   saveCredentialToMemory
-} from '../../cryptoGeneratorService.js';
-import { buscarMemorias, olvidarMemoria } from '../../memoryService.js';
+} from '../../src/services/cryptoGeneratorService.js';
+import { buscarMemorias, olvidarMemoria } from '../../src/services/memoryService.js';
 
 describe('Sector 2 - Task 20: High-Entropy Cryptographic Generator', () => {
   let mockBrain;

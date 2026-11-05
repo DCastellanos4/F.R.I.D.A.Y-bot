@@ -21,7 +21,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { cifrarDato, esCifrada } from '../memoryService.js';
+import { cifrarDato, esCifrada } from '../src/services/memoryService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FORMATO = 'aes-256-gcm';

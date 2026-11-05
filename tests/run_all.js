@@ -117,17 +117,20 @@ async function runTestSuite() {
   const sector1Files = await getTestFiles(path.join('tests', 'sector1'));
   const sector2HelperFiles = await getTestFiles(path.join('tests', 'sector2', 'helpers'));
   const sector2Files = await getTestFiles(path.join('tests', 'sector2'));
+  const sector3Files = await getTestFiles(path.join('tests', 'sector3'));
 
   const allTestFiles = [
     ...harnessFiles,
     ...sector1Files,
     ...sector2HelperFiles,
-    ...sector2Files
+    ...sector2Files,
+    ...sector3Files
   ];
 
   console.log(`Discovered ${allTestFiles.length} test suites:`);
   console.log(`- Sector 1 & Harness: ${harnessFiles.length + sector1Files.length} suites`);
-  console.log(`- Sector 2: ${sector2HelperFiles.length + sector2Files.length} suites\n`);
+  console.log(`- Sector 2: ${sector2HelperFiles.length + sector2Files.length} suites`);
+  console.log(`- Sector 3 (mejoras agénticas + batería dorada): ${sector3Files.length} suites\n`);
 
   const testArgs = [
     '--test',
