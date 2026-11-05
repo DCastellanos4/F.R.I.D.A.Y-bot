@@ -91,14 +91,9 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "$ORACLE_SSH_HOST_KEY" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
+          # El secret ya se guarda en formato PEM valido; solo volcarlo con permisos.
           key=$(mktemp); chmod 600 "$key"
           printf '%s\n' "$ORACLE_SSH_PRIVATE_KEY" > "$key"
-          # Clave legacy en una sola linea: reparar solo el formato, sin leer el valor.
-          if ! ssh-keygen -y -f "$key" >/dev/null 2>&1; then
-            awk 'NR==1{print;next} /^-----END/{print;next} {printf "%s",$0}' "$key" > "$key.fix" && mv "$key.fix" "$key"
-            ssh-keygen -y -f "$key" >/dev/null
-          fi
-          chmod 600 "$key"
           scp -i "$key" -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
             deploy/deploy.sh deploy/snapshot.js deploy/quality-gate.mjs \
             "$ORACLE_SSH_DESTINO:/tmp/"
