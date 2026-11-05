@@ -142,6 +142,9 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ## Bloques extra aprobados (fuera de las 50)
 
+- **Buscador de productos bajo demanda** (aprobado por David el 5 nov 2026, WhatsApp "implementalo" en respuesta al diseno entregado; alcance fijado por el enrutador: busqueda y verificacion bajo demanda, SIN compras, SIN vigilancia automatica, SIN altas ni APIs de pago; etapas 2 y 3 del diseno NO activadas): EN CURSO. Verificacion de ofertas por JSON-LD implementada a nivel de servicio (lee precio/stock de la propia pagina y declara la hora; lo no legible es no-verificable, nunca inventado). Busqueda: config-required hasta elegir fuente (API oficial con clave o comparador aceptado). Cableado de entrada y pruebas de entrada pendientes. No cuenta para el total de las 50.
+
+
 - **Transporte publico de Madrid** (aprobado por David el 5 nov 2026, WhatsApp "sip metelas" en respuesta a la propuesta con alcance EMT + Cercanias, favoritos y consulta bajo demanda, sin avisos automaticos): paradas favoritas EMT y estaciones de Cercanias con consulta de llegadas cuando David pregunta. EMT: adaptador MobilityLabs config-required (alta gratuita; credenciales DAVIS_EMT_CLIENT_ID y DAVIS_EMT_PASS_KEY en el entorno, nunca por chat). Cercanias: feed GTFS-RT publico de Renfe, operativo sin credenciales; solo muestra servicios con informacion en vivo y lo declara. Metro: sin fuente publica verificada de llegadas en vivo; no se ofrece. Sin avisos automaticos ni monitores. No cuenta para el total de las 50.
 
 ## Configuracion que necesita David para el bloque 1
