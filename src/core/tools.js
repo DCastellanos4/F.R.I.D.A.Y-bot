@@ -830,14 +830,10 @@ export const herramientasJarvis = [
     type: 'function',
     function: {
       name: 'trigger_encrypted_backup',
-      description: 'Genera una copia de seguridad inmediata, comprimida y cifrada simetricamente con AES-256-GCM (contenedor DAVBAK01) que incluye el directorio data/ y configuraciones criticas del sistema.',
+      description: 'Genera una copia de seguridad inmediata, comprimida y cifrada simetricamente con AES-256-GCM (contenedor DAVBAK01) que incluye el directorio data/ y configuraciones criticas del sistema. La clave sale SOLO del entorno del servidor (BACKUP_PASSPHRASE/DAVIS_BACKUP_KEY), nunca del chat.',
       parameters: {
         type: 'object',
         properties: {
-          passphrase: {
-            type: 'string',
-            description: 'Clave o frase maestra de cifrado. Si se omite, se utiliza la configurada en el entorno del sistema.'
-          },
           comentario: {
             type: 'string',
             description: 'Nota descriptiva u origen del backup manual.'
