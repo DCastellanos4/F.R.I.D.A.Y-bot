@@ -52,6 +52,14 @@ import { generarDigest, configurarDigestSemanal } from '../services/brainDigestS
 import { generarWiki } from '../services/wikiService.js';
 import { capturarPagina } from '../services/capturaService.js';
 import { preguntarDocumentos } from '../services/preguntasDocumentosService.js';
+import { escribirDiario, leerDiario } from '../services/diaryService.js';
+import { registrarHabito, marcarHabito, listarHabitos } from '../services/habitsService.js';
+import { ponerMenu, verMenu, sugerirMenu } from '../services/menuService.js';
+import { anadirCompra, listarCompra, tacharCompra, vaciarCompra } from '../services/shoppingService.js';
+import { recomendarSeriePelicula } from '../services/recommenderService.js';
+import { crearQuedada, listarQuedadas, redactarInvitacion } from '../services/quedadasService.js';
+import { resumenDeportivo } from '../services/sportsService.js';
+import { configurarModoNocturno } from '../services/quietHoursService.js';
 import { escanearRadar, configurarRadar, leerConfigRadar, iniciarMonitorRadar } from '../services/jobRadarService.js';
 import {
   setVipMode,
@@ -200,6 +208,8 @@ export function analizarIntencion(mensaje) {
     transporte: /(\bcercan[ií]as\b|\bEMT\b|parada\s+(de\s+)?(bus|autob[uú]s|emt)|pr[oó]xim[oa]\s+(bus|autob[uú]s|tren|cercan[ií]as)|cu[aá]ndo\s+(llega|viene|pasa)\s+(el\s+|mi\s+)?(bus|autob[uú]s|tren|cercan[ií]as)|cu[aá]nto\s+(falta|tarda)\s+(el\s+|mi\s+)?(bus|autob[uú]s|tren|cercan[ií]as))/i,
     // Segundo cerebro: contactos, busqueda semantica, digest, wiki, captura web y preguntas a documentos
     cerebro: /(contacto\s+de|agenda\s+de\s+contactos|qu[eé]\s+(s[eé]|tengo)\s+(de|sobre)\s+\w|busca(r)?\s+(en\s+)?(mis\s+)?(recuerdos|memorias|notas)|digest|resumen\s+(de\s+)?(mi\s+)?segundo\s+cerebro|\bwiki\b|guarda(r)?\s+(esta\s+)?(p[aá]gina|pagina|web|enlace)\s+en\s+(mis\s+)?notas|captura(r)?\s+(esta\s+)?(p[aá]gina|web)|qu[eé]\s+dicen\s+mis\s+(apuntes|notas|documentos)|pregunta\s+(a|sobre)\s+mis\s+(apuntes|notas|documentos))/i,
+    // Bienestar (nº 43-50): diario, habitos, menus, compra, recomendaciones, quedadas, deporte y modo nocturno
+    bienestar: /(\bdiario\b|apunta(r)?\s+en\s+(el\s+|mi\s+)?diario|qu[eé]\s+(escrib[ií]|puse)\s+(en\s+)?(el\s+)?diario|\bh[aá]bito|h[aá]bitos|racha\s+de\s+d[ií]as|men[uú]\s+(de\s+la\s+)?semana|men[uú]s?\s+semanal|qu[eé]\s+(como|cenamos?|comemos)|lista\s+de\s+la\s+compra|a[nñ]ade\s+.\s+a\s+la\s+compra|tacha(r)?\s+.\s+de\s+la\s+compra|recomi[eé]nda(me)?\s+(una\s+)?(pel[ií]cula|peli|serie)|qu[eé]\s+(veo|me\s+pongo\s+a\s+ver)|\bquedada\b|organiza(r)?\s+(una\s+)?quedada|invitaci[oó]n\s+(a\s+|de\s+)?(la\s+)?quedada|resumen\s+deportivo|qu[eé]\s+(ha\s+pasado|pasa)\s+en\s+(el\s+)?deporte|resultados?\s+deportiv|modo\s+(nocturno|desconexi[oó]n)|no\s+me\s+molestes\s+por\s+la\s+noche|silencia\s+los\s+avisos)/i,
     comunicacion: /(\btraduc|\btraductor|qu[eé]\s+le\s+respondo|sugier\w*\s+respuesta|busca(r)?\s+en\s+(el\s+)?historial|qu[eé]\s+te\s+dije|cumplea[nñ]os|\bcumple\b|fecha\s+se[nñ]alada|aniversario|\bsnooze\b|recu[eé]rdame\s+(este|el|lo de este)\s+(chat|grupo)|estad[ií]sticas?\s+(del|de este|de este grupo|grupo)|cu[aá]ndo\s+(llegue|llego)|av[ií]sa(me)?\s+cuando\s+llegue|aviso\s+de\s+llegada)/i,
 
     // Terminal, consola bash y codigos 2FA OTP (Sector 2)
@@ -248,9 +258,10 @@ export function analizarIntencion(mensaje) {
   let matchComunicacion = intents.comunicacion.test(sinNombre);
   let matchTransporte = intents.transporte.test(sinNombre);
   let matchCerebro = intents.cerebro.test(sinNombre);
+  let matchBienestar = intents.bienestar.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
-  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro) {
+  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro && !matchBienestar) {
     return { herramientas: [], intenciones: ['conversacion'], safetyNet: false, esChitChat: true };
   }
 
@@ -353,6 +364,9 @@ export function analizarIntencion(mensaje) {
   if (matchCerebro) {
     tools.push(...herramientasJarvis.filter(h => ['registrar_contacto', 'buscar_contacto', 'listar_contactos', 'buscar_recuerdo_semantico', 'generar_digest_cerebro', 'configurar_digest_semanal', 'generar_wiki', 'capturar_pagina', 'preguntar_documentos'].includes(h.function.name)));
   }
+  if (matchBienestar) {
+    tools.push(...herramientasJarvis.filter(h => ['escribir_diario', 'leer_diario', 'registrar_habito', 'marcar_habito', 'listar_habitos', 'poner_menu', 'ver_menu', 'sugerir_menu', 'anadir_compra', 'listar_compra', 'tachar_compra', 'vaciar_compra', 'recomendar_serie_pelicula', 'crear_quedada', 'listar_quedadas', 'redactar_invitacion', 'resumen_deportivo', 'configurar_modo_nocturno'].includes(h.function.name)));
+  }
 
   // Safety Net: si no encajó en ninguna categoría pero tampoco es chit-chat, pasar todas las herramientas
   if (tools.length === 0) {
@@ -389,6 +403,7 @@ export function analizarIntencion(mensaje) {
   if (matchComunicacion) intenciones.push('comunicacion');
   if (matchTransporte) intenciones.push('transporte');
   if (matchCerebro) intenciones.push('cerebro');
+  if (matchBienestar) intenciones.push('bienestar');
 
   // Eliminar duplicados
   const unicas = [];
@@ -812,6 +827,83 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
       } else if (nombreFuncion === 'preguntar_documentos') {
         const res = await preguntarDocumentos({ pregunta: args.pregunta }, { carpetaNotas: opciones.carpetaNotas, chatCompletion: opciones.chatCompletion });
         resultadoTool = res.ok ? res.respuesta : res.error;
+      } else if (nombreFuncion === 'escribir_diario') {
+        const res = escribirDiario({ texto: args.texto, fecha: args.fecha }, { carpetaDiario: opciones.carpetaDiario });
+        resultadoTool = res.ok ? `Apuntado en el diario del ${res.fecha}, David.` : res.error;
+      } else if (nombreFuncion === 'leer_diario') {
+        const res = leerDiario({ fecha: args.fecha }, { carpetaDiario: opciones.carpetaDiario });
+        resultadoTool = res.ok ? res.contenido : res.error;
+      } else if (nombreFuncion === 'registrar_habito') {
+        const res = registrarHabito({ nombre: args.nombre }, { rutaArchivo: opciones.rutaArchivoHabitos });
+        resultadoTool = res.ok ? `Habito registrado, David: "${res.habito.nombre}". Me lo marcas cuando lo hagas ("hecho ${res.habito.nombre}") y te llevo la racha.` : res.error;
+      } else if (nombreFuncion === 'marcar_habito') {
+        const res = marcarHabito({ criterio: args.criterio, fecha: args.fecha }, { rutaArchivo: opciones.rutaArchivoHabitos });
+        resultadoTool = res.ok
+          ? `Marcado, David: "${res.habito.nombre}". Racha actual: ${res.racha} dia${res.racha === 1 ? '' : 's'}.`
+          : res.error;
+      } else if (nombreFuncion === 'listar_habitos') {
+        const lista = listarHabitos({ rutaArchivo: opciones.rutaArchivoHabitos });
+        resultadoTool = lista.length === 0
+          ? 'No sigues ningun habito todavia. Dime por ejemplo: "quiero seguir el habito de leer 20 minutos".'
+          : 'Tus habitos:\n' + lista.map((h) => `- ${h.nombre}: ${h.hechoHoy ? 'hecho hoy' : 'pendiente hoy'}, racha de ${h.racha} dia${h.racha === 1 ? '' : 's'} (${h.totalDias} en total)`).join('\n');
+      } else if (nombreFuncion === 'poner_menu') {
+        const res = ponerMenu({ dia: args.dia, comida: args.comida, cena: args.cena }, { rutaArchivo: opciones.rutaArchivoMenus });
+        resultadoTool = res.ok ? `Menu apuntado, David: ${res.dia} de la semana del ${res.semana}.` : res.error;
+      } else if (nombreFuncion === 'ver_menu') {
+        const res = verMenu({}, { rutaArchivo: opciones.rutaArchivoMenus });
+        resultadoTool = !res.ok ? res.error
+          : res.vacio ? `No tienes menu apuntado para la semana del ${res.semana}. Puedo proponerte uno si quieres.`
+          : `Menu de la semana del ${res.semana} (comida / cena):\n` + res.lineas.join('\n');
+      } else if (nombreFuncion === 'sugerir_menu') {
+        const res = await sugerirMenu({ preferencias: args.preferencias }, { rutaArchivo: opciones.rutaArchivoMenus, chatCompletion: opciones.chatCompletion });
+        resultadoTool = res.ok ? `Propuesta de menu (no la he guardado; dime que dias confirmas y los apunto):\n${res.propuesta}` : res.error;
+      } else if (nombreFuncion === 'anadir_compra') {
+        const res = anadirCompra({ items: args.items }, { rutaArchivo: opciones.rutaArchivoCompra });
+        resultadoTool = !res.ok ? res.error
+          : res.anadidos.length === 0 ? 'Ya estaba todo en la lista, David.'
+          : `Anadido a la compra: ${res.anadidos.join(', ')}. Llevas ${res.total} articulo${res.total === 1 ? '' : 's'}.`;
+      } else if (nombreFuncion === 'listar_compra') {
+        const items = listarCompra({ rutaArchivo: opciones.rutaArchivoCompra });
+        resultadoTool = items.length === 0
+          ? 'La lista de la compra esta vacia, David.'
+          : `Lista de la compra (${items.length}):\n` + items.map((i) => '- ' + i).join('\n');
+      } else if (nombreFuncion === 'tachar_compra') {
+        const res = tacharCompra(args.criterio, { rutaArchivo: opciones.rutaArchivoCompra });
+        resultadoTool = res.ok ? `Tachado de la compra: ${res.tachado}. Quedan ${res.total} articulo${res.total === 1 ? '' : 's'}.` : res.error;
+      } else if (nombreFuncion === 'vaciar_compra') {
+        const pideVaciar = /(vaci[ao]|borra|limpia|elimina).{0,20}(lista\s+de\s+la\s+)?compra/i.test(opciones.mensajeUsuario || '');
+        if (!pideVaciar) {
+          resultadoTool = 'Para vaciar la lista de la compra necesito que me lo pidas tu directamente (por ejemplo: "vacia la lista de la compra").';
+        } else {
+          vaciarCompra({ rutaArchivo: opciones.rutaArchivoCompra });
+          resultadoTool = 'Lista de la compra vaciada, David.';
+        }
+      } else if (nombreFuncion === 'recomendar_serie_pelicula') {
+        const res = await recomendarSeriePelicula({ genero: args.genero, tipo: args.tipo }, { rutaArchivo: opciones.rutaArchivoRecomendador, chatCompletion: opciones.chatCompletion, obtenerMemorias: opciones.obtenerMemorias });
+        resultadoTool = res.ok ? res.recomendacion : res.error;
+      } else if (nombreFuncion === 'crear_quedada') {
+        const res = crearQuedada({ titulo: args.titulo, fecha: args.fecha, hora: args.hora, lugar: args.lugar, participantes: args.participantes }, { rutaArchivo: opciones.rutaArchivoQuedadas });
+        resultadoTool = res.ok
+          ? `Quedada registrada, David: "${res.quedada.titulo}"${res.quedada.fecha ? ` el ${res.quedada.fecha}` : ''}${res.quedada.hora ? ` a las ${res.quedada.hora}` : ''}${res.quedada.lugar ? ` en ${res.quedada.lugar}` : ''}. Si quieres, te redacto la invitacion para que la revises y la mandes tu.`
+          : res.error;
+      } else if (nombreFuncion === 'listar_quedadas') {
+        const lista = listarQuedadas({ rutaArchivo: opciones.rutaArchivoQuedadas });
+        resultadoTool = lista.length === 0
+          ? 'No tienes quedadas registradas. Dime por ejemplo: "apunta una quedada: cena con la uni el viernes a las 21:00".'
+          : 'Tus quedadas:\n' + lista.map((q) => `- ${q.titulo}${q.fecha ? `, ${q.fecha}` : ''}${q.hora ? ` ${q.hora}` : ''}${q.lugar ? `, en ${q.lugar}` : ''}${q.participantes.length ? ` (con ${q.participantes.join(', ')})` : ''}`).join('\n');
+      } else if (nombreFuncion === 'redactar_invitacion') {
+        const res = await redactarInvitacion({ criterio: args.criterio }, { rutaArchivo: opciones.rutaArchivoQuedadas, chatCompletion: opciones.chatCompletion });
+        resultadoTool = res.ok ? `BORRADOR de invitacion (${res.nota}):\n\n${res.borrador}` : res.error;
+      } else if (nombreFuncion === 'resumen_deportivo') {
+        const res = await resumenDeportivo({ limite: args.limite }, { obtenerNoticias: opciones.obtenerNoticiasDeportes, chatCompletion: opciones.chatCompletion });
+        resultadoTool = res.ok ? res.resumen : res.error;
+      } else if (nombreFuncion === 'configurar_modo_nocturno') {
+        const res = configurarModoNocturno({ activo: args.activo === true, desde: args.desde, hasta: args.hasta }, { rutaArchivo: opciones.rutaArchivoNocturno });
+        resultadoTool = res.ok
+          ? (res.config.activo
+            ? `Modo desconexion nocturno activado, David: de ${res.config.desde} a ${res.config.hasta} silencio los avisos proactivos no urgentes (esperan a que acabe la franja). Tus recordatorios puntuales suenan igual.`
+            : 'Modo desconexion nocturno desactivado, David.')
+          : res.error;
       } else if (nombreFuncion === 'estado_presupuestos') {
         const filas = estadoPresupuestos({ mes: args.mes }, { rutaArchivo: opciones.rutaArchivoFinanzas });
         resultadoTool = filas.length === 0
@@ -1254,6 +1346,7 @@ Directrices de selección:
 13c. FINANZAS: Los gastos se anotan con "registrar_gasto" (importe y comercio obligatorios; fecha por defecto hoy), se consultan con "listar_gastos" y "resumen_gastos_mes". Suscripciones con "registrar_suscripcion"/"listar_suscripciones" (el vigilante avisa 3 dias antes de renovar, solo si David las registro el). Presupuestos con "configurar_presupuesto"/"estado_presupuestos" (alerta al 80%). Los avisos de renovacion solo se activan si David lo pide textualmente ("configurar_avisos_suscripciones"). Nunca inventes importes, comercios ni fechas: si faltan, preguntalos.
 13d. PROCESOS: David registra procesos del VPS a vigilar con "vigilar_proceso" (nombre, patron opcional, limites de CPU/memoria opcionales) y los consulta con "listar_procesos_vigilados"/"dejar_vigilar_proceso". La vigilancia proactiva solo se activa si el la pide textualmente ("activa la vigilancia de procesos", herramienta "configurar_vigilante_procesos"). El vigilante solo mide y avisa; nunca reinicia ni mata procesos.
 13h. SEGUNDO CEREBRO: contactos (registrar_contacto / buscar_contacto / listar_contactos), busqueda semantica en memorias y notas (buscar_recuerdo_semantico), digest bajo demanda (generar_digest_cerebro; el envio semanal solo con configurar_digest_semanal y peticion textual de David), wiki navegable (generar_wiki), captura de paginas a notas (capturar_pagina) y preguntas a sus documentos (preguntar_documentos, siempre citando fuentes y sin inventar).
+13i. BIENESTAR: diario (escribir_diario/leer_diario), habitos con racha (registrar_habito/marcar_habito/listar_habitos, sin avisos proactivos), menu semanal (poner_menu/ver_menu; sugerir_menu solo propone, se guarda lo que David confirme), lista de la compra (anadir_compra/listar_compra/tachar_compra; vaciar_compra solo con peticion textual de David), recomendador de series y peliculas (recomendar_serie_pelicula, sin repetir), quedadas (crear_quedada/listar_quedadas; redactar_invitacion devuelve SOLO un borrador que David revisa y envia el: nunca lo mandes a terceros), resumen deportivo (resumen_deportivo, solo lo que digan los titulares reales) y modo desconexion nocturno (configurar_modo_nocturno: silencia avisos proactivos no urgentes en la franja; los recordatorios puntuales suenan igual).
 13g. TRANSPORTE MADRID (extra): paradas favoritas con registrar_parada_favorita (emt o cercanias; el Metro no tiene fuente publica de llegadas en vivo, dilo si lo piden) y consulta bajo demanda con proximas_llegadas_transporte. NUNCA programes avisos automaticos de transporte. Si la EMT responde config-required, explica que falta el acceso gratuito de MobilityLabs, no inventes llegadas.
 13f. FECHAS Y CHATS: fechas senaladas (registrar_fecha_senalada con dia y mes; los avisos proactivos solo con configurar_avisos_fechas y peticion textual de David), snooze de chats (programar_snooze en este chat, un solo aviso), estadisticas del chat (estadisticas_grupo, solo lo que el bot ha visto) y aviso de llegada (registrar_aviso_llegada necesita latitud/longitud; si faltan, pide a David que comparta el pin del destino).
 13e. COMUNICACION: modo traductor por chat ("activar_traductor" con el idioma; David lo desactiva con "desactivar_traductor"), sugerencias de respuesta ("sugerir_respuestas": propon 3, nunca las envies) y buscador del historial del chat ("buscar_en_historial").
