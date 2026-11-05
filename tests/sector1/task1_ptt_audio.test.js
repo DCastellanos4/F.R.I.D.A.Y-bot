@@ -1,5 +1,25 @@
 import { test, describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { execSync } from 'node:child_process';
+
+// Puerta de capacidad EXPLICITA: las comprobaciones de sintesis real
+// requieren el motor edge-tts (python -m edge_tts) instalado en el entorno.
+// Si la capacidad no esta disponible, esas comprobaciones se marcan como
+// OMITIDAS CON MOTIVO VISIBLE (skip razonado), nunca se disimulan como
+// superadas ni quedan como fallo criptico: la suite informa de que la
+// capacidad falta, no de que el codigo esta roto.
+function edgeTtsDisponible() {
+  try {
+    execSync('python -m edge_tts --help', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+const EDGE_TTS_DISPONIBLE = edgeTtsDisponible();
+if (!EDGE_TTS_DISPONIBLE) {
+  console.warn('[tests] Capacidad NO disponible en este entorno: edge-tts (python -m edge_tts). Las comprobaciones de sintesis real se omitiran con motivo explicito.');
+}
 import { createMockSocket } from '../harness/mockSocket.js';
 import { createSyntheticOggOpusBuffer, TEST_JIDS } from '../harness/fixtures.js';
 import { assertNoEmojis, assertValidOggOpus, isValidOggOpus } from '../harness/validators.js';
@@ -78,6 +98,10 @@ describe('Sector 1 - Task 1: PTT Voice Notes Generation & Dispatch', () => {
 
   describe('Service Contract: ttsService.synthesizeSpeech', () => {
     it('should synthesize text into an OGG Opus audio buffer adhering to contract', async (t) => {
+      if (!EDGE_TTS_DISPONIBLE) {
+        t.skip('Capacidad no disponible en este entorno: edge-tts (python -m edge_tts) no instalado; comprobacion omitida de forma explicita, no superada.');
+        return;
+      }
       if (!ttsService || typeof ttsService.synthesizeSpeech !== 'function') {
         t.skip('ttsService.synthesizeSpeech not yet implemented on disk');
         return;
@@ -96,6 +120,10 @@ describe('Sector 1 - Task 1: PTT Voice Notes Generation & Dispatch', () => {
     });
 
     it('should support alternative voice options (ElviraNeural)', async (t) => {
+      if (!EDGE_TTS_DISPONIBLE) {
+        t.skip('Capacidad no disponible en este entorno: edge-tts (python -m edge_tts) no instalado; comprobacion omitida de forma explicita, no superada.');
+        return;
+      }
       if (!ttsService || typeof ttsService.synthesizeSpeech !== 'function') {
         t.skip('ttsService.synthesizeSpeech not yet implemented on disk');
         return;

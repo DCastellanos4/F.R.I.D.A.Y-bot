@@ -121,15 +121,17 @@ flowchart TD
 ## Quickstart
 
 ### 1. Requirements
-- Node.js v20.x or higher
+- Node.js v20.x or higher (declared in `engines`)
 - Linux host (tested on Ubuntu 22.04 LTS AArch64 / x86_64)
 - `ffmpeg` and `yt-dlp` installed and present in system PATH
+- Playwright Chromium browser: `npm run setup:browser` (required once per server; `npm ci`/`npm install` does not download browser binaries)
 
 ### 2. Installation
 ```bash
 git clone https://github.com/DCastellanos4/F.R.I.D.A.Y-bot.git
 cd F.R.I.D.A.Y-bot
 npm install
+npm run setup:browser
 ```
 
 ### 3. Configuration
