@@ -49,7 +49,7 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 - **15. Gestor de ideas y feature requests** - Implementada (bloque 12). Anota propuestas en local (data/ideas.json, fuera de git), las lista y propone prioridades con motivos SOLO bajo demanda (la propuesta no cambia nada). La revision semanal proactiva queda sin activar a proposito: requiere opt-in explicito. La captura de notas personales excluye las frases de registro de ideas para que lleguen a JARVIS. Herramientas: anotar_idea, listar_ideas, priorizar_ideas.
 
-- **16. Backup externo de la sesión del bot** - Implementada parcialmente, requiere config (bloque 13). Copia CIFRADA local (tar + openssl AES-256-PBKDF2) de auth_info_baileys con clave por entorno (DAVIS_BACKUP_KEY, nunca por chat; sin ella, config-required honesto). La subida a Oracle Object Storage NO esta implementada: falta URL de subida (PAR) configurada en el servidor; sin ella se declara pendiente en vez de simularse. Herramienta: crear_backup_sesion.
+- **16. Backup externo de la sesión del bot** - Implementada parcialmente, requiere config (bloque 13 + endurecimiento de auditoria). Copia CIFRADA local de auth_info_baileys en formato propio DBK1: AES-256-GCM AUTENTICADO (tag detecta manipulacion), clave derivada con scrypt de DAVIS_BACKUP_KEY (entorno, nunca por chat; validacion minimo 16 caracteres), tar en memoria (sin claro en disco), permisos 600 y verificacion de recuperabilidad antes de guardar. Herramientas: crear_backup_sesion y verificar_backup_sesion (roundtrip de descifrado). La subida a Oracle Object Storage NO esta implementada: falta URL de subida (PAR) configurada en el servidor; sin ella se declara pendiente en vez de simularse.
 
 ### Servidor y hogar
 

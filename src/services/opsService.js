@@ -16,6 +16,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
+import crypto from 'node:crypto';
 import { fetchSeguro } from './safeFetch.js';
 import { enqueueAlert } from './alertQueueService.js';
 
@@ -240,30 +241,111 @@ export async function comprobarActividadRepos(deps = {}) {
 
 /* ------------------------------ nº 16 backup ----------------------------- */
 
+/**
+ * Backup cifrado de sesion (nº 16) - formato DBK1:
+ *   magic(4) | salt(16) | iv(12) | tag(16) | ciphertext
+ * Cifrado autenticado AES-256-GCM (el tag detecta cualquier manipulacion),
+ * clave derivada con scrypt de DAVIS_BACKUP_KEY (entorno, nunca chat).
+ * Validacion de clave: minimo 16 caracteres. Sin ficheros temporales en
+ * claro: el tar viaja en memoria. La clave nunca se escribe ni se registra.
+ */
+const MAGIC_BACKUP = Buffer.from('DBK1');
+
+function validarClaveBackup(clave) {
+  if (!clave) return 'Falta DAVIS_BACKUP_KEY en el entorno del servidor (nunca por chat).';
+  if (String(clave).length < 16) return 'DAVIS_BACKUP_KEY es demasiado corta (minimo 16 caracteres); cámbiala en el entorno.';
+  return null;
+}
+
+function cifrarBackup(bufferPlano, clave) {
+  const salt = crypto.randomBytes(16);
+  const iv = crypto.randomBytes(12);
+  const claveDerivada = crypto.scryptSync(String(clave), salt, 32, { N: 16384, r: 8, p: 1 });
+  const cipher = crypto.createCipheriv('aes-256-gcm', claveDerivada, iv);
+  const cifrado = Buffer.concat([cipher.update(bufferPlano), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([MAGIC_BACKUP, salt, iv, tag, cifrado]);
+}
+
+function descifrarBackup(bufferCifrado, clave) {
+  if (bufferCifrado.length < 48 || !bufferCifrado.subarray(0, 4).equals(MAGIC_BACKUP)) {
+    throw new Error('No es un backup DBK1 de este bot.');
+  }
+  const salt = bufferCifrado.subarray(4, 20);
+  const iv = bufferCifrado.subarray(20, 32);
+  const tag = bufferCifrado.subarray(32, 48);
+  const datos = bufferCifrado.subarray(48);
+  const claveDerivada = crypto.scryptSync(String(clave), salt, 32, { N: 16384, r: 8, p: 1 });
+  const decipher = crypto.createDecipheriv('aes-256-gcm', claveDerivada, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(datos), decipher.final()]);
+}
+
+function tarEnMemoria(carpetaSesion, deps) {
+  if (typeof deps.execTar === 'function') return deps.execTar(carpetaSesion);
+  return new Promise((resolve, reject) => {
+    execFile('tar', ['czf', '-', '-C', path.dirname(carpetaSesion), path.basename(carpetaSesion)], { timeout: 60000, maxBuffer: 256 * 1024 * 1024, encoding: 'buffer' }, (err, stdout) => {
+      if (err) reject(err);
+      else resolve(stdout);
+    });
+  });
+}
+
 export async function crearBackupSesion(deps = {}) {
   const clave = deps.claveBackup || process.env.DAVIS_BACKUP_KEY;
-  if (!clave) {
-    return { ok: false, configRequired: true, error: 'El backup cifrado necesita DAVIS_BACKUP_KEY en el entorno del servidor (nunca por chat). Sin clave no hago copia de la sesion.' };
-  }
+  const errorClave = validarClaveBackup(clave);
+  if (errorClave) return { ok: false, configRequired: true, error: `Backup cifrado: ${errorClave}` };
   const carpetaSesion = deps.carpetaSesion || path.join(process.cwd(), 'auth_info_baileys');
   if (!fs.existsSync(carpetaSesion)) return { ok: false, error: 'No encuentro la carpeta de sesion del bot.' };
+  let tarBuffer;
+  try {
+    tarBuffer = await tarEnMemoria(carpetaSesion, deps);
+  } catch (err) {
+    return { ok: false, error: `No he podido empaquetar la sesion: ${err.message}` };
+  }
+  if (!tarBuffer || tarBuffer.length === 0) return { ok: false, error: 'El empaquetado ha salido vacio; no lo doy por hecho.' };
+  const cifrado = cifrarBackup(tarBuffer, clave);
+  // Verificacion de recuperabilidad ANTES de escribir: si no descifra y no
+  // es un gzip valido, no se guarda un backup inservible.
+  try {
+    const vuelta = descifrarBackup(cifrado, clave);
+    if (!vuelta.equals(tarBuffer) || vuelta[0] !== 0x1f || vuelta[1] !== 0x8b) {
+      return { ok: false, error: 'La verificacion de recuperabilidad ha fallado; backup NO guardado.' };
+    }
+  } catch (err) {
+    return { ok: false, error: `La verificacion de recuperabilidad ha fallado (${err.message}); backup NO guardado.` };
+  }
   const carpetaDestino = deps.carpetaDestino || path.join(DATA_DIR, 'backups');
   fs.mkdirSync(carpetaDestino, { recursive: true });
   const sello = (deps.ahora ? new Date(deps.ahora) : new Date()).toISOString().replace(/[:T]/g, '-').slice(0, 16);
-  const destino = path.join(carpetaDestino, `sesion-${sello}.tar.gz.enc`);
-  const r = await ejecutarComando('sh', ['-c', `tar czf - -C "${path.dirname(carpetaSesion)}" "${path.basename(carpetaSesion)}" | openssl enc -aes-256-cbc -pbkdf2 -pass env:DAVIS_BACKUP_KEY > "${destino}"`], { ...deps, claveBackup: undefined });
-  if (r.errorExec || (r.codigo !== 0 && !fs.existsSync(destino))) {
-    return { ok: false, error: `El cifrado del backup fallo (${r.errorExec || 'codigo ' + r.codigo}).` };
-  }
-  let bytes = 0;
-  try { bytes = fs.statSync(destino).size; } catch { bytes = 0; }
-  if (bytes === 0) return { ok: false, error: 'El archivo de backup ha quedado vacio; no lo doy por hecho.' };
+  const destino = path.join(carpetaDestino, `sesion-${sello}.dbk1`);
+  fs.writeFileSync(destino, cifrado, { mode: 0o600 });
   return {
     ok: true,
     archivo: destino,
-    bytes,
-    nota: 'Copia cifrada LOCAL lista (AES-256). La subida a Oracle Object Storage queda config-required: falta configurar la URL de subida (PAR) en el servidor, y no la implemento sin ella. Restaurar: openssl enc -d -aes-256-cbc -pbkdf2 -pass env:DAVIS_BACKUP_KEY -in archivo | tar xzf -.'
+    bytes: cifrado.length,
+    nota: 'Copia cifrada LOCAL verificada (AES-256-GCM autenticado, clave scrypt de DAVIS_BACKUP_KEY, permisos 600, sin claro en disco). La subida a Oracle Object Storage queda config-required: falta URL de subida (PAR) en el servidor y no la implemento sin ella. Restaurar: herramienta verificar_backup_sesion / descifrado DBK1 con la misma clave.'
   };
+}
+
+/**
+ * Verifica (y opcionalmente extrae) un backup DBK1: comprueba formato,
+ * tag de autenticacion y que el contenido es un tar.gz listable.
+ */
+export async function verificarBackupSesion({ archivo } = {}, deps = {}) {
+  const clave = deps.claveBackup || process.env.DAVIS_BACKUP_KEY;
+  const errorClave = validarClaveBackup(clave);
+  if (errorClave) return { ok: false, configRequired: true, error: `Verificacion de backup: ${errorClave}` };
+  const ruta = String(archivo || '').trim();
+  if (!ruta || !fs.existsSync(ruta)) return { ok: false, error: 'Dime la ruta del backup a verificar.' };
+  let plano;
+  try {
+    plano = descifrarBackup(fs.readFileSync(ruta), clave);
+  } catch (err) {
+    return { ok: false, error: `El backup no descifra con la clave actual (¿manipulado o clave distinta?): ${err.message}` };
+  }
+  if (plano[0] !== 0x1f || plano[1] !== 0x8b) return { ok: false, error: 'Descifra pero el contenido no es un tar.gz: no sirve.' };
+  return { ok: true, bytes: plano.length, nota: 'Backup integro y recuperable: autenticacion GCM correcta y contenido tar.gz valido.' };
 }
 
 /* --------------------------- monitor integrado --------------------------- */

@@ -15,7 +15,7 @@ import {
   auditarDependencias, configurarVigilanciaDependencias, comprobarDependenciasProgramado,
   registrarEventoMetrica, informeMetricas, configurarInformeMetricas, comprobarInformeSemanal,
   actividadRepos, configurarAlertasRepos, comprobarActividadRepos,
-  crearBackupSesion, ARCHIVO_CONFIG_OPS_DEFECTO
+  crearBackupSesion, verificarBackupSesion, ARCHIVO_CONFIG_OPS_DEFECTO
 } from '../../src/services/opsService.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'davis-ops-'));
@@ -117,26 +117,61 @@ test('nº12 repos: instantanea publica; alertas solo opt-in, referencia inicial 
   assert.equal(tercera.avisos, 0, 'sin cambios no repite');
 });
 
-test('nº16 backup: sin DAVIS_BACKUP_KEY es config-required; con clave cifra y declara subida pendiente', async () => {
+test('nº16 backup: sin clave config-required; clave corta rechazada; roundtrip GCM autenticado sin claro en disco', async () => {
   const sinClave = await crearBackupSesion({ claveBackup: null, carpetaSesion: tmp });
   assert.equal(sinClave.ok, false);
   assert.equal(sinClave.configRequired, true);
   assert.match(sinClave.error, /nunca por chat/);
 
+  const corta = await crearBackupSesion({ claveBackup: 'corta', carpetaSesion: tmp });
+  assert.equal(corta.ok, false);
+  assert.equal(corta.configRequired, true);
+  assert.match(corta.error, /minimo 16 caracteres/, 'validacion de clave');
+
   const sesionFalsa = path.join(tmp, 'auth_info_baileys');
   fs.mkdirSync(sesionFalsa, { recursive: true });
-  fs.writeFileSync(path.join(sesionFalsa, 'creds.json'), '{}');
+  fs.writeFileSync(path.join(sesionFalsa, 'creds.json'), '{"secreto":"MARCA-CLARO-123"}');
   const destino = path.join(tmp, 'backups');
-  const execComando = async (cmd, args) => {
-    assert.equal(cmd, 'sh');
-    // simula tar|openssl creando el .enc
-    const out = args[1].match(/> "([^"]+\.enc)"/)[1];
-    fs.writeFileSync(out, Buffer.from('cifrado-falso'));
-    return { codigo: 0, salida: '' };
+  const clave = 'clave-de-entorno-larga-y-fuerte';
+  // tar.gz falso pero valido a nivel de magic gzip; el tar real lo pone el servidor
+  const tarFalso = Buffer.concat([Buffer.from([0x1f, 0x8b]), Buffer.from('MARCA-CLARO-123 comprimido')]);
+  const execTar = async (carpeta) => {
+    assert.equal(carpeta, sesionFalsa);
+    return tarFalso;
   };
-  const r = await crearBackupSesion({ claveBackup: 'clave-entorno', carpetaSesion: sesionFalsa, carpetaDestino: destino, execComando, ahora: '2026-11-05T16:00:00+01:00' });
+  const r = await crearBackupSesion({ claveBackup: clave, carpetaSesion: sesionFalsa, carpetaDestino: destino, execTar, ahora: '2026-11-05T16:00:00+01:00' });
   assert.equal(r.ok, true);
-  assert.match(r.archivo, /sesion-2026-11-05/);
+  assert.match(r.archivo, /sesion-2026-11-05.*\.dbk1$/);
   assert.ok(r.bytes > 0);
   assert.match(r.nota, /Object Storage queda config-required/, 'la subida externa no se simula');
+
+  // Sin claro en disco: ni el contenido ni la clave aparecen en el fichero
+  const contenido = fs.readFileSync(r.archivo);
+  assert.equal(contenido.includes('MARCA-CLARO-123'), false, 'sin plaintext filtrado');
+  assert.equal(contenido.includes(clave), false, 'sin clave filtrada');
+  assert.equal((fs.statSync(r.archivo).mode & 0o777), 0o600, 'permisos 600');
+
+  // Roundtrip de recuperabilidad
+  const v = await verificarBackupSesion({ archivo: r.archivo }, { claveBackup: clave });
+  assert.equal(v.ok, true);
+  assert.match(v.nota, /recuperable/);
+
+  // Cifrado autenticado: un byte alterado rompe la verificacion
+  const manipulado = Buffer.from(contenido);
+  manipulado[manipulado.length - 1] ^= 0xff;
+  const rutaManip = path.join(tmp, 'manipulado.dbk1');
+  fs.writeFileSync(rutaManip, manipulado);
+  const vm = await verificarBackupSesion({ archivo: rutaManip }, { claveBackup: clave });
+  assert.equal(vm.ok, false);
+  assert.match(vm.error, /manipulado o clave distinta/);
+
+  // Clave incorrecta: no descifra
+  const vc = await verificarBackupSesion({ archivo: r.archivo }, { claveBackup: 'otra-clave-distinta-de-16+' });
+  assert.equal(vc.ok, false);
+
+  // Contenido no recuperable: no se guarda un backup inservible
+  const malo = await crearBackupSesion({ claveBackup: clave, carpetaSesion: sesionFalsa, carpetaDestino: destino, execTar: async () => Buffer.from('esto no es gzip'), ahora: '2026-11-05T17:00:00+01:00' });
+  assert.equal(malo.ok, false);
+  assert.match(malo.error, /recuperabilidad/);
+  assert.equal(fs.existsSync(path.join(destino, 'sesion-2026-11-05-17-00.dbk1')), false, 'no escribe backups inservibles');
 });
