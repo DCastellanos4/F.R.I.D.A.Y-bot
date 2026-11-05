@@ -1773,6 +1773,83 @@ export const herramientasJarvis = [
         required: ['numero']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'auditar_dependencias',
+      description: 'Ejecuta npm audit y resume vulnerabilidades con propuesta de actualizacion. NUNCA actualiza nada por si solo.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'configurar_vigilancia_dependencias',
+      description: 'Activa o desactiva la vigilancia programada de dependencias. activo=true SOLO si David lo pide textualmente en su mensaje.',
+      parameters: {
+        type: 'object',
+        properties: { activo: { type: 'boolean' } },
+        required: ['activo']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'informe_metricas',
+      description: 'Informe de metricas del bot: comandos mas usados, errores y tiempos de respuesta (ultimos N dias).',
+      parameters: {
+        type: 'object',
+        properties: { dias: { type: 'number', description: 'Dias a cubrir (por defecto 7).' } }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'configurar_informe_metricas',
+      description: 'Activa o desactiva el informe semanal proactivo de metricas. activo=true SOLO si David lo pide textualmente.',
+      parameters: {
+        type: 'object',
+        properties: { activo: { type: 'boolean' } },
+        required: ['activo']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'actividad_repos',
+      description: 'Instantanea de stars, forks e issues abiertas de los repos de David (API publica de GitHub).',
+      parameters: {
+        type: 'object',
+        properties: { repos: { type: 'array', items: { type: 'string' }, description: 'Repos owner/nombre (max 5); por defecto los configurados.' } }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'configurar_alertas_repos',
+      description: 'Activa o desactiva los avisos de cambios (stars/forks/issues) en los repos. activo=true SOLO si David lo pide textualmente.',
+      parameters: {
+        type: 'object',
+        properties: {
+          activo: { type: 'boolean' },
+          repos: { type: 'array', items: { type: 'string' } }
+        },
+        required: ['activo']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'crear_backup_sesion',
+      description: 'Crea una copia CIFRADA local de la sesion del bot (AES-256; requiere DAVIS_BACKUP_KEY por entorno). La subida externa es config-required.',
+      parameters: { type: 'object', properties: {} }
+    }
   }
 ];
 
@@ -1811,6 +1888,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   bienestar: ['escribir_diario', 'leer_diario', 'registrar_habito', 'marcar_habito', 'listar_habitos', 'poner_menu', 'ver_menu', 'sugerir_menu', 'anadir_compra', 'listar_compra', 'tachar_compra', 'vaciar_compra', 'recomendar_serie_pelicula', 'crear_quedada', 'listar_quedadas', 'redactar_invitacion', 'resumen_deportivo', 'configurar_modo_nocturno'],
   compras: ['buscar_producto', 'verificar_oferta'],
   devtools: ['anotar_idea', 'listar_ideas', 'priorizar_ideas', 'generar_changelog', 'guiar_depuracion', 'revisar_pr'],
+  ops: ['auditar_dependencias', 'configurar_vigilancia_dependencias', 'informe_metricas', 'configurar_informe_metricas', 'actividad_repos', 'configurar_alertas_repos', 'crear_backup_sesion'],
   carrera: ['iniciar_simulacro_entrevista', 'analizar_cv_oferta', 'resumir_apuntes', 'registrar_entrega', 'listar_entregas', 'eliminar_entrega'],
   procesos: ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'],
   finanzas: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'],

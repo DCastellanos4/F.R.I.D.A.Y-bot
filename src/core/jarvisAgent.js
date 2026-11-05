@@ -64,6 +64,7 @@ import { iniciarEntrevista, terminarEntrevista } from '../services/interviewServ
 import { analizarCvContraOferta } from '../services/cvAnalyzerService.js';
 import { resumirApuntes } from '../services/notesSummarizerService.js';
 import { anotarIdea, listarIdeas, priorizarIdeas, generarEntradaChangelog, guiarDepuracion, revisarPullRequest } from '../services/devToolsService.js';
+import { auditarDependencias, configurarVigilanciaDependencias, informeMetricas, configurarInformeMetricas, actividadRepos, configurarAlertasRepos, crearBackupSesion } from '../services/opsService.js';
 import { registrarEntrega, listarEntregas, eliminarEntrega } from '../services/deadlinesService.js';
 import { buscarProducto, verificarOferta } from '../services/productSearchService.js';
 import { escanearRadar, configurarRadar, leerConfigRadar, iniciarMonitorRadar } from '../services/jobRadarService.js';
@@ -218,6 +219,8 @@ export function analizarIntencion(mensaje) {
     bienestar: /(\bdiario\b|apunta(r)?\s+en\s+(el\s+|mi\s+)?diario|qu[eé]\s+(escrib[ií]|puse)\s+(en\s+)?(el\s+)?diario|\bh[aá]bito|h[aá]bitos|racha\s+de\s+d[ií]as|men[uú]\s+(de\s+la\s+)?semana|men[uú]s?\s+semanal|qu[eé]\s+(como|cenamos?|comemos)|lista\s+de\s+la\s+compra|a[nñ]ade\s+.\s+a\s+la\s+compra|tacha(r)?\s+.\s+de\s+la\s+compra|recomi[eé]nda(me)?\s+(una\s+)?(pel[ií]cula|peli|serie)|qu[eé]\s+(veo|me\s+pongo\s+a\s+ver)|\bquedada\b|organiza(r)?\s+(una\s+)?quedada|invitaci[oó]n\s+(a\s+|de\s+)?(la\s+)?quedada|resumen\s+deportivo|qu[eé]\s+(ha\s+pasado|pasa)\s+en\s+(el\s+)?deporte|resultados?\s+deportiv|modo\s+(nocturno|desconexi[oó]n)|no\s+me\s+molestes\s+por\s+la\s+noche|silencia\s+los\s+avisos)/i,
     // Carrera y estudios (nº 3, 4, 7, 8): simulacro de entrevista, CV contra oferta, resumen de apuntes y calendario de entregas
     carrera: /(simulacro\s+de\s+entrevista|practica(r)?\s+(una\s+)?entrevista|entrevista\s+(t[eé]cnica|de\s+trabajo)|analiza(r)?\s+(mi\s+)?cv|encaja(r)?\s+(mi\s+)?cv|mi\s+cv\s+(con|para)|resume(me)?\s+(mis\s+)?apuntes|resumen\s+de\s+(mis\s+)?apuntes|apunta(r)?\s+(un(a)?\s+)?(entrega|ex[aá]men)|\bentregas?\b\s+(y|o)\s+ex[aá]menes|qu[eé]\s+(entregas|ex[aá]menes)\s+(tengo|hay)|cu[aá]ndo\s+(es|tengo)\s+(el|la|mi)\s+(ex[aá]men|entrega)|calendario\s+de\s+(entregas|ex[aá]menes))/i,
+    // Ops del bot (bloque 13): dependencias, metricas, repos, backup
+    ops: /(audita(r)?\s+(las\s+)?dependencias|npm\s+audit|vulnerabilidades\s+de\s+(las\s+)?dependencias|m[eé]tricas\s+del\s+bot|informe\s+(semanal\s+)?de\s+m[eé]tricas|actividad\s+de\s+(mis\s+)?repos|alertas\s+de\s+(mis\s+)?repos|backup\s+de\s+(la\s+)?sesi[oó]n|copia\s+de\s+seguridad\s+(de\s+la\s+)?sesi[oó]n)/i,
     // DevTools (bloque 12): revisor PRs, changelog, pair programming, ideas
     devtools: /(revisa(r)?\s+(la\s+|el\s+|esta\s+)?(pr|pull\s+request)|changelog|guia(r)?\s+(la\s+)?depuraci[oó]n|depura(r)?\s+(este|el|mi)\s+(fallo|error|c[oó]digo)|pair\s+programming|tengo\s+un\s+fallo|anota(r)?\s+(esta\s+|una\s+)?idea|mis\s+ideas|prioriza(r)?\s+(mis\s+)?ideas)/i,
     // Compras bajo demanda (extra aprobado por David, 5 nov 2026): sin compras ni vigilancia
@@ -274,9 +277,10 @@ export function analizarIntencion(mensaje) {
   let matchCarrera = intents.carrera.test(sinNombre);
   let matchCompras = intents.compras.test(sinNombre);
   let matchDevtools = intents.devtools.test(sinNombre);
+  let matchOps = intents.ops.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
-  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro && !matchBienestar && !matchCarrera && !matchCompras && !matchDevtools) {
+  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro && !matchBienestar && !matchCarrera && !matchCompras && !matchDevtools && !matchOps) {
     return { herramientas: [], intenciones: ['conversacion'], safetyNet: false, esChitChat: true };
   }
 
@@ -391,6 +395,9 @@ export function analizarIntencion(mensaje) {
   if (matchDevtools) {
     tools.push(...herramientasJarvis.filter(h => ['anotar_idea', 'listar_ideas', 'priorizar_ideas', 'generar_changelog', 'guiar_depuracion', 'revisar_pr'].includes(h.function.name)));
   }
+  if (matchOps) {
+    tools.push(...herramientasJarvis.filter(h => ['auditar_dependencias', 'configurar_vigilancia_dependencias', 'informe_metricas', 'configurar_informe_metricas', 'actividad_repos', 'configurar_alertas_repos', 'crear_backup_sesion'].includes(h.function.name)));
+  }
 
   // Safety Net: si no encajó en ninguna categoría pero tampoco es chit-chat, pasar todas las herramientas
   if (tools.length === 0) {
@@ -431,6 +438,7 @@ export function analizarIntencion(mensaje) {
   if (matchCarrera) intenciones.push('carrera');
   if (matchCompras) intenciones.push('compras');
   if (matchDevtools) intenciones.push('devtools');
+  if (matchOps) intenciones.push('ops');
 
   // Eliminar duplicados
   const unicas = [];
@@ -1009,6 +1017,51 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
       } else if (nombreFuncion === 'guiar_depuracion') {
         const res = await guiarDepuracion({ fallo: args.fallo, contexto: args.contexto }, { chatCompletion: opciones.chatCompletion });
         resultadoTool = res.ok ? `${res.guia}\n(${res.nota})` : res.error;
+      } else if (nombreFuncion === 'auditar_dependencias') {
+        const res = await auditarDependencias({});
+        resultadoTool = !res.ok ? res.error
+          : `npm audit: ${res.totales.critica} critica(s), ${res.totales.alta} alta(s), ${res.totales.moderada} moderada(s), ${res.totales.baja} baja(s).\n` +
+            (res.vulnerabilidades.length ? 'Principales:\n' + res.vulnerabilidades.map((v) => `- [${v.severidad}] ${v.nombre}${v.viaDirecta ? ' (directa)' : ''}: ${v.correccion}`).join('\n') + '\n' : 'Sin vulnerabilidades listadas.\n') +
+            res.nota;
+      } else if (nombreFuncion === 'configurar_vigilancia_dependencias') {
+        const quiere = args.activo === true;
+        const pideTexto = /(activa(r|s|do)?|enciend(e|er)|pon\s+en\s+marcha)\s+.{0,40}(vigilancia|dependencias|audit)/i.test(opciones.mensajeUsuario || '');
+        if (quiere && !pideTexto) {
+          resultadoTool = 'No he activado la vigilancia de dependencias porque tu mensaje no lo pedia explicitamente. Si la quieres, dime "activa la vigilancia de dependencias".';
+        } else {
+          const res = configurarVigilanciaDependencias({ activo: args.activo }, { rutaConfig: opciones.rutaConfigOps });
+          resultadoTool = res.activo ? 'Vigilancia de dependencias ACTIVADA: avisare si npm audit encuentra vulnerabilidades graves (criticas o altas).' : 'Vigilancia de dependencias desactivada.';
+        }
+      } else if (nombreFuncion === 'informe_metricas') {
+        const res = informeMetricas({ dias: args.dias ?? 7 }, { rutaArchivo: opciones.rutaArchivoMetricas });
+        resultadoTool = `Metricas del bot (ultimos ${res.periodoDias} dias): ${res.totalComandos} comandos, ${res.totalErrores} errores.\n` +
+          (res.comandosMasUsados.length ? 'Mas usados:\n' + res.comandosMasUsados.map((c) => `- ${c.nombre}: ${c.usos} uso(s)${c.mediaMs != null ? `, media ${c.mediaMs} ms, p95 ${c.p95Ms} ms` : ''}`).join('\n') : 'Sin actividad registrada todavia.') +
+          (res.erroresRecientes.length ? '\nErrores recientes:\n' + res.erroresRecientes.map((e) => `- ${e}`).join('\n') : '');
+      } else if (nombreFuncion === 'configurar_informe_metricas') {
+        const quiere = args.activo === true;
+        const pideTexto = /(activa(r|s|do)?|enciend(e|er)|pon\s+en\s+marcha|quiero)\s+.{0,40}(informe|metricas)/i.test(opciones.mensajeUsuario || '');
+        if (quiere && !pideTexto) {
+          resultadoTool = 'No he activado el informe semanal de metricas porque tu mensaje no lo pedia explicitamente. Si lo quieres, dime "activa el informe de metricas".';
+        } else {
+          const res = configurarInformeMetricas({ activo: args.activo }, { rutaConfig: opciones.rutaConfigOps });
+          resultadoTool = res.activo ? 'Informe semanal de metricas ACTIVADO (te llegara por la cola de avisos).' : 'Informe semanal de metricas desactivado.';
+        }
+      } else if (nombreFuncion === 'actividad_repos') {
+        const res = await actividadRepos({ repos: args.repos }, { fetchFn: opciones.fetchFnGitHub, rutaConfig: opciones.rutaConfigOps });
+        resultadoTool = !res.ok ? res.error
+          : 'Actividad de tus repos:\n' + res.repos.map((r) => r.error ? `- ${r.repo}: error (${r.error})` : `- ${r.repo}: ${r.estrellas} estrellas, ${r.forks} forks, ${r.issuesAbiertas} issues abiertas`).join('\n') + `\n${res.nota}`;
+      } else if (nombreFuncion === 'configurar_alertas_repos') {
+        const quiere = args.activo === true;
+        const pideTexto = /(activa(r|s|do)?|enciend(e|er)|pon\s+en\s+marcha|quiero)\s+.{0,40}(alertas?|avisos?)\s+.{0,30}(repos|repositorios|github)/i.test(opciones.mensajeUsuario || '');
+        if (quiere && !pideTexto) {
+          resultadoTool = 'No he activado las alertas de repos porque tu mensaje no lo pedia explicitamente. Si las quieres, dime "activa las alertas de mis repos".';
+        } else {
+          const res = configurarAlertasRepos({ activo: args.activo, repos: args.repos }, { rutaConfig: opciones.rutaConfigOps });
+          resultadoTool = res.activo ? `Alertas de repos ACTIVADAS para: ${res.repos.join(', ')} (avisos de cambios en estrellas, forks e issues).` : 'Alertas de repos desactivadas.';
+        }
+      } else if (nombreFuncion === 'crear_backup_sesion') {
+        const res = await crearBackupSesion({});
+        resultadoTool = !res.ok ? res.error : `Backup cifrado creado: ${res.archivo} (${Math.round(res.bytes / 1024)} KB).\n${res.nota}`;
       } else if (nombreFuncion === 'revisar_pr') {
         const res = await revisarPullRequest({ numero: args.numero, repo: args.repo }, { fetchFn: opciones.fetchFnGitHub, chatCompletion: opciones.chatCompletion });
         resultadoTool = res.ok
@@ -1460,6 +1513,7 @@ Directrices de selección:
 13j. CARRERA: simulacro de entrevista tecnica (iniciar_simulacro_entrevista: 5 preguntas por voz o texto; mientras este activo, cada mensaje de David se evalua; se sale con "terminar entrevista"), analisis de CV contra oferta (analizar_cv_oferta; el CV se pega o se busca en sus notas, nunca se inventa), resumen de apuntes (resumir_apuntes, citando las notas usadas) y calendario de entregas y examenes (registrar_entrega/listar_entregas/eliminar_entrega, con dias restantes; los avisos puntuales se piden como recordatorios normales).
 13k. COMPRAS (extra aprobado): buscar_producto y verificar_oferta son SOLO bajo demanda: nada de compras, vigilancia automatica ni altas. La busqueda usa el comparador integrado PriceRadars (gratis, sin alta): transmite su aviso (precios orientativos de feeds; cobertura desigual; si salen accesorios o no aparece el producto, dilo y ofrece verificar el enlace exacto). verificar_oferta lee la propia pagina y declara la hora: respeta vinculacion y precioConfirmado (si la pagina parece de OTRO producto o variante, NO presentes ese precio como el del producto pedido; dilo claro) y las advertencias de moneda; lo no legible es no-verificable (nunca inventes precio, stock ni envio). El pago es siempre de David.
 13l. DEVTOOLS (nº 9-15): revisar_pr trae la resena AQUI (nunca publiques comentarios en GitHub); generar_changelog propone texto sin tocar archivos ni commits; guiar_depuracion va paso a paso, una hipotesis cada vez y pidiendo salidas concretas; las ideas se anotan con anotar_idea y se priorizan solo cuando David lo pide (sin revision proactiva sin opt-in explicito).
+13m. OPS DEL BOT (nº 10-16): auditar_dependencias informa y propone, NUNCA actualiza; informe_metricas resume lo registrado localmente; actividad_repos es instantanea publica; los tres avisos proactivos (dependencias, informe semanal, alertas de repos) solo se activan con peticion textual de David (el guard ya lo aplica); crear_backup_sesion hace copia cifrada LOCAL (sin DAVIS_BACKUP_KEY por entorno es config-required) y la subida externa esta sin implementar hasta configurar URL de subida: nunca pidas la clave por chat.
 13g. TRANSPORTE MADRID (extra): paradas favoritas con registrar_parada_favorita (emt o cercanias; el Metro no tiene fuente publica de llegadas en vivo, dilo si lo piden) y consulta bajo demanda con proximas_llegadas_transporte. NUNCA programes avisos automaticos de transporte. Si la EMT responde config-required, explica que falta el acceso gratuito de MobilityLabs, no inventes llegadas.
 13f. FECHAS Y CHATS: fechas senaladas (registrar_fecha_senalada con dia y mes; los avisos proactivos solo con configurar_avisos_fechas y peticion textual de David), snooze de chats (programar_snooze en este chat, un solo aviso), estadisticas del chat (estadisticas_grupo, solo lo que el bot ha visto) y aviso de llegada (registrar_aviso_llegada necesita latitud/longitud; si faltan, pide a David que comparta el pin del destino).
 13e. COMUNICACION: modo traductor por chat ("activar_traductor" con el idioma; David lo desactiva con "desactivar_traductor"), sugerencias de respuesta ("sugerir_respuestas": propon 3, nunca las envies) y buscador del historial del chat ("buscar_en_historial").
