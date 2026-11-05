@@ -3,6 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { DATA_DIR } from '../config/paths.js';
+import { chatCompletion as chatCompletionPorDefecto } from '../core/llmService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -121,8 +122,9 @@ export function registrarMensaje(chatId, role, content) {
   registro.mensajes.push({ role, content: redactarSensibles(content), ts: new Date().toISOString() });
 
   if (registro.mensajes.length > MAX_MENSAJES_ARCHIVO) {
-    // Conserva solo la ventana mas reciente; lo antiguo se pierde salvo que
-    // antes se haya condensado en resumen con condensarHistorial().
+    // Red de seguridad: el recorte duro solo aplica si la condensacion
+    // programada (programarCondensacionSiNecesario) aun no ha corrido; el
+    // flujo normal condensa lo antiguo en el resumen antes de llegar aqui.
     registro.mensajes = registro.mensajes.slice(-MAX_MENSAJES_ARCHIVO);
   }
 
@@ -200,6 +202,53 @@ export async function condensarHistorial(chatId, deps = {}) {
     }
   }
 
-  guardarRegistro(chatId, { resumen: nuevoResumen, mensajes: recientes });
+  // Releer antes de escribir: los mensajes registrados mientras el LLM
+  // condensaba no deben perderse, y si el historial se borro (peticion
+  // explicita) la condensacion no debe resucitarlo.
+  const ruta = rutaChat(chatId);
+  if (!fs.existsSync(ruta)) {
+    return { ok: false, condensado: false, motivo: 'historial eliminado durante la condensacion' };
+  }
+  const actual = leerRegistro(chatId);
+  const ultimaTsSnapshot = registro.mensajes[registro.mensajes.length - 1]?.ts || '';
+  const nuevos = actual.mensajes.filter(m => (m.ts || '') > ultimaTsSnapshot);
+  guardarRegistro(chatId, { resumen: nuevoResumen, mensajes: [...recientes, ...nuevos] });
   return { ok: true, condensado: true, resumen: nuevoResumen };
+}
+
+/**
+ * Condensaciones en curso por chat: evita lanzar dos condensaciones del
+ * mismo chat en paralelo y permite a las pruebas esperar a que terminen.
+ */
+const condensacionesEnCurso = new Map();
+
+/**
+ * Cablea la condensacion al flujo real: si el chat supera el tope persistido,
+ * lanza la condensacion en segundo plano (fire-and-forget con errores
+ * capturados). Devuelve la promesa de la condensacion (o null si no toca)
+ * para que las pruebas puedan esperarla; los llamadores de produccion pueden
+ * ignorarla. Sin chatCompletion inyectado usa el LLM configurado del bot.
+ */
+export function programarCondensacionSiNecesario(chatId, deps = {}) {
+  if (!chatId) return null;
+  if (condensacionesEnCurso.has(chatId)) return condensacionesEnCurso.get(chatId);
+  // Umbral alcanzable: registrarMensaje recorta a MAX_MENSAJES_ARCHIVO como
+  // red de seguridad, asi que la condensacion se dispara AL LLEGAR al tope,
+  // no al superarlo (contarMensajes nunca lo supera).
+  if (contarMensajes(chatId) < MAX_MENSAJES_ARCHIVO) return null;
+  const chatCompletion = typeof deps.chatCompletion === 'function'
+    ? deps.chatCompletion
+    : chatCompletionPorDefecto;
+  const tarea = (async () => {
+    try {
+      return await condensarHistorial(chatId, { chatCompletion });
+    } catch (err) {
+      console.error('[Historial] Condensacion programada fallo:', err.message);
+      return { ok: false, error: err.message };
+    } finally {
+      condensacionesEnCurso.delete(chatId);
+    }
+  })();
+  condensacionesEnCurso.set(chatId, tarea);
+  return tarea;
 }

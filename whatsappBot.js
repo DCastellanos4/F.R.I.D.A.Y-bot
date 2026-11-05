@@ -15,7 +15,7 @@ import { consultarJarvis } from './src/core/jarvisAgent.js';
 import { confirmAndExecute } from './src/system/bashConsoleService.js';
 import { iniciarMonitorRecordatorios } from './src/services/reminderService.js';
 import { iniciarMonitorMensajesProgramados, registrarIdWhatsApp, procesarActualizacionEntrega } from './src/services/scheduledMessageService.js';
-import { obtenerHistorial, registrarIntercambio } from './src/services/conversationHistoryService.js';
+import { obtenerHistorial, registrarIntercambio, programarCondensacionSiNecesario } from './src/services/conversationHistoryService.js';
 import { esAccionCriticaPorVoz, guardarPendienteVoz, resolverConfirmacionVoz } from './src/services/voiceConfirmationService.js';
 import { resolverConfirmacionBorrado } from './src/services/destructiveActionService.js';
 import { olvidarMemoria } from './src/services/memoryService.js';
@@ -727,6 +727,9 @@ export async function iniciarWhatsApp() {
         // 8. Persistir el intercambio en el historial del chat
         try {
           registrarIntercambio(remoteJid, texto, respuesta);
+          // Condensacion en segundo plano cuando el chat supera el tope:
+          // fire-and-forget (errores capturados dentro), nunca bloquea la respuesta.
+          programarCondensacionSiNecesario(remoteJid);
         } catch (errHist) {
           console.error('[Historial] No se pudo registrar el intercambio:', errHist.message);
         }
