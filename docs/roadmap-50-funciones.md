@@ -10,8 +10,8 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ## Resumen
 
-- Implementadas: 33 de 50 operativas (nº 2, 3, 4, 5, 6, 7, 8, 17, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50) + 3 pendientes de config del propietario (nº 1 radar; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: via de texto operativa, lectura de imagen pendiente de configurar el adaptador). La nº 36 lleva una dependencia externa relevante, ver su entrada.
-- Pendientes: 14 de 50 (50 - 33 operativas - 3 config-required).
+- Implementadas: 37 de 50 operativas (nº 2, 3, 4, 5, 6, 7, 8, 9, 13, 14, 15, 17, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50) + 3 pendientes de config del propietario (nº 1 radar; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: via de texto operativa, lectura de imagen pendiente de configurar el adaptador). La nº 36 lleva una dependencia externa relevante, ver su entrada.
+- Pendientes: 10 de 50 (50 - 37 operativas - 3 config-required).
 
 ## Detalle por funcion
 
@@ -35,7 +35,7 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ### Desarrollo y DevOps
 
-- **9. Revisor de tus propias PRs** - Pendiente. Bloque por priorizar.
+- **9. Revisor de tus propias PRs** - Implementada (bloque 12). Lee la PR y su diff por la API publica de GitHub (repos publicos sin clave, 60 pet./h; DAVIS_GITHUB_TOKEN por entorno para privados o mas cuota, nunca por chat) y devuelve resena de seguridad y estilo (veredicto apto/apto con comentarios/necesita cambios) AQUI por WhatsApp. NUNCA publica comentarios en GitHub. Herramienta: revisar_pr.
 
 - **10. Vigilante de dependencias** - Pendiente. Bloque por priorizar.
 
@@ -43,11 +43,11 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 - **12. Alertas de actividad en tus repos** - Pendiente. Bloque por priorizar.
 
-- **13. Generador de CHANGELOG** - Pendiente. Bloque por priorizar.
+- **13. Generador de CHANGELOG** - Implementada (bloque 12). Redacta la entrada (Keep a Changelog, Anadido/Cambiado/Corregido) desde el git log del repo local (tag..HEAD o ultimos N commits), fiel a los mensajes. Propone texto: no toca CHANGELOG.md ni hace commits. Herramienta: generar_changelog.
 
-- **14. Modo pair programming por voz** - Pendiente. Bloque por priorizar.
+- **14. Modo pair programming por voz** - Implementada (bloque 12). Guia la depuracion paso a paso (una hipotesis por turno, pide la salida concreta para seguir); las notas de voz llegan transcritas por el flujo de audio, asi que hablar o escribir es el mismo camino, y el historial mantiene el hilo. Sin modelo no hay guia y lo dice. Herramienta: guiar_depuracion.
 
-- **15. Gestor de ideas y feature requests** - Pendiente. Bloque por priorizar.
+- **15. Gestor de ideas y feature requests** - Implementada (bloque 12). Anota propuestas en local (data/ideas.json, fuera de git), las lista y propone prioridades con motivos SOLO bajo demanda (la propuesta no cambia nada). La revision semanal proactiva queda sin activar a proposito: requiere opt-in explicito. La captura de notas personales excluye las frases de registro de ideas para que lleguen a JARVIS. Herramientas: anotar_idea, listar_ideas, priorizar_ideas.
 
 - **16. Backup externo de la sesión del bot** - Pendiente. Bloque por priorizar.
 
