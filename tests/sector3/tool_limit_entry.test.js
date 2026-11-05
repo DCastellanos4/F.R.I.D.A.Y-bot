@@ -195,6 +195,20 @@ test('Regresion amplia: mensajes ordinarios siguen respondiendo con sus herramie
   assert.equal(ultima.length, 0, 'chit-chat sin herramientas');
 });
 
+test('Politica >128 (boundary, inyeccion determinista): seleccion sobredimensionada -> 0 herramientas + directiva de dividir; bajo limite intacta', async () => {
+  const { aplicarPoliticaLimiteSeleccion } = await import('../../src/core/jarvisAgent.js');
+  // Inyeccion directa del catalogo completo (136) como resultado del selector
+  const sobredimensionada = aplicarPoliticaLimiteSeleccion(herramientasJarvis);
+  assert.equal(herramientasJarvis.length > LIMITE_HERRAMIENTAS_PROVEEDOR, true, 'el catalogo actual supera el limite: la inyeccion es real');
+  assert.equal(sobredimensionada.herramientas.length, 0, 'no se trunca en silencio: se retiran todas');
+  assert.ok(sobredimensionada.directiva.includes('DIRECTIVA DE ALCANCE'), 'directiva honesta de dividir');
+  const justo = aplicarPoliticaLimiteSeleccion(herramientasJarvis.slice(0, LIMITE_HERRAMIENTAS_PROVEEDOR));
+  assert.equal(justo.herramientas.length, LIMITE_HERRAMIENTAS_PROVEEDOR, 'en el limite exacto se respeta la seleccion');
+  assert.equal(justo.directiva, '');
+  const nula = aplicarPoliticaLimiteSeleccion(null);
+  assert.deepEqual(nula.herramientas, []);
+});
+
 test('Limitador: catalogo sobredimensionado preserva primero las herramientas en uso y el esquema completo', () => {
   const extra = herramientasJarvis[herramientasJarvis.length - 1];
   const historial = [{ role: 'assistant', tool_calls: [{ id: 'x', function: { name: extra.function.name, arguments: {} } }] }];

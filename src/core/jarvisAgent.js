@@ -141,6 +141,23 @@ export function limpiarRespuestaJarvis(texto) {
  * Enrutador de herramientas de alta precisión (Dynamic Tool Pruning):
  * Inyecta las herramientas requeridas según la intención de David.
  */
+/**
+ * Politica de alcance honesto ante una seleccion que supera el limite del
+ * proveedor: NO se trunca en silencio fingiendo cubrir toda la intencion.
+ * Se devuelven 0 herramientas y una directiva para pedir a David que
+ * divida la peticion. Exportada para prueba directa en el boundary.
+ */
+export function aplicarPoliticaLimiteSeleccion(seleccion) {
+  if (!Array.isArray(seleccion) || seleccion.length <= LIMITE_HERRAMIENTAS_PROVEEDOR) {
+    return { herramientas: Array.isArray(seleccion) ? seleccion : [], directiva: '' };
+  }
+  console.log(`[LimiteHerramientas] La seleccion de intencion (${seleccion.length}) supera el limite ${LIMITE_HERRAMIENTAS_PROVEEDOR}: se pide dividir la peticion en lugar de truncar en silencio.`);
+  return {
+    herramientas: [],
+    directiva: '\n\n[DIRECTIVA DE ALCANCE: El mensaje de David pide demasiadas cosas distintas a la vez para atenderlas bien en una sola pasada. NO finjas haberlas cubierto todas ni inventes acciones: pidele que la divida en dos o tres mensajes concretos, y ofrece como mucho dos ejemplos de como trocearla.]'
+  };
+}
+
 export function seleccionarHerramientasPorIntencion(mensaje) {
   return analizarIntencion(mensaje).herramientas;
 }
@@ -1543,15 +1560,10 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
     }
   }
 
-  // Politica de alcance honesto: si la SELECCION de la intencion supera el
-  // limite del proveedor (mensaje que toca demasiadas areas a la vez), no se
-  // trunca en silencio fingiendo cubrir toda la intencion: se responde sin
-  // herramientas pidiendo dividir la peticion.
-  if (herramientasActivas.length > LIMITE_HERRAMIENTAS_PROVEEDOR) {
-    console.log(`[LimiteHerramientas] La seleccion de intencion (${herramientasActivas.length}) supera el limite ${LIMITE_HERRAMIENTAS_PROVEEDOR}: se pide dividir la peticion en lugar de truncar en silencio.`);
-    herramientasActivas = [];
-    directivaDesambiguacion = '\n\n[DIRECTIVA DE ALCANCE: El mensaje de David pide demasiadas cosas distintas a la vez para atenderlas bien en una sola pasada. NO finjas haberlas cubierto todas ni inventes acciones: pidele que la divida en dos o tres mensajes concretos, y ofrece como mucho dos ejemplos de como trocearla.]';
-  }
+  // Politica de alcance honesto (ver aplicarPoliticaLimiteSeleccion)
+  const politica = aplicarPoliticaLimiteSeleccion(herramientasActivas);
+  herramientasActivas = politica.herramientas;
+  if (politica.directiva) directivaDesambiguacion = politica.directiva;
 
   herramientasActivas = limitarHerramientasParaProveedor(herramientasActivas);
 
