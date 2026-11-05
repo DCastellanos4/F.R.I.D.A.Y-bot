@@ -22,7 +22,12 @@ import {
 import {
   configurarRadar,
   escanearRadar,
-  leerConfigRadar
+  leerConfigRadar,
+  validarUrlFuente,
+  fetchHtmlSeguro,
+  iniciarMonitorRadar,
+  detenerMonitorRadar,
+  fuenteLista
 } from '../../src/services/jobRadarService.js';
 
 function dirTemporal() {
@@ -33,10 +38,15 @@ function depsCrm(dir) {
   return { rutaArchivo: path.join(dir, 'applications.json') };
 }
 
+// DNS publico falso: las pruebas usan dominios inventados; el servicio
+// valida resolucion DNS anti-rebinding, asi que se inyecta una IP publica.
+const DNS_PUBLICO_FALSO = async () => [{ address: '93.184.216.34' }];
+
 function depsRadar(dir, extra = {}) {
   return {
     rutaConfig: path.join(dir, 'radar.json'),
     rutaVistos: path.join(dir, 'radar_seen.json'),
+    dnsLookup: DNS_PUBLICO_FALSO,
     ...extra
   };
 }
@@ -218,4 +228,163 @@ test('Radar: fuente HTML sin selectores completos es config-required', async () 
   const res = await escanearRadar(deps);
   assert.equal(res.fuentes[0].estado, 'config-required');
   assert.equal(res.nuevas.length, 0);
+});
+
+// ---------- Seguridad SSRF y aislamiento (revision previa a publicacion) ----------
+
+test('SSRF: validarUrlFuente rechaza esquemas, credenciales y destinos internos', async () => {
+  const rechazadas = [
+    'file:///etc/passwd',
+    'ftp://portal.example/jobs',
+    'javascript:alert(1)',
+    'data:text/html,<html></html>',
+    'http://localhost/jobs',
+    'http://127.0.0.1/jobs',
+    'http://[::1]/jobs',
+    'http://169.254.169.254/latest/meta-data',
+    'http://10.0.0.5/jobs',
+    'http://192.168.1.1/jobs',
+    'http://172.16.0.9/jobs',
+    'http://0.0.0.0/jobs',
+    'http://usuario:clave@portal.example/jobs',
+    'http://portal.example.internal/jobs',
+    'no-es-una-url'
+  ];
+  for (const url of rechazadas) {
+    const res = await validarUrlFuente(url, { dnsLookup: DNS_PUBLICO_FALSO });
+    assert.equal(res.ok, false, `debia rechazar: ${url}`);
+  }
+  const valida = await validarUrlFuente('https://portal.example/jobs?q=node', { dnsLookup: DNS_PUBLICO_FALSO });
+  assert.equal(valida.ok, true);
+});
+
+test('SSRF: el nombre de host que resuelve a IP privada se rechaza (anti-rebinding)', async () => {
+  const res = await validarUrlFuente('https://portal.example/jobs', { dnsLookup: async () => [{ address: '10.1.2.3' }] });
+  assert.equal(res.ok, false);
+  assert.match(res.motivo, /privada|reservada/);
+});
+
+test('SSRF: fetchHtmlSeguro bloquea redireccion a metadatos cloud y limita tamano', async () => {
+  // Redireccion a 169.254.169.254
+  const fetchRedir = async () => ({ status: 302, headers: { get: (k) => k === 'location' ? 'http://169.254.169.254/latest/meta-data' : null } });
+  await assert.rejects(() => fetchHtmlSeguro('https://portal.example/jobs', { fetchImpl: fetchRedir, dnsLookup: DNS_PUBLICO_FALSO }), /seguridad/);
+
+  // Cuerpo que supera el limite
+  const chunkGrande = new Uint8Array(600 * 1024);
+  const fetchGrande = async () => ({
+    status: 200,
+    headers: { get: () => null },
+    body: {
+      getReader: () => {
+        let enviado = false;
+        return {
+          read: async () => enviado ? { done: true } : (enviado = true, { done: false, value: chunkGrande }),
+          cancel: async () => {}
+        };
+      }
+    }
+  });
+  await assert.rejects(() => fetchHtmlSeguro('https://portal.example/jobs', { fetchImpl: fetchGrande, dnsLookup: DNS_PUBLICO_FALSO }), /grande/);
+});
+
+test('SSRF: fetchHtmlSeguro pasa signal y redirect manual al fetch real', async () => {
+  let opcionesVistas = null;
+  const fetchEspia = async (url, opciones) => {
+    opcionesVistas = opciones;
+    return { status: 200, headers: { get: () => '10' }, body: null, text: async () => '<html></html>' };
+  };
+  await fetchHtmlSeguro('https://portal.example/jobs', { fetchImpl: fetchEspia, dnsLookup: DNS_PUBLICO_FALSO });
+  assert.equal(opcionesVistas.redirect, 'manual');
+  assert.ok(opcionesVistas.signal, 'debe pasar AbortSignal para el timeout');
+});
+
+test('SSRF: escanearRadar no llama a la red si la URL de la fuente es interna', async () => {
+  const dir = dirTemporal();
+  let llamadasFetch = 0;
+  const deps = depsRadar(dir, { fetchHtml: async () => { llamadasFetch++; return HTML_OFERTAS; } });
+  fs.writeFileSync(path.join(dir, 'radar.json'), JSON.stringify({
+    activo: true,
+    palabrasClave: ['x'],
+    fuentes: [{ id: 'maliciosa', tipo: 'html-generico', enabled: true, url: 'http://169.254.169.254/latest/meta-data', selectores: { item: '.oferta', titulo: '.tit', enlace: '.lnk' } }]
+  }), 'utf-8');
+  const res = await escanearRadar(deps);
+  assert.equal(llamadasFetch, 0, 'no se descargo nada de la URL interna');
+  assert.equal(res.fuentes[0].estado, 'error');
+  assert.match(res.fuentes[0].detalle, /seguridad/);
+});
+
+test('Credenciales: campos sensibles de la config nunca se leen ni persisten', () => {
+  const dir = dirTemporal();
+  const deps = depsRadar(dir);
+  fs.writeFileSync(path.join(dir, 'radar.json'), JSON.stringify({
+    activo: true,
+    palabrasClave: ['x'],
+    fuentes: [{ id: 'p', tipo: 'html-generico', enabled: true, url: 'https://portal.example/jobs', selectores: { item: '.a', titulo: '.b', enlace: '.c' }, clientSecret: 'NO-DEBE-PERSISTIR', apiKey: 'TAMPOCO' }]
+  }), 'utf-8');
+  const cfg = leerConfigRadar(deps);
+  assert.equal(cfg.fuentes[0].clientSecret, undefined);
+  assert.equal(cfg.fuentes[0].apiKey, undefined);
+  // Reconfigurar no reescribe los campos sensibles al fichero
+  configurarRadar({ ubicacion: 'Madrid' }, deps);
+  const crudo = fs.readFileSync(path.join(dir, 'radar.json'), 'utf-8');
+  assert.ok(!crudo.includes('NO-DEBE-PERSISTIR'), 'el secreto no debe quedar en el fichero');
+  // El chat no puede editar fuentes
+  assert.equal(configurarRadar({ fuentes: [] }, deps).ok, false);
+});
+
+test('Monitor: desactivado por defecto, solo arranca con fuente lista', () => {
+  const dir = dirTemporal();
+  const deps = depsRadar(dir);
+  let res = iniciarMonitorRadar(deps);
+  assert.equal(res.iniciado, false, 'config por defecto desactivada');
+  assert.match(res.motivo, /desactivado/i);
+
+  configurarRadar({ activo: true }, deps);
+  res = iniciarMonitorRadar(deps, 60 * 60 * 1000);
+  assert.equal(res.iniciado, false, 'InfoJobs sin credenciales no basta');
+  detenerMonitorRadar();
+
+  fs.writeFileSync(path.join(dir, 'radar.json'), JSON.stringify({
+    activo: true,
+    palabrasClave: ['x'],
+    fuentes: [{ id: 'p', tipo: 'html-generico', enabled: true, url: 'https://portal.example/jobs', selectores: { item: '.a', titulo: '.b', enlace: '.c' } }]
+  }), 'utf-8');
+  assert.equal(fuenteLista(leerConfigRadar(deps).fuentes[0], deps), true);
+  res = iniciarMonitorRadar(deps, 60 * 60 * 1000);
+  assert.equal(res.iniciado, true, 'con fuente lista si arranca');
+  detenerMonitorRadar();
+  const res2 = iniciarMonitorRadar(deps, 60 * 60 * 1000);
+  assert.equal(res2.iniciado, true, 'reinicio tras detener');
+  detenerMonitorRadar();
+});
+
+test('Persistencia: aislamiento entre almacenes y escrituras rapidas consecutivas', () => {
+  const dirA = dirTemporal();
+  const dirB = dirTemporal();
+  const depsA = depsCrm(dirA);
+  const depsB = depsCrm(dirB);
+
+  registrarCandidatura({ empresa: 'Acme', puesto: 'Backend' }, depsA);
+  assert.equal(listarCandidaturas({}, depsB).length, 0, 'los almacenes no comparten estado');
+  assert.equal(listarCandidaturas({}, depsA).length, 1);
+
+  // 50 registros rapidos consecutivos: todos persisten (escritura atomica)
+  for (let i = 0; i < 50; i++) {
+    registrarCandidatura({ empresa: `Empresa${i}`, puesto: 'Junior' }, depsB);
+  }
+  assert.equal(listarCandidaturas({}, depsB).length, 50);
+  const crudo = JSON.parse(fs.readFileSync(path.join(dirB, 'applications.json'), 'utf-8'));
+  assert.equal(crudo.length, 50, 'el fichero no quedo corrupto');
+
+  // Vistos del radar aislados por ruta
+  const rA = depsRadar(dirA);
+  const rB = depsRadar(dirB);
+  for (const d of [rA, rB]) {
+    fs.writeFileSync(d.rutaConfig, JSON.stringify({ activo: true, palabrasClave: ['x'], fuentes: [FUENTE_HTML] }), 'utf-8');
+  }
+  return (async () => {
+    await escanearRadar({ ...rA, fetchHtml: async () => HTML_OFERTAS, enqueue: () => {} });
+    const resB = await escanearRadar({ ...rB, fetchHtml: async () => HTML_OFERTAS, enqueue: () => {} });
+    assert.equal(resB.nuevas.length, 2, 'lo visto en A no afecta a B');
+  })();
 });

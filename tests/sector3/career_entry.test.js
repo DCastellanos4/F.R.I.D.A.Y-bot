@@ -108,6 +108,7 @@ test('Entrada real: escanear_ofertas_empleo usa deps del radar inyectados (sin r
   const radarDeps = {
     rutaConfig,
     rutaVistos: path.join(dirEntorno, 'radar_seen.json'),
+    dnsLookup: async () => [{ address: '93.184.216.34' }],
     fetchHtml: async () => `<div class="oferta"><h2 class="tit">Junior DevOps</h2><a class="lnk" href="https://portal.example/jobs/55">Ver</a><span class="emp">Initech</span></div>`,
     enqueue: (a) => alertas.push(a)
   };

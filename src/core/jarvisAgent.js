@@ -35,7 +35,7 @@ import { consultarClima } from '../services/weatherService.js';
 import { chatCompletion, esRespuestaTruncada } from './llmService.js';
 import { clasificarIntencionConModelo, UMBRAL_CONFIANZA } from './intentRouterService.js';
 import { registrarCandidatura, listarCandidaturas, actualizarCandidatura, resumenCandidaturas } from '../services/applicationTrackerService.js';
-import { escanearRadar, configurarRadar, leerConfigRadar } from '../services/jobRadarService.js';
+import { escanearRadar, configurarRadar, leerConfigRadar, iniciarMonitorRadar } from '../services/jobRadarService.js';
 import {
   setVipMode,
   isVipModeActive,
@@ -444,7 +444,7 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
         }, { rutaArchivo: opciones.rutaArchivoCandidaturas });
         if (res.ok) {
           const seg = res.recordatorio && res.recordatorio.ok !== false ? ' Recordatorio de seguimiento creado.' : '';
-          resultadoTool = `Candidatura registrada, señor: ${res.candidatura.puesto} en ${res.candidatura.empresa} (estado: ${res.candidatura.estado}, ID: ${res.candidatura.id}).${seg}`;
+          resultadoTool = `Candidatura registrada, David: ${res.candidatura.puesto} en ${res.candidatura.empresa} (estado: ${res.candidatura.estado}, ID: ${res.candidatura.id}).${seg}`;
         } else {
           resultadoTool = `No se pudo registrar la candidatura: ${res.error}`;
         }
@@ -453,7 +453,7 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
         if (lista.length === 0) {
           const resumen = resumenCandidaturas({ rutaArchivo: opciones.rutaArchivoCandidaturas });
           resultadoTool = resumen.total === 0
-            ? 'Aun no hay candidaturas registradas, señor.'
+            ? 'Aun no hay candidaturas registradas.'
             : `No hay candidaturas en ese estado. Resumen actual: ${Object.entries(resumen.porEstado).filter(([, n]) => n > 0).map(([e, n]) => `${e}: ${n}`).join(', ')}.`;
         } else {
           resultadoTool = 'Candidaturas:\n' + lista.map((c, i) => `${i + 1}. ${c.puesto} en ${c.empresa} [${c.estado}] (ID: ${c.id})${c.url ? ` - ${c.url}` : ''}`).join('\n');
@@ -461,7 +461,7 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
       } else if (nombreFuncion === 'actualizar_candidatura') {
         const res = actualizarCandidatura(args.criterio, { estado: args.estado || null, notas: args.notas || null }, { rutaArchivo: opciones.rutaArchivoCandidaturas });
         if (res.ok) {
-          resultadoTool = `Candidatura actualizada, señor: ${res.candidatura.puesto} en ${res.candidatura.empresa} pasa a estado [${res.candidatura.estado}].`;
+          resultadoTool = `Candidatura actualizada, David: ${res.candidatura.puesto} en ${res.candidatura.empresa} pasa a estado [${res.candidatura.estado}].`;
         } else if (res.coincidencias) {
           resultadoTool = `${res.error}\n` + res.coincidencias.map((c) => `- ${c.puesto} en ${c.empresa} [${c.estado}] (ID: ${c.id})`).join('\n');
         } else {
@@ -486,7 +486,14 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
         }, opciones.radarDeps || {});
         if (res.ok) {
           const cfg = leerConfigRadar(opciones.radarDeps || {});
-          resultadoTool = `Radar configurado, señor: palabras clave [${cfg.palabrasClave.join(', ')}], ubicacion ${cfg.ubicacion || 'sin definir'}, estado ${cfg.activo ? 'ACTIVO' : 'desactivado'}. Recuerde que la fuente InfoJobs requiere credenciales (INFOJOBS_CLIENT_ID/SECRET) para devolver ofertas reales.`;
+          let estadoMonitor = '';
+          if (cfg.activo) {
+            const monitor = iniciarMonitorRadar(opciones.radarDeps || {});
+            estadoMonitor = monitor.iniciado
+              ? ' Monitor de rondas activo.'
+              : ` Monitor en espera: ${monitor.motivo}`;
+          }
+          resultadoTool = `Radar configurado, David: palabras clave [${cfg.palabrasClave.join(', ')}], ubicacion ${cfg.ubicacion || 'sin definir'}, estado ${cfg.activo ? 'ACTIVO' : 'desactivado'}.${estadoMonitor} La fuente InfoJobs requiere credenciales (INFOJOBS_CLIENT_ID/SECRET) para devolver ofertas reales; las fuentes HTML solo se editan en el fichero de configuracion.`;
         } else {
           resultadoTool = `No se pudo configurar el radar: ${res.error}`;
         }

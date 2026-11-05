@@ -10,14 +10,14 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ## Resumen
 
-- Implementadas: 2 de 50 (bloque 1: empleo y practicas).
+- Implementadas: 1 de 50 operativa (nº 2 CRM) + 1 con adaptadores listos pendientes de config del propietario (nº 1 radar).
 - Pendientes: 48 de 50.
 
 ## Detalle por funcion
 
 ### Carrera y prácticas
 
-- **1. Radar de ofertas de prácticas y empleo** - Implementada, requiere config (bloque 1). Radar operativo con dos fuentes: InfoJobs (requiere credenciales INFOJOBS_CLIENT_ID e INFOJOBS_CLIENT_SECRET) y html-generico (requiere url y selectores CSS de la fuente). Sin configuracion lista informa del estado sin simular resultados. Monitor periodico cada 6 h (DAVIS_RADAR_INTERVALO_MS), alertas por la cola proactiva. Herramientas: escanear_ofertas_empleo, configurar_radar_ofertas.
+- **1. Radar de ofertas de prácticas y empleo** - Adaptadores implementados, requiere config (bloque 1). Ninguna fuente real verificada todavia: el radar NO esta operativo hasta que David aporte credenciales o una fuente HTML. Dos adaptadores listos: InfoJobs (requiere credenciales INFOJOBS_CLIENT_ID e INFOJOBS_CLIENT_SECRET) y html-generico (requiere url y selectores CSS de la fuente). Sin configuracion lista informa del estado sin simular resultados. Monitor periodico cada 6 h (DAVIS_RADAR_INTERVALO_MS), alertas por la cola proactiva. Herramientas: escanear_ofertas_empleo, configurar_radar_ofertas.
 
 - **2. CRM de candidaturas** - Implementada (bloque 1). CRM completo: registrar_candidatura (con dedupe y recordatorio de seguimiento automatico), listar_candidaturas, actualizar_candidatura. Estados: registrada, enviada, entrevista, oferta, descartada.
 

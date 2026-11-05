@@ -15,9 +15,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import dns from 'node:dns/promises';
 import * as cheerio from 'cheerio';
 import { DATA_DIR } from '../config/paths.js';
 import { enqueueAlert } from './alertQueueService.js';
+
+// Limites de seguridad para la descarga de fuentes HTML (SSRF)
+export const MAX_HTML_BYTES = 512 * 1024;
+export const TIMEOUT_HTTP_MS = 10000;
+export const MAX_REDIRECTS = 3;
+const CAMPOS_SENSIBLES = /secret|token|password|passwd|credential|authorization|apikey|api_key|clientsecret|client_id/i;
 
 export const ARCHIVO_CONFIG_DEFECTO = path.join(DATA_DIR, 'job_radar.json');
 export const ARCHIVO_VISTOS_DEFECTO = path.join(DATA_DIR, 'job_radar_seen.json');
@@ -44,7 +51,9 @@ function rutaVistos(deps = {}) {
 export function leerConfigRadar(deps = {}) {
   try {
     const raw = fs.readFileSync(rutaConfig(deps), 'utf-8');
-    return { ...configDefecto(), ...JSON.parse(raw) };
+    const config = { ...configDefecto(), ...JSON.parse(raw) };
+    config.fuentes = limpiarFuentesSensibles(config.fuentes);
+    return config;
   } catch {
     return configDefecto();
   }
@@ -73,7 +82,10 @@ function guardarVistos(vistos, deps = {}) {
 /**
  * Ajusta la configuracion del radar. Solo pisa los campos proporcionados.
  */
-export function configurarRadar({ palabrasClave = null, ubicacion = null, remoto = null, activo = null } = {}, deps = {}) {
+export function configurarRadar({ palabrasClave = null, ubicacion = null, remoto = null, activo = null, fuentes = null } = {}, deps = {}) {
+  if (fuentes !== null) {
+    return { ok: false, error: 'Las fuentes del radar solo las edita el propietario en el fichero de configuracion; no se aceptan por chat.' };
+  }
   const config = leerConfigRadar(deps);
   if (palabrasClave !== null) {
     if (!Array.isArray(palabrasClave) || palabrasClave.length === 0 || palabrasClave.some((p) => !String(p).trim())) {
@@ -86,6 +98,148 @@ export function configurarRadar({ palabrasClave = null, ubicacion = null, remoto
   if (activo !== null) config.activo = Boolean(activo);
   guardarConfigRadar(config, deps);
   return { ok: true, config };
+}
+
+/**
+ * SSRF: una URL de fuente solo es valida si es http(s), sin credenciales
+ * incrustadas, con nombre de host publico y sin resolver a IPs privadas,
+ * loopback, link-local (metadatos cloud) o reservadas.
+ */
+function esIpBloqueada(ip) {
+  if (ip.includes(':')) {
+    const v6 = ip.toLowerCase();
+    return v6 === '::1' || v6 === '::' || v6.startsWith('fe80:') || v6.startsWith('fc') || v6.startsWith('fd');
+  }
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return false; // nombre de host, no IP literal
+  const partes = ip.split('.').map(Number);
+  if (partes.some((p) => p < 0 || p > 255)) return true;
+  const [a, b] = partes;
+  return a === 0 || a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 168) || (a === 169 && b === 254) || a >= 224;
+}
+
+export async function validarUrlFuente(urlStr, deps = {}) {
+  if (typeof urlStr !== 'string' || urlStr.length > 2048) {
+    return { ok: false, motivo: 'URL ausente o demasiado larga.' };
+  }
+  let url;
+  try {
+    url = new URL(urlStr);
+  } catch {
+    return { ok: false, motivo: 'URL con formato invalido.' };
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return { ok: false, motivo: `Esquema no permitido: ${url.protocol}. Solo http/https.` };
+  }
+  if (url.username || url.password) {
+    return { ok: false, motivo: 'La URL no puede llevar credenciales incrustadas.' };
+  }
+  const host = url.hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
+    return { ok: false, motivo: 'Nombre de host local no permitido.' };
+  }
+  const hostSinCorchetes = host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
+  if (esIpBloqueada(hostSinCorchetes)) {
+    return { ok: false, motivo: 'IP privada, loopback o reservada no permitida.' };
+  }
+  // Anti-rebinding: resolver el nombre y rechazar si alguna IP es privada
+  const lookup = deps.dnsLookup || ((h) => dns.lookup(h, { all: true }));
+  try {
+    const ips = await lookup(host);
+    if (!Array.isArray(ips) || ips.length === 0 || ips.some((r) => esIpBloqueada(String(r.address || r)))) {
+      return { ok: false, motivo: 'El nombre de host resuelve a una IP privada o reservada.' };
+    }
+  } catch {
+    return { ok: false, motivo: 'No se pudo resolver el nombre de host.' };
+  }
+  return { ok: true, url };
+}
+
+async function leerTextoLimitado(res, maxBytes) {
+  const len = Number(res.headers && res.headers.get ? res.headers.get('content-length') : null);
+  if (len && len > maxBytes) {
+    throw new Error(`Respuesta demasiado grande (${len} bytes).`);
+  }
+  if (!res.body || typeof res.body.getReader !== 'function') {
+    const texto = await res.text();
+    if (texto.length > maxBytes) throw new Error('Respuesta demasiado grande.');
+    return texto;
+  }
+  const reader = res.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new Error(`Respuesta demasiado grande (mas de ${maxBytes} bytes).`);
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks.map((c) => Buffer.from(c))).toString('utf-8');
+}
+
+/**
+ * Descarga una fuente HTML con defensas SSRF: validacion de URL y de cada
+ * redireccion, DNS sin IPs privadas, tiempo y tamano limitados. El HTML se
+ * trata siempre como contenido hostil: solo se extraen texto y hrefs.
+ */
+export async function fetchHtmlSeguro(urlInicial, deps = {}) {
+  const fetchImpl = deps.fetchImpl || fetch;
+  let urlActual = urlInicial;
+  for (let salto = 0; salto <= MAX_REDIRECTS; salto++) {
+    const validacion = await validarUrlFuente(urlActual, deps);
+    if (!validacion.ok) {
+      throw new Error(`URL rechazada por seguridad: ${validacion.motivo}`);
+    }
+    const controlador = new AbortController();
+    const temporizador = setTimeout(() => controlador.abort(), deps.timeoutMs || TIMEOUT_HTTP_MS);
+    let res;
+    try {
+      res = await fetchImpl(validacion.url.href, {
+        redirect: 'manual',
+        signal: controlador.signal,
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; DAVIS-job-radar)' }
+      });
+    } finally {
+      clearTimeout(temporizador);
+    }
+    if (res.status >= 300 && res.status < 400) {
+      const destino = res.headers && res.headers.get ? res.headers.get('location') : null;
+      if (!destino) throw new Error(`Redireccion ${res.status} sin destino.`);
+      urlActual = new URL(destino, validacion.url.href).href;
+      continue;
+    }
+    if (res.status >= 400) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    return leerTextoLimitado(res, deps.maxBytes || MAX_HTML_BYTES);
+  }
+  throw new Error(`Demasiadas redirecciones (mas de ${MAX_REDIRECTS}).`);
+}
+
+function sanitizarTexto(texto, maxLongitud) {
+  return String(texto || '')
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLongitud);
+}
+
+/** Campos sensibles jamas se leen ni se persisten en la config del radar. */
+function limpiarFuentesSensibles(fuentes) {
+  if (!Array.isArray(fuentes)) return [];
+  return fuentes.map((f) => {
+    if (!f || typeof f !== 'object') return f;
+    const limpia = {};
+    for (const [k, v] of Object.entries(f)) {
+      if (CAMPOS_SENSIBLES.test(k)) continue;
+      limpia[k] = v;
+    }
+    return limpia;
+  });
 }
 
 function idOferta(url, titulo) {
@@ -157,24 +311,35 @@ async function buscarEnHtml(fuente, config, deps) {
       ofertas: []
     };
   }
+  const validacion = await validarUrlFuente(fuente.url, deps);
+  if (!validacion.ok) {
+    return {
+      fuente: fuente.id,
+      estado: 'error',
+      detalle: `URL rechazada por seguridad: ${validacion.motivo}`,
+      ofertas: []
+    };
+  }
   try {
     const html = deps.fetchHtml
       ? await deps.fetchHtml(fuente.url)
-      : await (await fetch(fuente.url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; DAVIS-job-radar)' } })).text();
+      : await fetchHtmlSeguro(fuente.url, deps);
     const $ = cheerio.load(html);
     const ofertas = [];
     $(sel.item).each((_, el) => {
-      const titulo = $(el).find(sel.titulo).first().text().trim();
+      const titulo = sanitizarTexto($(el).find(sel.titulo).first().text(), 200);
       const href = $(el).find(sel.enlace).first().attr('href');
       if (!titulo || !href) return;
       let url;
       try {
-        url = new URL(href, fuente.url).href;
+        url = new URL(href, fuente.url);
       } catch {
         return;
       }
-      const empresa = sel.empresa ? $(el).find(sel.empresa).first().text().trim() : null;
-      ofertas.push({ id: idOferta(url, titulo), titulo, empresa, ubicacion: null, url, fuente: fuente.id });
+      // Solo enlaces http(s) sin credenciales llegan a las alertas
+      if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.username || url.password) return;
+      const empresa = sel.empresa ? sanitizarTexto($(el).find(sel.empresa).first().text(), 100) : null;
+      ofertas.push({ id: idOferta(url.href, titulo), titulo, empresa, ubicacion: null, url: url.href, fuente: fuente.id });
     });
     return { fuente: fuente.id, estado: 'ok', ofertas };
   } catch (err) {
@@ -242,17 +407,40 @@ export async function escanearRadar(deps = {}) {
 
 let intervaloRadar = null;
 
+/** Una fuente esta lista si tiene credenciales (env) o url+selectores validos. */
+export function fuenteLista(fuente, deps = {}) {
+  if (!fuente || !fuente.enabled) return false;
+  if (fuente.tipo === 'infojobs-api') {
+    const env = deps.env || process.env;
+    return Boolean(env.INFOJOBS_CLIENT_ID && env.INFOJOBS_CLIENT_SECRET);
+  }
+  if (fuente.tipo === 'html-generico') {
+    const sel = fuente.selectores || {};
+    return Boolean(fuente.url && sel.item && sel.titulo && sel.enlace);
+  }
+  return false;
+}
+
 /**
- * Rondas periodicas del radar. Las alertas salen por la cola existente, que
- * whatsappBot ya drena cada 5 segundos al chat de David.
+ * Rondas periodicas del radar. Desactivado por defecto: solo arranca si el
+ * propietario activo el radar y hay al menos una fuente lista; en cualquier
+ * otro caso no hay temporizador ni peticiones en segundo plano. Las alertas
+ * salen por la cola existente, que whatsappBot ya drena al chat de David.
  */
 export function iniciarMonitorRadar(deps = {}, intervaloMs = INTERVALO_DEFECTO_MS) {
-  if (intervaloRadar) return intervaloRadar;
+  if (intervaloRadar) return { iniciado: true, mensaje: 'El monitor del radar ya estaba activo.' };
+  const config = leerConfigRadar(deps);
+  if (!config.activo) {
+    return { iniciado: false, motivo: 'Radar desactivado: no se inician rondas en segundo plano.' };
+  }
+  if (!(config.fuentes || []).some((f) => fuenteLista(f, deps))) {
+    return { iniciado: false, motivo: 'Radar activo pero sin fuentes listas (faltan credenciales o selectores).' };
+  }
   intervaloRadar = setInterval(() => {
     escanearRadar(deps).catch((err) => console.error('[Radar Empleo] Error en ronda:', err.message));
   }, intervaloMs);
   if (typeof intervaloRadar.unref === 'function') intervaloRadar.unref();
-  return intervaloRadar;
+  return { iniciado: true };
 }
 
 export function detenerMonitorRadar() {
