@@ -10,8 +10,8 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ## Resumen
 
-- Implementadas: 41 de 50 operativas (nº 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 19, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50) + 8 pendientes de config del propietario (nº 1 radar; nº 16 backup: cifrado local GCM operativo, subida externa pendiente de URL PAR; nº 18 WoL: falta DAVIS_WOL_MAC; nº 20 domotica: falta Home Assistant; nº 21 descargas: disco operativo, falta qBittorrent; nº 22 factura Oracle: falta OCI CLI; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: via de texto operativa, lectura de imagen pendiente del adaptador). La nº 36 lleva una dependencia externa relevante, ver su entrada.
-- Pendientes: 1 de 50 (50 - 41 operativas - 8 config-required): nº 28 vuelos y trenes.
+- Implementadas: 41 de 50 operativas (nº 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 19, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50) + 9 pendientes de config del propietario (nº 1 radar; nº 16 backup: cifrado local GCM operativo, subida externa pendiente de URL PAR; nº 18 WoL: falta DAVIS_WOL_MAC; nº 20 domotica: falta Home Assistant; nº 21 descargas: disco operativo, falta qBittorrent; nº 22 factura Oracle: falta OCI CLI; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: via de texto operativa, lectura de imagen pendiente del adaptador; nº 28 vuelos/trenes: registro y avisos operativos, fuente de precios en vivo pendiente de proveedor). La nº 36 lleva una dependencia externa relevante, ver su entrada.
+- Pendientes: 0 de 50 (41 operativas + 9 config-required = 50).
 
 ## Detalle por funcion
 
@@ -65,11 +65,11 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 - **22. Termómetro de la factura de Oracle** - Implementada parcialmente, requiere config (bloque 14). Estimacion real via OCI CLI (oci ce cost-summary) en el servidor; sin ella, config-required y recuerda que Always Free suele ser 0 EUR: nunca inventa cifras. Herramienta: estimar_factura_oracle.
 
-- **23. Watchdog externo del bot** - Pendiente de configuracion (Bloque 4): scripts/watchdog.js comprueba la URL publica de salud del bot (/api/salud) y avisa por webhook si cae. Requiere que David lo ejecute en un host o servicio EXTERNO al VPS (un vigilante en el mismo host no cubre la caida del host) y defina DAVIS_HEALTHCHECK_URL (+ DAVIS_WATCHDOG_WEBHOOK opcional). Sin esa configuracion no es operativo.
+- **23. Watchdog externo del bot** - Implementada parcialmente, requiere config (Bloque 4): scripts/watchdog.js comprueba la URL publica de salud del bot (/api/salud) y avisa por webhook si cae. Requiere que David lo ejecute en un host o servicio EXTERNO al VPS (un vigilante en el mismo host no cubre la caida del host) y defina DAVIS_HEALTHCHECK_URL (+ DAVIS_WATCHDOG_WEBHOOK opcional). Sin esa configuracion no es operativo.
 
 ### Finanzas personales
 
-- **24. Registro de gastos por foto** - Adaptador pendiente de configuracion (Bloque 3): pipeline foto -> borrador -> confirmacion implementado y cableado en la entrada de WhatsApp (aislado por chat, caduca a los 30 min, un solo uso; nada se registra sin el "si" de David). La lectura de la imagen la hace un adaptador real (src/services/ticketVisionAdapter.js): se activa configurando DAVIS_TICKET_VISION_MODEL con un modelo con vision del proveedor ya configurado (por ejemplo gpt-4o-mini); el adaptador envia la foto a ese modelo con un prompt estricto y devuelve solo datos estructurados, y David confirma antes de que se registre nada. Sin esa variable NO es operativo y el bot lo dice claramente. La via de texto ("registra un gasto de 12,50 en Mercadona") es operativa desde ya.
+- **24. Registro de gastos por foto** - Implementada parcialmente, requiere config (Bloque 3): pipeline foto -> borrador -> confirmacion implementado y cableado en la entrada de WhatsApp (aislado por chat, caduca a los 30 min, un solo uso; nada se registra sin el "si" de David). La lectura de la imagen la hace un adaptador real (src/services/ticketVisionAdapter.js): se activa configurando DAVIS_TICKET_VISION_MODEL con un modelo con vision del proveedor ya configurado (por ejemplo gpt-4o-mini); el adaptador envia la foto a ese modelo con un prompt estricto y devuelve solo datos estructurados, y David confirma antes de que se registre nada. Sin esa variable NO es operativo y el bot lo dice claramente. La via de texto ("registra un gasto de 12,50 en Mercadona") es operativa desde ya.
 
 - **25. Resumen mensual de gasto** - Operativa (Bloque 3): herramienta resumen_gastos_mes con comparativa por categoria frente al mes anterior.
 
@@ -77,7 +77,7 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 - **27. Presupuesto mensual con alertas** - Operativa (Bloque 3): presupuesto por categoria con alerta al superar el 80% del limite (configurar_presupuesto / estado_presupuestos).
 
-- **28. Seguimiento de vuelos y trenes** - Pendiente. Bloque por priorizar.
+- **28. Seguimiento de vuelos y trenes** - Implementada parcialmente, requiere config (bloque 15). Registro de rutas (vuelo/tren, origen/destino/fecha AAAA-MM-DD, precio objetivo), historial, aviso de bajadas por cola y registro manual de precios operativos ya; cada ruta nace de peticion textual. La FUENTE DE PRECIOS EN VIVO es config-required: no hay fuente gratuita sin alta (Amadeus/Kiwi exigen cuenta; Renfe sin API publica) y no se simula - sin proveedor el comprobador no consulta nada ni inventa cifras, y todo precio se presenta como referencia a confirmar antes de comprar. Herramientas: vigilar_ruta, listar_rutas_vigiladas, cancelar_vigilancia_ruta, registrar_precio_ruta.
 
 ### Comunicación y WhatsApp
 

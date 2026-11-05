@@ -1936,6 +1936,59 @@ export const herramientasJarvis = [
       description: 'Termometro de la factura de Oracle Cloud via OCI CLI/Cost API: config-required si el servidor no tiene OCI configurado; no inventa cifras.',
       parameters: { type: 'object', properties: {} }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'vigilar_ruta',
+      description: 'Vigila una ruta de vuelo o tren (origen, destino, fecha) con precio objetivo opcional y aviso de bajadas. La fuente de precios en vivo es config-required; mientras tanto acepta precios manuales.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tipo: { type: 'string', enum: ['vuelo', 'tren'] },
+          origen: { type: 'string' },
+          destino: { type: 'string' },
+          fecha: { type: 'string', description: 'Fecha del viaje AAAA-MM-DD.' },
+          precioObjetivo: { type: 'number', description: 'Avisar si baja de este precio en EUR (opcional).' }
+        },
+        required: ['tipo', 'origen', 'destino', 'fecha']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_rutas_vigiladas',
+      description: 'Lista las rutas de vuelo/tren vigiladas con su objetivo y ultimo precio conocido.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'cancelar_vigilancia_ruta',
+      description: 'Deja de vigilar una ruta de vuelo/tren.',
+      parameters: {
+        type: 'object',
+        properties: { criterio: { type: 'string', description: 'Texto que identifica la ruta (destino, fecha...).' } },
+        required: ['criterio']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'registrar_precio_ruta',
+      description: 'Registra un precio que David ha visto para una ruta vigilada y lo compara con su objetivo e historial.',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string', description: 'Texto que identifica la ruta.' },
+          precio: { type: 'number', description: 'Precio visto en EUR.' }
+        },
+        required: ['criterio', 'precio']
+      }
+    }
   }
 ];
 
@@ -1976,6 +2029,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   devtools: ['anotar_idea', 'listar_ideas', 'priorizar_ideas', 'generar_changelog', 'guiar_depuracion', 'revisar_pr'],
   ops: ['auditar_dependencias', 'configurar_vigilancia_dependencias', 'informe_metricas', 'configurar_informe_metricas', 'actividad_repos', 'configurar_alertas_repos', 'crear_backup_sesion'],
   hogar: ['encender_pc', 'listar_dispositivos_red', 'configurar_vigilancia_red', 'controlar_domotica', 'estado_descargas', 'configurar_aviso_descargas', 'estimar_factura_oracle', 'verificar_backup_sesion'],
+  viajes: ['vigilar_ruta', 'listar_rutas_vigiladas', 'cancelar_vigilancia_ruta', 'registrar_precio_ruta'],
   carrera: ['iniciar_simulacro_entrevista', 'analizar_cv_oferta', 'resumir_apuntes', 'registrar_entrega', 'listar_entregas', 'eliminar_entrega'],
   procesos: ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'],
   finanzas: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'],
