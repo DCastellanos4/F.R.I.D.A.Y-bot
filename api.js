@@ -76,7 +76,12 @@ export async function handleApiRequest(req, res) {
       }
       const rawBody = Buffer.concat(chunks);
       const signatureHeader = req.headers['x-hub-signature-256'] || '';
-      const secret = process.env.GITHUB_WEBHOOK_SECRET || config.githubWebhookSecret || 'davis_ci_webhook_secret_998877';
+      const secret = process.env.GITHUB_WEBHOOK_SECRET || config.githubWebhookSecret || '';
+      if (!secret) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Webhook no configurado: falta GITHUB_WEBHOOK_SECRET en el entorno.' }));
+        return;
+      }
 
       const isValid = verifySignature(rawBody, signatureHeader, secret);
       if (!isValid) {
@@ -102,6 +107,22 @@ export async function handleApiRequest(req, res) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: false, error: err.message }));
     }
+    return;
+  }
+
+  // Todos los demas endpoints requieren autenticacion por token.
+  // Sin API_TOKEN configurado el API falla en seco (fail closed).
+  const apiToken = process.env.API_TOKEN || config.apiToken || '';
+  if (!apiToken) {
+    res.writeHead(503, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: 'API REST deshabilitada: define API_TOKEN en el entorno para habilitarla.' }));
+    return;
+  }
+  const authHeader = req.headers['authorization'] || '';
+  const tokenHeader = req.headers['x-api-token'] || '';
+  if (authHeader !== `Bearer ${apiToken}` && tokenHeader !== apiToken) {
+    res.writeHead(401, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
     return;
   }
 

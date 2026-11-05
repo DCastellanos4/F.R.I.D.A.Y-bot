@@ -1,5 +1,6 @@
 import readline from 'readline';
 import { consultarJarvis } from './jarvisAgent.js';
+import { confirmAndExecute } from './bashConsoleService.js';
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -29,9 +30,22 @@ function promptUsuario() {
     }
 
     try {
+      const mOtp = texto.match(/^confirma(?:r|me)?\s+(?:otp\s+|c[oó]digo\s+|codigo\s+)?[:#-]?\s*(\d{6})\s*$/i);
+      if (mOtp) {
+        const resOtp = await confirmAndExecute(mOtp[1]);
+        console.log('\n[2FA]', resOtp.status === 'EXECUTED' ? `Comando "${resOtp.command}" ejecutado:` : `No confirmado: ${resOtp.error || resOtp.status}`);
+        if (resOtp.status === 'EXECUTED') console.log(resOtp.stdout || resOtp.stderr || '(sin salida)');
+        promptUsuario();
+        return;
+      }
+
       console.log('\n[D.A.V.I.S.] FRIDAY está evaluando...');
       const inicio = Date.now();
-      const respuesta = await consultarJarvis(texto, historial);
+      const respuesta = await consultarJarvis(texto, historial, {
+        otpDelivery: async ({ otpCode, ttlSeconds, command }) => {
+          console.log(`\n[2FA] Codigo OTP para "${command}": ${otpCode} (valido ${ttlSeconds}s). Escribe: confirmar otp ${otpCode}`);
+        }
+      });
       const tiempo = ((Date.now() - inicio) / 1000).toFixed(1);
 
       console.log(`\n[Chat] FRIDAY (${tiempo}s):`);

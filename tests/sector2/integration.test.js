@@ -72,6 +72,7 @@ describe('Sector 2 - Master Integration Test Suite', () => {
     let serverUrl;
 
     beforeEach(async () => {
+      process.env.GITHUB_WEBHOOK_SECRET = TEST_WEBHOOK_SECRET;
       testServer = http.createServer(handleApiRequest);
       await new Promise((resolve) => {
         testServer.listen(0, '127.0.0.1', () => {
@@ -197,6 +198,79 @@ describe('Sector 2 - Master Integration Test Suite', () => {
     });
   });
 
+  describe('Part 1b: REST API Token Authentication', () => {
+    let testServer;
+    let serverUrl;
+
+    beforeEach(async () => {
+      delete process.env.API_TOKEN;
+      testServer = http.createServer(handleApiRequest);
+      await new Promise((resolve) => {
+        testServer.listen(0, '127.0.0.1', () => {
+          serverUrl = `http://127.0.0.1:${testServer.address().port}`;
+          resolve();
+        });
+      });
+    });
+
+    afterEach(async () => {
+      delete process.env.API_TOKEN;
+      await new Promise((resolve) => testServer.close(resolve));
+    });
+
+    it('should fail closed with HTTP 503 on protected endpoints when API_TOKEN is not configured', async () => {
+      const res = await fetch(`${serverUrl}/api/salud`);
+      assert.strictEqual(res.status, 503);
+      const json = await res.json();
+      assert.strictEqual(json.ok, false);
+      assertNoEmojis(json);
+    });
+
+    it('should reject requests without a valid token with HTTP 401', async () => {
+      process.env.API_TOKEN = 'test_api_token_fixture';
+      const res = await fetch(`${serverUrl}/api/salud`);
+      assert.strictEqual(res.status, 401);
+      const resBad = await fetch(`${serverUrl}/api/salud`, {
+        headers: { Authorization: 'Bearer token_incorrecto' }
+      });
+      assert.strictEqual(resBad.status, 401);
+    });
+
+    it('should accept requests with a valid Bearer token', async () => {
+      process.env.API_TOKEN = 'test_api_token_fixture';
+      const res = await fetch(`${serverUrl}/api/salud`, {
+        headers: { Authorization: 'Bearer test_api_token_fixture' }
+      });
+      assert.strictEqual(res.status, 200);
+      const json = await res.json();
+      assert.strictEqual(json.ok, true);
+      assertNoEmojis(json);
+    });
+
+    it('should keep the GitHub webhook on HMAC signature instead of the API token', async () => {
+      process.env.API_TOKEN = 'test_api_token_fixture';
+      process.env.GITHUB_WEBHOOK_SECRET = TEST_WEBHOOK_SECRET;
+      const payload = JSON.stringify(GITHUB_PAYLOADS.workflowSucceeded);
+      const validHeader = createValidSignatureHeader(payload, TEST_WEBHOOK_SECRET);
+      const res = await fetch(`${serverUrl}/api/webhook/github`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Hub-Signature-256': validHeader },
+        body: payload
+      });
+      assert.strictEqual(res.status, 200);
+    });
+
+    it('should return HTTP 503 on the webhook when GITHUB_WEBHOOK_SECRET is not configured', async () => {
+      delete process.env.GITHUB_WEBHOOK_SECRET;
+      const res = await fetch(`${serverUrl}/api/webhook/github`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      assert.strictEqual(res.status, 503);
+    });
+  });
+
   describe('Part 2: WhatsApp Bot Watchdogs & Alert Draining', () => {
     it('should drain alerts from alertQueue and dispatch formatted zero-emoji messages to David', async () => {
       const sentMessages = [];
@@ -262,7 +336,6 @@ describe('Sector 2 - Master Integration Test Suite', () => {
     it('should register all 6 Sector 2 tools in herramientasJarvis with valid schemas and zero emojis', () => {
       const requiredTools = [
         'execute_bash_command',
-        'confirm_bash_otp',
         'generate_crypto_credential',
         'get_infrastructure_status',
         'manage_tunnel',
@@ -279,23 +352,31 @@ describe('Sector 2 - Master Integration Test Suite', () => {
         assertNoEmojis(found);
       }
     });
+
+    it('should NOT register confirm_bash_otp: el modelo nunca puede confirmar sus propios comandos criticos', () => {
+      const found = herramientasJarvis.find((h) => h.function.name === 'confirm_bash_otp');
+      assert.strictEqual(found, undefined);
+    });
   });
 
   describe('Part 4: Intent Router Precision (seleccionarHerramientasPorIntencion)', () => {
-    it('should select execute_bash_command and confirm_bash_otp for bash terminal queries', () => {
+    it('should select execute_bash_command for bash terminal queries', () => {
       const queries = [
         'ejecuta uptime en la terminal',
         'lanza el comando df -h en la consola',
-        'revisa el estado de pm2 status',
-        'confirmar otp 839201 para autorizar ejecucion'
+        'revisa el estado de pm2 status'
       ];
 
       for (const q of queries) {
         const tools = seleccionarHerramientasPorIntencion(q);
         const names = tools.map((t) => t.function.name);
         assert.ok(
-          names.includes('execute_bash_command') || names.includes('confirm_bash_otp'),
+          names.includes('execute_bash_command'),
           `Query "${q}" should route to bash tools, got: ${names.join(', ')}`
+        );
+        assert.ok(
+          !names.includes('confirm_bash_otp'),
+          'El LLM nunca debe recibir la herramienta de confirmacion OTP'
         );
         assertNoEmojis(tools);
       }
@@ -404,15 +485,21 @@ describe('Sector 2 - Master Integration Test Suite', () => {
     });
 
     it('should require 6-digit OTP for critical bash command and execute upon confirmation', async () => {
-      const requestRes = await requestExecution('pm2 restart jarvis-api');
+      let deliveredPayload = null;
+      const requestRes = await requestExecution('pm2 restart jarvis-api', {
+        otpGenerator: () => '483920',
+        otpDelivery: async (payload) => { deliveredPayload = payload; }
+      });
       assert.strictEqual(requestRes.status, 'OTP_REQUIRED');
-      assert.strictEqual(typeof requestRes.otpCode, 'string');
-      assert.strictEqual(requestRes.otpCode.length, 6);
+      // El codigo OTP jamas viaja en el resultado que veria el LLM
+      assert.strictEqual(requestRes.otpCode, undefined);
       assert.strictEqual(typeof requestRes.commandId, 'string');
+      assert.ok(deliveredPayload);
+      assert.strictEqual(deliveredPayload.otpCode, '483920');
       assertNoEmojis(requestRes);
 
-      // Confirm with the generated OTP
-      const confirmRes = await confirmAndExecute(requestRes.commandId, requestRes.otpCode);
+      // Confirm with the OTP delivered through the direct channel
+      const confirmRes = await confirmAndExecute(requestRes.commandId, deliveredPayload.otpCode);
       assert.strictEqual(confirmRes.status, 'EXECUTED');
       assert.strictEqual(confirmRes.command, 'pm2 restart jarvis-api');
       assertNoEmojis(confirmRes);
@@ -424,7 +511,9 @@ describe('Sector 2 - Master Integration Test Suite', () => {
       assert.ok(pwd.entropy >= 100);
       assertNoEmojis(pwd);
 
+      process.env.MEMORY_ENCRYPTION_KEY = 'test_memory_key_integration';
       const memRes = await saveCredentialToMemory('Test VPS Server Root', pwd.password, 'Credencial de prueba');
+      delete process.env.MEMORY_ENCRYPTION_KEY;
       assert.strictEqual(memRes.ok, true);
       assert.strictEqual(memRes.category, 'clave');
       assertNoEmojis(memRes);
