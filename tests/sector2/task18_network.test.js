@@ -22,8 +22,8 @@ import {
   resetNetworkMonitorState,
   DEFAULT_SPIKE_THRESHOLD_MBPS,
   DEFAULT_COOLDOWN_MS
-} from '../../networkMonitorService.js';
-import { drainAlerts } from '../../alertQueueService.js';
+} from '../../src/monitors/networkMonitorService.js';
+import { drainAlerts } from '../../src/services/alertQueueService.js';
 
 describe('Sector 2 - Task 18: Network Bandwidth Monitoring & Anomaly Detection', () => {
   let tempDir;

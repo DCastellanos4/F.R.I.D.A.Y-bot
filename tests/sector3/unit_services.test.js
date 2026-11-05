@@ -20,11 +20,11 @@ import path from 'path';
 const dirHistorial = fs.mkdtempSync(path.join(os.tmpdir(), 'davis-history-'));
 process.env.DAVIS_HISTORY_DIR = dirHistorial;
 
-const historial = await import('../../conversationHistoryService.js');
-const intentRouter = await import('../../intentRouterService.js');
-const voz = await import('../../voiceConfirmationService.js');
-const memoria = await import('../../memoryService.js');
-const programados = await import('../../scheduledMessageService.js');
+const historial = await import('../../src/services/conversationHistoryService.js');
+const intentRouter = await import('../../src/core/intentRouterService.js');
+const voz = await import('../../src/services/voiceConfirmationService.js');
+const memoria = await import('../../src/services/memoryService.js');
+const programados = await import('../../src/services/scheduledMessageService.js');
 
 test('[Unit] Historial: aislamiento por chat y ventana deslizante', () => {
   historial.limpiarHistorial('chat-a@test');
@@ -206,7 +206,7 @@ test('[Unit] Programados: registrarIdWhatsApp y acuses de recibo', () => {
 });
 
 // --- destructiveActionService: confirmacion fuera del modelo ---
-const destructivas = await import('../../destructiveActionService.js');
+const destructivas = await import('../../src/services/destructiveActionService.js');
 
 test('[Unit] Borrado masivo: confirmacion ligada a chat, id, TTL y un solo uso', () => {
   destructivas.limpiarBorradosPendientes();
@@ -307,7 +307,7 @@ test('[Unit] Programados: entrega incierta no se reintenta (sin duplicados)', as
 });
 
 // --- bashConsoleService: verificacion posterior solo-lectura e inmune a inyeccion ---
-const bashSvc = await import('../../bashConsoleService.js');
+const bashSvc = await import('../../src/system/bashConsoleService.js');
 
 test('[Unit] Bash: verificacion posterior es allowlist de solo lectura e inmune a inyeccion', () => {
   const PERMITIDO = /^(pm2 status( [\w@./-]+)?|systemctl is-active [\w@.-]+|service [\w@.-]+ status|docker inspect -f '\{\{\.State\.Status\}\}' [\w.-]+|docker ps|ufw status)$/;

@@ -8,7 +8,7 @@ describe('Sector 1 - Task 5: Group Chat Summarizer & Mention Extractor', () => {
 
   beforeEach(async () => {
     try {
-      groupSummarizerService = await import('../../groupSummarizerService.js');
+      groupSummarizerService = await import('../../src/services/groupSummarizerService.js');
     } catch {
       groupSummarizerService = null;
     }

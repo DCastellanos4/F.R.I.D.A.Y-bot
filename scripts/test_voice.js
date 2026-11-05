@@ -1,6 +1,6 @@
 import fs from 'fs';
 import { execSync } from 'child_process';
-import { transcribirAudioBuffer } from './voiceService.js';
+import { transcribirAudioBuffer } from '../src/services/voiceService.js';
 
 async function testVoice() {
   console.log('--- TEST TRANSCRIPTOR DE VOZ LOCAL (WHISPER) ---');

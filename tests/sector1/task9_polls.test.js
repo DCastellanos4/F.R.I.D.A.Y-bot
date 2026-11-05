@@ -11,7 +11,7 @@ describe('Sector 1 - Task 9: Native WhatsApp Polls & Vote Tracking', () => {
   beforeEach(async () => {
     mockSocket = createMockSocket();
     try {
-      interactiveService = await import('../../interactiveService.js');
+      interactiveService = await import('../../src/core/interactiveService.js');
     } catch {
       interactiveService = null;
     }

@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { enqueueAlert } from './alertQueueService.js';
+import { enqueueAlert } from '../services/alertQueueService.js';
 
 /**
  * GitHub Webhook Service for CI/CD Telemetry and Build Failure Notifications.

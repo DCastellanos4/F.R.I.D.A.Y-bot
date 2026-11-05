@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
-import { enqueueAlert } from './alertQueueService.js';
-import { runCommand } from './sysCommandRunner.js';
+import { enqueueAlert } from '../services/alertQueueService.js';
+import { runCommand } from '../system/sysCommandRunner.js';
 
 export const DEFAULT_FAIL2BAN_LOG = '/var/log/fail2ban.log';
 export const DEFAULT_AUTH_LOG = '/var/log/auth.log';

@@ -8,8 +8,8 @@ describe('Sector 1 - Deep Unit Verification: Task 2 & Task 5', () => {
   let groupSummarizerService;
 
   beforeEach(async () => {
-    vipFilterService = await import('../../vipFilterService.js');
-    groupSummarizerService = await import('../../groupSummarizerService.js');
+    vipFilterService = await import('../../src/services/vipFilterService.js');
+    groupSummarizerService = await import('../../src/services/groupSummarizerService.js');
     vipFilterService.resetVipFilter();
     groupSummarizerService.clearAllGroupBuffers();
   });

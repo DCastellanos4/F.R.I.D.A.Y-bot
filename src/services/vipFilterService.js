@@ -1,4 +1,4 @@
-import { config } from './config.js';
+import { config } from '../config/config.js';
 
 let vipModeEnabled = true;
 const vipContacts = new Set();

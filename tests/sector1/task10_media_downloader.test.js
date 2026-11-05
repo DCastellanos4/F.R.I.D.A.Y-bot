@@ -12,7 +12,7 @@ describe('Sector 1 - Task 10: Direct Media Downloader (yt-dlp & WhatsApp Limits)
   beforeEach(async () => {
     mockSocket = createMockSocket();
     try {
-      mediaDownloaderService = await import('../../mediaDownloaderService.js');
+      mediaDownloaderService = await import('../../src/services/mediaDownloaderService.js');
     } catch {
       mediaDownloaderService = null;
     }

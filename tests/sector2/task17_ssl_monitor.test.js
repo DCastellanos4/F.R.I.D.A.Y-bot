@@ -5,7 +5,7 @@ import {
   formatSslExpiryAlert,
   checkAndAlertExpiry,
   batchCheckCertificates
-} from '../../sslMonitorService.js';
+} from '../../src/monitors/sslMonitorService.js';
 import { SSL_SCENARIOS, BATCH_TEST_DOMAINS } from './fixtures/sslFixtures.js';
 import { createMockTlsConnect, createSyntheticPeerCertificate } from './helpers/tlsMock.js';
 import { createAlertCaptureMock } from './helpers/alertCaptureMock.js';

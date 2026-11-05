@@ -2,10 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { DATA_DIR } from '../config/paths.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const DEFAULT_DATA_DIR = path.resolve(__dirname, 'data');
+const DEFAULT_DATA_DIR = DATA_DIR;
 export const DEFAULT_QUEUE_FILE = path.join(DEFAULT_DATA_DIR, 'alerts_queue.json');
 
 /**

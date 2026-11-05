@@ -6,8 +6,8 @@ import {
   chatCompletion,
   getLlmProviderInfo,
   getOllamaClient
-} from './llmService.js';
-import { consultarJarvis, seleccionarHerramientasPorIntencion, esPeticionCachimba } from './jarvisAgent.js';
+} from '../src/core/llmService.js';
+import { consultarJarvis, seleccionarHerramientasPorIntencion, esPeticionCachimba } from '../src/core/jarvisAgent.js';
 
 async function runTests() {
   console.log(' ====================================================');

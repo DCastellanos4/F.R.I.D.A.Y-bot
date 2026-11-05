@@ -1,6 +1,6 @@
 import fsPromises from 'node:fs/promises';
 import os from 'node:os';
-import { enqueueAlert } from './alertQueueService.js';
+import { enqueueAlert } from '../services/alertQueueService.js';
 
 export const DEFAULT_PROC_NET_DEV_PATH = '/proc/net/dev';
 export const DEFAULT_SPIKE_THRESHOLD_MBPS = 10.0;

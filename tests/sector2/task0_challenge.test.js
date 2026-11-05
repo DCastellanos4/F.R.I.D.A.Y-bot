@@ -14,8 +14,8 @@ import {
   getQueueLength,
   clearQueue,
   formatAlertText
-} from '../../alertQueueService.js';
-import { runCommand, runSystemCommand } from '../../sysCommandRunner.js';
+} from '../../src/services/alertQueueService.js';
+import { runCommand, runSystemCommand } from '../../src/system/sysCommandRunner.js';
 
 describe('Sector 2 - Task 0: Empirical Challenger Stress Harness', () => {
   let tempDir;
@@ -629,7 +629,7 @@ describe('Sector 2 - Task 0: Empirical Challenger Stress Harness', () => {
   describe('Stress Vector 10: Multi-Process Concurrency and Queue Invariants', () => {
     it('should survive concurrent writes from multiple child processes without file corruption or unhandled crashes', async () => {
       const workerScriptPath = path.join(tempDir, 'concurrent_worker.mjs');
-      const alertServiceImportUrl = pathToFileURL(path.resolve(process.cwd(), 'alertQueueService.js')).href;
+      const alertServiceImportUrl = pathToFileURL(path.resolve(process.cwd(), 'src/services/alertQueueService.js')).href;
 
       const workerCode = `
 import { enqueueAlert } from '${alertServiceImportUrl}';
@@ -784,8 +784,8 @@ process.exit(0);
   describe('Stress Vector 12: Zero-Emoji Enforcement on Adversarial Inputs', () => {
     it('should verify zero emojis across all Sector 2 foundation files and tests', () => {
       const files = [
-        'alertQueueService.js',
-        'sysCommandRunner.js',
+        'src/services/alertQueueService.js',
+        'src/system/sysCommandRunner.js',
         'tests/sector2/task0_foundations.test.js',
         'tests/sector2/task0_challenge.test.js'
       ];

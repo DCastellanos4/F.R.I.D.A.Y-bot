@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+import { DATA_DIR } from '../config/paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -29,7 +30,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const CARPETA_HISTORIAL = process.env.DAVIS_HISTORY_DIR
   ? path.resolve(process.env.DAVIS_HISTORY_DIR)
-  : path.join(__dirname, 'data', 'history');
+  : path.join(DATA_DIR, 'history');
 
 export const MAX_MENSAJES_VENTANA = 12;   // mensajes que se entregan al modelo
 export const MAX_MENSAJES_ARCHIVO = 40;   // tope persistido antes de condensar

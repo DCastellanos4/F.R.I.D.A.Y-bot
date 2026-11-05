@@ -1,6 +1,6 @@
 import readline from 'readline';
-import { consultarJarvis } from './jarvisAgent.js';
-import { confirmAndExecute } from './bashConsoleService.js';
+import { consultarJarvis } from './src/core/jarvisAgent.js';
+import { confirmAndExecute } from './src/system/bashConsoleService.js';
 
 const rl = readline.createInterface({
   input: process.stdin,

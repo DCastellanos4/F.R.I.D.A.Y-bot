@@ -1,5 +1,5 @@
 import tls from 'node:tls';
-import { enqueueAlert } from './alertQueueService.js';
+import { enqueueAlert } from '../services/alertQueueService.js';
 
 /**
  * SSL Monitor Service for Proactive Certificate Expiry Verification.

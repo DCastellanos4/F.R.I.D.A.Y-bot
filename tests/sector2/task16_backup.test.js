@@ -22,7 +22,7 @@ import {
   SALT_SIZE,
   IV_SIZE,
   TAG_SIZE
-} from '../../backupService.js';
+} from '../../src/system/backupService.js';
 
 import {
   TEST_BACKUP_PASSPHRASE,

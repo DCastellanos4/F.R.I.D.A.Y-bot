@@ -19,8 +19,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { consultarJarvis } from '../../jarvisAgent.js';
-import { herramientasJarvis } from '../../tools.js';
+import { consultarJarvis } from '../../src/core/jarvisAgent.js';
+import { herramientasJarvis } from '../../src/core/tools.js';
 import { casosDorados } from './golden_dataset.js';
 
 const MARCA_CLASIFICADOR = 'Clasifica la intencion principal';

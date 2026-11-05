@@ -11,7 +11,7 @@ describe('Sector 1 - Task 1: PTT Voice Notes Generation & Dispatch', () => {
   beforeEach(async () => {
     mockSocket = createMockSocket();
     try {
-      ttsService = await import('../../ttsService.js');
+      ttsService = await import('../../src/services/ttsService.js');
     } catch {
       ttsService = null;
     }

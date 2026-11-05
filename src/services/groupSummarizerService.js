@@ -1,4 +1,4 @@
-import { config } from './config.js';
+import { config } from '../config/config.js';
 
 // Bufer en memoria para almacenar mensajes de grupos de WhatsApp (@g.us)
 const groupMessageBuffers = new Map();

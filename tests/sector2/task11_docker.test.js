@@ -9,7 +9,7 @@ import {
   recordRestart,
   resetRestartHistory,
   formatDockerAlertText
-} from '../../dockerMonitorService.js';
+} from '../../src/monitors/dockerMonitorService.js';
 import { SysCommandMock } from './helpers/sysCommandMock.js';
 import { AlertCaptureMock } from './helpers/alertCaptureMock.js';
 import { assertNoEmojis } from './helpers/s2Validators.js';
