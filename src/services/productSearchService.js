@@ -54,6 +54,8 @@ export async function buscarProducto({ consulta } = {}, deps = {}) {
       ok: true,
       fuente: r.id,
       candidatos,
+      accesoriosOmitidos: Number.isFinite(res && res.accesoriosOmitidos) ? res.accesoriosOmitidos : 0,
+      descartadosSinVinculo: Number.isFinite(res && res.descartadosSinVinculo) ? res.descartadosSinVinculo : 0,
       totalResultados: Number.isFinite(res && res.totalResultados) ? res.totalResultados : candidatos.length,
       aviso: r.id === 'priceradars' ? AVISO_PRICERADARS : undefined
     };

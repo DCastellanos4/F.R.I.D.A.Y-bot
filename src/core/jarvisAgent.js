@@ -958,11 +958,12 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
         } else {
           const lineas = res.candidatos.slice(0, 8).map((c) => {
             const precioTxt = Number.isFinite(c.precio) ? `${c.precio} ${c.moneda || 'EUR'}` : 'precio no publicado';
-            const stockTxt = c.enStock === true ? 'en stock' : c.enStock === false ? 'AGOTADO' : 'stock sin publicar';
-            const extras = [c.comercio, c.ofertas > 1 ? `${c.ofertas} ofertas` : null].filter(Boolean).join(' - ');
+            const stockTxt = c.enStock === true ? 'en stock (segun comparador, sin reconfirmar)' : c.enStock === false ? 'AGOTADO segun comparador' : 'stock sin publicar';
+            const extras = [c.comercio, c.ofertas > 1 ? `${c.ofertas} ofertas` : null, c.variante === 'distinta' ? 'OJO: otra variante del modelo' : null].filter(Boolean).join(' - ');
             return `- ${c.nombre}: ${precioTxt}, ${stockTxt}${extras ? ` (${extras})` : ''}${c.enlace ? `\n  ${c.enlace}` : ''}`;
           });
-          resultadoTool = `Ofertas de "${args.consulta}" (${res.fuente === 'priceradars' ? 'comparador PriceRadars' : res.fuente}, ${res.totalResultados} resultados):\n` + lineas.join('\n') + (res.aviso ? `\nAviso: ${res.aviso}` : '');
+          const filtrados = [res.accesoriosOmitidos ? `${res.accesoriosOmitidos} accesorio(s) apartado(s) (funda/soporte/cable... para el producto, no el producto)` : null, res.descartadosSinVinculo ? `${res.descartadosSinVinculo} resultado(s) descartado(s) por no coincidir con lo buscado` : null].filter(Boolean).join('; ');
+          resultadoTool = `Ofertas de "${args.consulta}" (${res.fuente === 'priceradars' ? 'comparador PriceRadars' : res.fuente}, ${res.totalResultados} resultados${filtrados ? `; ${filtrados}` : ''}):\n` + lineas.join('\n') + (res.aviso ? `\nAviso: ${res.aviso}` : '');
         }
       } else if (nombreFuncion === 'verificar_oferta') {
         const res = await verificarOferta({ url: args.url, producto: args.producto }, { fetchFn: opciones.fetchFnCompras });
