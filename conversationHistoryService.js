@@ -16,6 +16,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * el archivo crece, los tramos antiguos se condensan en un resumen para no
  * disparar el coste en tokens.
  *
+ * Limites conocidos (honestidad de diseno): la escritura atomica evita
+ * archivos corruptos, pero la lectura-modificacion-escritura NO esta
+ * serializada entre procesos: con una sola instancia (PM2 modo fork, un
+ * proceso) no hay interleaving porque las escrituras son sincronas; con
+ * varios procesos (cluster) podrian perderse actualizaciones. La redaccion
+ * por regex cubre OTP y credenciales con formato conocido; NO es un filtro
+ * completo de secretos: no debe escribirse informacion critica en el chat.
+ *
  * Strict Policy: Zero Emojis.
  */
 

@@ -825,7 +825,10 @@ Directrices de selección:
   let enlacesParaAdjuntar = [];
   // Registro de acciones con efectos ya ejecutadas en ESTA peticion: una
   // instruccion en el prompt no basta; el ejecutor impide duplicar envios,
-  // escrituras o comandos identicos entre rondas.
+  // escrituras o comandos identicos entre rondas. Alcance deliberadamente
+  // acotado: misma peticion y mismos argumentos exactos. NO cubre
+  // reformulaciones, ni peticiones distintas, ni reinicios del proceso; no
+  // es una garantia universal de "como mucho una vez".
   const accionesConEfectosEjecutadas = new Set();
 
   // Bucle acotado ejecutar -> comprobar -> decidir: tras cada ronda de
