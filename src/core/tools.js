@@ -1692,7 +1692,8 @@ export const herramientasJarvis = [
       parameters: {
         type: 'object',
         properties: {
-          url: { type: 'string', description: 'URL http(s) de la ficha del producto.' }
+          url: { type: 'string', description: 'URL http(s) de la ficha del producto.' },
+          producto: { type: 'string', description: 'Producto/variante que David dice estar comprando (para vincular la oferta leida con lo pedido; si la pagina es de otra cosa, el precio no se da por confirmado).' }
         },
         required: ['url']
       }

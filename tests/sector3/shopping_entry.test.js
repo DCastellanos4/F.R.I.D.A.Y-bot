@@ -66,17 +66,40 @@ test('Entrada real: verificar una oferta lee la pagina (fetch inyectado) y decla
   assert.ok(enviados.length >= 1);
 });
 
-test('Entrada real: buscar sin fuente configurada responde config-required, sin simular', async () => {
+test('Entrada real: buscar usa la fuente integrada (fetch inyectado) y devuelve candidatos reales', async () => {
   const enviados = [];
+  const fetchFalso = async (url) => {
+    assert.match(url, /priceradars\.com\/api\/v1\/search/, 'la fuente por defecto es el comparador');
+    return { ok: true, text: async () => JSON.stringify({ products: [{ id: 'a1', slug: 'a1--bolsa-stussy', name: 'Bolsa Stussy Tri Harness', brand: 'Stussy', lowestPrice: 5995, currency: 'EUR', inStock: true, condition: 'NEW', offerCount: 1, merchantName: 'TiendaEjemplo', deeplink: 'https://tienda.example/ficha/9' }], totalCount: 1 }) };
+  };
   const chatFalso = async ({ messages }) => {
     const ultimo = messages[messages.length - 1];
     if (ultimo.role === 'tool') return { message: { content: ultimo.content } };
-    return { message: { content: '', tool_calls: [{ id: 'c1', function: { name: 'buscar_producto', arguments: { consulta: 'bolsa stussy' } } }] } };
+    return { message: { content: '', tool_calls: [{ id: 'c1', function: { name: 'buscar_producto', arguments: { consulta: 'bolsa stussy tri harness' } } }] } };
   };
   await bot.procesarMensajesEntrantes(sockSimulado(enviados), {
     type: 'notify',
     messages: [mensajeEntrante('busca una bolsa stussy tri harness', 'COM-2')]
-  }, { chatCompletion: chatFalso });
+  }, { chatCompletion: chatFalso, fetchFnCompras: fetchFalso });
   const texto = enviados[enviados.length - 1].payload.text;
-  assert.match(texto, /fuente configurada|config-required/i, 'declara el estado config-required');
+  assert.match(texto, /Bolsa Stussy Tri Harness/, 'el candidato llega a la respuesta');
+  assert.match(texto, /59\.95 EUR/, 'precio convertido de centimos a EUR');
+  assert.match(texto, /PriceRadars/, 'la fuente viaja con el resultado');
+  assert.match(texto, /tienda\.example\/ficha\/9/, 'enlace del comercio incluido');
+});
+
+test('Entrada real: busqueda sin resultados lo dice sin inventar candidatos', async () => {
+  const enviados = [];
+  const fetchFalso = async () => ({ ok: true, text: async () => '{"products":[],"totalCount":0}' });
+  const chatFalso = async ({ messages }) => {
+    const ultimo = messages[messages.length - 1];
+    if (ultimo.role === 'tool') return { message: { content: ultimo.content } };
+    return { message: { content: '', tool_calls: [{ id: 'c1', function: { name: 'buscar_producto', arguments: { consulta: 'producto inexistente xyz' } } }] } };
+  };
+  await bot.procesarMensajesEntrantes(sockSimulado(enviados), {
+    type: 'notify',
+    messages: [mensajeEntrante('busca producto inexistente xyz', 'COM-3')]
+  }, { chatCompletion: chatFalso, fetchFnCompras: fetchFalso });
+  const texto = enviados[enviados.length - 1].payload.text;
+  assert.match(texto, /No he encontrado ofertas/, 'cero candidatos declarado, nada inventado');
 });

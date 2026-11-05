@@ -950,14 +950,39 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
         const res = eliminarEntrega(args.criterio, { rutaArchivo: opciones.rutaArchivoEntregas });
         resultadoTool = res.ok ? `Eliminada, David: "${res.borrada.titulo}" del ${res.borrada.fecha}.` : res.error;
       } else if (nombreFuncion === 'buscar_producto') {
-        const res = await buscarProducto({ consulta: args.consulta }, { buscarEnFuente: opciones.buscarEnFuenteCompras });
-        resultadoTool = res.ok
-          ? (res.candidatos.length === 0 ? `No he encontrado ofertas de "${args.consulta}" en las fuentes configuradas.` : `Ofertas de "${args.consulta}":\n` + res.candidatos.map((c) => `- ${c.titulo}: ${c.precio ?? '?'} ${c.moneda ?? ''} (${c.fuente}) ${c.url}`).join('\n'))
-          : res.error;
+        const res = await buscarProducto({ consulta: args.consulta }, { buscarEnFuente: opciones.buscarEnFuenteCompras, fetchFn: opciones.fetchFnCompras });
+        if (!res.ok) {
+          resultadoTool = res.error;
+        } else if (res.candidatos.length === 0) {
+          resultadoTool = `No he encontrado ofertas de "${args.consulta}" (${res.fuente === 'priceradars' ? 'comparador PriceRadars' : res.fuente}). Prueba con el modelo exacto o pasame el enlace de la ficha y lo verifico al momento.`;
+        } else {
+          const lineas = res.candidatos.slice(0, 8).map((c) => {
+            const precioTxt = Number.isFinite(c.precio) ? `${c.precio} ${c.moneda || 'EUR'}` : 'precio no publicado';
+            const stockTxt = c.enStock === true ? 'en stock' : c.enStock === false ? 'AGOTADO' : 'stock sin publicar';
+            const extras = [c.comercio, c.ofertas > 1 ? `${c.ofertas} ofertas` : null].filter(Boolean).join(' - ');
+            return `- ${c.nombre}: ${precioTxt}, ${stockTxt}${extras ? ` (${extras})` : ''}${c.enlace ? `\n  ${c.enlace}` : ''}`;
+          });
+          resultadoTool = `Ofertas de "${args.consulta}" (${res.fuente === 'priceradars' ? 'comparador PriceRadars' : res.fuente}, ${res.totalResultados} resultados):\n` + lineas.join('\n') + (res.aviso ? `\nAviso: ${res.aviso}` : '');
+        }
       } else if (nombreFuncion === 'verificar_oferta') {
-        const res = await verificarOferta({ url: args.url }, { fetchFn: opciones.fetchFnCompras });
-        resultadoTool = !res.ok ? res.error
-          : `Verificado AHORA (${res.comprobadoEn}):\n- Producto: ${res.nombre || 'sin nombre en la ficha'}\n- Precio: ${res.precio} ${res.moneda || ''}\n- Disponibilidad: ${res.disponibilidad || 'no publicada'}\n${res.nota}`;
+        const res = await verificarOferta({ url: args.url, producto: args.producto }, { fetchFn: opciones.fetchFnCompras });
+        if (!res.ok) {
+          resultadoTool = res.error;
+        } else {
+          const lineas = [`Verificado AHORA (${res.comprobadoEn}):`, `- Producto en la ficha: ${res.nombre || 'sin nombre en la ficha'}`];
+          if (res.precioConfirmado) {
+            lineas.push(`- Precio: ${res.precio} ${res.moneda || '(moneda no declarada)'}`);
+            lineas.push(`- Disponibilidad: ${res.disponibilidad || 'no publicada'}`);
+          } else {
+            lineas.push('- Precio: NO confirmado para el producto pedido (la pagina parece de otra cosa).');
+          }
+          if (res.vinculacion && res.vinculacion.estado && res.vinculacion.estado !== 'sin-referencia') {
+            lineas.push(`- Vinculacion con lo pedido: ${res.vinculacion.estado}`);
+          }
+          for (const a of res.advertencias || []) lineas.push(`- OJO: ${a}`);
+          lineas.push(res.nota);
+          resultadoTool = lineas.join('\n');
+        }
       } else if (nombreFuncion === 'estado_presupuestos') {
         const filas = estadoPresupuestos({ mes: args.mes }, { rutaArchivo: opciones.rutaArchivoFinanzas });
         resultadoTool = filas.length === 0
@@ -1402,7 +1427,7 @@ Directrices de selección:
 13h. SEGUNDO CEREBRO: contactos (registrar_contacto / buscar_contacto / listar_contactos), busqueda semantica en memorias y notas (buscar_recuerdo_semantico), digest bajo demanda (generar_digest_cerebro; el envio semanal solo con configurar_digest_semanal y peticion textual de David), wiki navegable (generar_wiki), captura de paginas a notas (capturar_pagina) y preguntas a sus documentos (preguntar_documentos, siempre citando fuentes y sin inventar).
 13i. BIENESTAR: diario (escribir_diario/leer_diario), habitos con racha (registrar_habito/marcar_habito/listar_habitos, sin avisos proactivos), menu semanal (poner_menu/ver_menu; sugerir_menu solo propone, se guarda lo que David confirme), lista de la compra (anadir_compra/listar_compra/tachar_compra; vaciar_compra solo con peticion textual de David), recomendador de series y peliculas (recomendar_serie_pelicula, sin repetir), quedadas (crear_quedada/listar_quedadas; redactar_invitacion devuelve SOLO un borrador que David revisa y envia el: nunca lo mandes a terceros), resumen deportivo (resumen_deportivo, solo lo que digan los titulares reales) y modo desconexion nocturno (configurar_modo_nocturno: silencia avisos proactivos no urgentes en la franja; los recordatorios puntuales suenan igual).
 13j. CARRERA: simulacro de entrevista tecnica (iniciar_simulacro_entrevista: 5 preguntas por voz o texto; mientras este activo, cada mensaje de David se evalua; se sale con "terminar entrevista"), analisis de CV contra oferta (analizar_cv_oferta; el CV se pega o se busca en sus notas, nunca se inventa), resumen de apuntes (resumir_apuntes, citando las notas usadas) y calendario de entregas y examenes (registrar_entrega/listar_entregas/eliminar_entrega, con dias restantes; los avisos puntuales se piden como recordatorios normales).
-13k. COMPRAS (extra aprobado): buscar_producto y verificar_oferta son SOLO bajo demanda: nada de compras, vigilancia automatica ni altas. Sin fuente configurada, la busqueda informa del estado config-required y ofrece verificar un enlace concreto; verificar_oferta lee la propia pagina y declara la hora, y lo no legible es no-verificable (nunca inventes precio, stock ni envio). El pago es siempre de David.
+13k. COMPRAS (extra aprobado): buscar_producto y verificar_oferta son SOLO bajo demanda: nada de compras, vigilancia automatica ni altas. La busqueda usa el comparador integrado PriceRadars (gratis, sin alta): transmite su aviso (precios orientativos de feeds; cobertura desigual; si salen accesorios o no aparece el producto, dilo y ofrece verificar el enlace exacto). verificar_oferta lee la propia pagina y declara la hora: respeta vinculacion y precioConfirmado (si la pagina parece de OTRO producto o variante, NO presentes ese precio como el del producto pedido; dilo claro) y las advertencias de moneda; lo no legible es no-verificable (nunca inventes precio, stock ni envio). El pago es siempre de David.
 13g. TRANSPORTE MADRID (extra): paradas favoritas con registrar_parada_favorita (emt o cercanias; el Metro no tiene fuente publica de llegadas en vivo, dilo si lo piden) y consulta bajo demanda con proximas_llegadas_transporte. NUNCA programes avisos automaticos de transporte. Si la EMT responde config-required, explica que falta el acceso gratuito de MobilityLabs, no inventes llegadas.
 13f. FECHAS Y CHATS: fechas senaladas (registrar_fecha_senalada con dia y mes; los avisos proactivos solo con configurar_avisos_fechas y peticion textual de David), snooze de chats (programar_snooze en este chat, un solo aviso), estadisticas del chat (estadisticas_grupo, solo lo que el bot ha visto) y aviso de llegada (registrar_aviso_llegada necesita latitud/longitud; si faltan, pide a David que comparta el pin del destino).
 13e. COMUNICACION: modo traductor por chat ("activar_traductor" con el idioma; David lo desactiva con "desactivar_traductor"), sugerencias de respuesta ("sugerir_respuestas": propon 3, nunca las envies) y buscador del historial del chat ("buscar_en_historial").
