@@ -1993,6 +1993,38 @@ export const herramientasJarvis = [
  * (regex primero, clasificador por modelo como respaldo).
  * Las claves coinciden con las etiquetas que devuelve el clasificador.
  */
+/**
+ * Limite de herramientas por peticion del proveedor cloud (Groq/OpenAI
+ * compatible devuelve 400 'tools': maximum number of items is 128 por
+ * encima). NUNCA se envia un payload por encima de este limite.
+ */
+export const LIMITE_HERRAMIENTAS_PROVEEDOR = 128;
+
+/**
+ * Acota el catalogo a enviar al proveedor sin romper el esquema ni soltar
+ * herramientas a mitad de conversacion:
+ *  - Si el catalogo cabe, se devuelve intacto.
+ *  - Si no cabe, se preservan primero las herramientas ya invocadas en la
+ *    conversacion (las rondas siguientes de function calling las necesitan)
+ *    y se completa por orden de catalogo hasta el limite, con objetos de
+ *    herramienta completos (nunca parciales).
+ */
+export function limitarHerramientasParaProveedor(tools, mensajes = [], limite = LIMITE_HERRAMIENTAS_PROVEEDOR) {
+  if (!Array.isArray(tools)) return [];
+  if (tools.length <= limite) return tools;
+  const enUso = new Set();
+  for (const m of mensajes || []) {
+    for (const tc of m?.tool_calls || []) {
+      if (tc?.function?.name) enUso.add(tc.function.name);
+    }
+  }
+  const preservadas = tools.filter((t) => enUso.has(t.function.name));
+  const restantes = tools.filter((t) => !enUso.has(t.function.name));
+  const seleccion = [...preservadas, ...restantes].slice(0, limite);
+  console.warn(`[LimiteHerramientas] catalogo de ${tools.length} supera el limite ${limite} del proveedor: se envian ${seleccion.length} (preservadas en uso: ${preservadas.length}; no enviadas: ${tools.length - seleccion.length}).`);
+  return seleccion;
+}
+
 export const MAPA_INTENCION_HERRAMIENTAS = {
   clima: ['consultar_clima'],
   memoria: ['guardar_memoria', 'buscar_memoria', 'listar_memorias', 'olvidar_memoria'],

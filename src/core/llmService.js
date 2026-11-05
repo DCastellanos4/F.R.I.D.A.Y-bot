@@ -1,6 +1,7 @@
 import { Ollama } from 'ollama';
 import OpenAI from 'openai';
 import { config } from '../config/config.js';
+import { limitarHerramientasParaProveedor } from './tools.js';
 
 // Ventana de contexto y limite de generacion configurables por entorno.
 // Subirlos en un VPS ARM es una HIPOTESIS a medir (latencia y memoria suben
@@ -290,7 +291,7 @@ export async function chatCompletion({
     };
 
     if (tools && tools.length > 0) {
-      payload.tools = tools;
+      payload.tools = limitarHerramientasParaProveedor(tools, messages);
     }
 
     const res = await ollama.chat(payload);
@@ -353,7 +354,7 @@ export async function chatCompletion({
   };
 
   if (tools && tools.length > 0) {
-    payload.tools = tools;
+    payload.tools = limitarHerramientasParaProveedor(tools, messages);
   }
 
   const res = await client.chat.completions.create(payload);

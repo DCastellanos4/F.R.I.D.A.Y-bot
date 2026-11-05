@@ -1,5 +1,5 @@
 import { config } from '../config/config.js';
-import { herramientasJarvis } from './tools.js';
+import { herramientasJarvis, limitarHerramientasParaProveedor } from './tools.js';
 import { obtenerNoticiasEstructuradas } from '../services/newsService.js';
 import {
   crearRecordatorio,
@@ -1533,9 +1533,17 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
       directivaDesambiguacion = '\n\n[DIRECTIVA DE DESAMBIGUACION: No esta claro que necesita David. NO inventes acciones, datos ni confirmaciones: pidele una aclaracion breve y concreta, ofreciendo como mucho dos opciones, antes de actuar.]';
       console.log(`[RouterModelo] Confianza insuficiente (${clasificacion.confianza}); se pide desambiguacion sin herramientas.`);
     } else {
-      console.log('[RouterModelo] Clasificador no disponible; se mantiene el safety net del regex con todas las herramientas.');
+      // El catalogo completo supera el limite de 128 herramientas del
+      // proveedor: volcarlo romperia TODA respuesta con un 400. Sin
+      // clasificador se aplica el mismo criterio honesto que con confianza
+      // baja: ninguna herramienta y una aclaracion breve.
+      herramientasActivas = [];
+      directivaDesambiguacion = '\n\n[DIRECTIVA DE DESAMBIGUACION: No esta claro que necesita David. NO inventes acciones, datos ni confirmaciones: pidele una aclaracion breve y concreta, ofreciendo como mucho dos opciones, antes de actuar.]';
+      console.log('[RouterModelo] Clasificador no disponible; desambiguacion sin herramientas (el catalogo completo supera el limite 128 del proveedor).');
     }
   }
+
+  herramientasActivas = limitarHerramientasParaProveedor(herramientasActivas);
 
   console.log(`[J.A.R.V.I.S.] Evaluando: "${mensajeUsuario}" [Herramientas: ${herramientasActivas.length > 0 ? herramientasActivas.map(h => h.function.name).join(', ') : 'Ninguna (Conversacional)'}]`);
 
