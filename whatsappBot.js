@@ -17,6 +17,8 @@ import { iniciarMonitorRecordatorios } from './reminderService.js';
 import { iniciarMonitorMensajesProgramados, registrarIdWhatsApp, procesarActualizacionEntrega } from './scheduledMessageService.js';
 import { obtenerHistorial, registrarIntercambio } from './conversationHistoryService.js';
 import { esAccionCriticaPorVoz, guardarPendienteVoz, resolverConfirmacionVoz } from './voiceConfirmationService.js';
+import { resolverConfirmacionBorrado } from './destructiveActionService.js';
+import { olvidarMemoria } from './memoryService.js';
 import { iniciarVigilanteProactivo } from './proactiveAlerts.js';
 import { iniciarSniperWatchdog } from './sniperService.js';
 import { programarEnvioMatutino } from './dailyBriefing.js';
@@ -630,6 +632,22 @@ export async function iniciarWhatsApp() {
         continue;
       }
 
+      // Confirmacion de borrado masivo de memoria: fuera de banda, ligada al
+      // chat, al id exacto, con TTL y de un solo uso. Nunca pasa por el LLM.
+      const resBorrado = resolverConfirmacionBorrado(remoteJid, texto);
+      if (resBorrado) {
+        let textoBorrado;
+        if (resBorrado.confirmado) {
+          console.log('[Memoria 2FA] Borrado masivo confirmado por David directamente, sin pasar por el LLM.');
+          const resVaciado = olvidarMemoria(resBorrado.criterio, { confirmado: true });
+          textoBorrado = resVaciado.mensaje || resVaciado.error || 'Borrado completado.';
+        } else {
+          textoBorrado = resBorrado.motivo;
+        }
+        await sock.sendMessage(remoteJid, { text: textoBorrado }, { quoted: msg });
+        continue;
+      }
+
       // Confirmacion de acciones criticas dictadas por voz: la transcripcion
       // puede equivocarse, asi que envios a terceros, borrados y comandos
       // exigen un "si" explicito de David. Tampoco pasa por el LLM.
@@ -668,6 +686,7 @@ export async function iniciarWhatsApp() {
         // 3. Procesar consulta con el agente (con memoria de conversacion aislada por chat)
         const historialPrevio = obtenerHistorial(remoteJid);
         const respuesta = await consultarJarvis(texto, historialPrevio, {
+          chatId: remoteJid,
           urgencyDirective,
           otpDelivery: async ({ otpCode, ttlSeconds, reason, command }) => {
             await sock.sendMessage(remoteJid, {

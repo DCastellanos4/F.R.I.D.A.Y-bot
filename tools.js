@@ -139,17 +139,13 @@ export const herramientasJarvis = [
     type: 'function',
     function: {
       name: 'olvidar_memoria',
-      description: 'Elimina un recuerdo específico o todos los recuerdos del Second Brain cuando David pide borrar o olvidar un dato. El borrado masivo (criterio "*" o "todos") exige confirmación explícita de David: primero se informa del número de registros afectados y solo se ejecuta cuando David confirma.',
+      description: 'Elimina un recuerdo específico o todos los recuerdos del Second Brain cuando David pide borrar o olvidar un dato. El borrado masivo (criterio "*" o "todos") nunca lo confirmas tú: queda pendiente y solo se ejecuta si David responde "confirmar borrado <id>" directamente.',
       parameters: {
         type: 'object',
         properties: {
           criterio: {
             type: 'string',
             description: 'Palabra clave, sujeto o "*" para borrar todas las memorias'
-          },
-          confirmado: {
-            type: 'boolean',
-            description: 'Obligatorio solo para borrado masivo: true únicamente después de que David haya confirmado expresamente que quiere borrarlo todo'
           }
         },
         required: ['criterio']

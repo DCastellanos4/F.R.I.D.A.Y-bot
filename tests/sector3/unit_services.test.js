@@ -204,3 +204,39 @@ test('[Unit] Programados: registrarIdWhatsApp y acuses de recibo', () => {
   // Limpieza del fixture
   programados.cancelarMensajeProgramado(id);
 });
+
+// --- destructiveActionService: confirmacion fuera del modelo ---
+const destructivas = await import('../../destructiveActionService.js');
+
+test('[Unit] Borrado masivo: confirmacion ligada a chat, id, TTL y un solo uso', () => {
+  destructivas.limpiarBorradosPendientes();
+  const ahora = Date.now();
+  const deps = { now: () => ahora };
+
+  const id = destructivas.registrarBorradoMasivoPendiente('chat-david@test', '*', 12, deps);
+  assert.ok(id && id.startsWith('borr_'), 'debe devolver un id de confirmacion');
+
+  // Mensaje que no es confirmacion
+  assert.equal(destructivas.resolverConfirmacionBorrado('chat-david@test', 'hola', deps), null);
+
+  // Chat equivocado: no confirma ni revela
+  const otro = destructivas.resolverConfirmacionBorrado('chat-otro@test', `confirmar borrado ${id}`, deps);
+  assert.equal(otro.confirmado, false);
+
+  // Id equivocado
+  const malId = destructivas.resolverConfirmacionBorrado('chat-david@test', 'confirmar borrado borr_ffffff', deps);
+  assert.equal(malId.confirmado, false);
+
+  // Confirmacion correcta: se consume (un solo uso)
+  const bien = destructivas.resolverConfirmacionBorrado('chat-david@test', `confirmar borrado ${id}`, deps);
+  assert.equal(bien.confirmado, true);
+  assert.equal(bien.total, 12);
+  const segunda = destructivas.resolverConfirmacionBorrado('chat-david@test', `confirmar borrado ${id}`, deps);
+  assert.equal(segunda.confirmado, false, 'el id consumido no sirve dos veces');
+
+  // Caducidad
+  const id2 = destructivas.registrarBorradoMasivoPendiente('chat-david@test', '*', 3, deps);
+  const tarde = destructivas.resolverConfirmacionBorrado('chat-david@test', `confirmar borrado ${id2}`, { now: () => ahora + destructivas.TTL_BORRADO_MS + 1000 });
+  assert.equal(tarde.confirmado, false);
+  assert.ok(tarde.motivo.includes('caducado'));
+});

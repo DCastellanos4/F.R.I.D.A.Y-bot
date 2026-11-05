@@ -145,6 +145,7 @@ async function ejecutarCaso(caso) {
   let respuesta = '';
   for (let i = 0; i < repeticiones; i++) {
     respuesta = await consultarJarvis(caso.entrada, caso.historial || [], {
+      chatId: caso.chatId || 'chat-dorado@test',
       chatCompletion: construirLlmGuionizado(caso, observaciones),
       ejecutores: ejecutoresBase
     });

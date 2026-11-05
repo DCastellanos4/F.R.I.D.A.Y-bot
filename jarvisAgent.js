@@ -24,6 +24,7 @@ import {
   olvidarMemoria,
   normalizarTexto
 } from './memoryService.js';
+import { registrarBorradoMasivoPendiente } from './destructiveActionService.js';
 import {
   vigilarProducto,
   listarProductosVigilados,
@@ -445,9 +446,18 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
           resultadoTool = `Recuerdos almacenados en el Second Brain (${memorias.length}):\n` + memorias.map((m, i) => `${i + 1}. [${m.sujeto.toUpperCase()}]: ${m.dato}`).join('\n');
         }
       } else if (nombreFuncion === 'olvidar_memoria') {
-        const res = olvidarMemoria(args.criterio, { confirmado: args.confirmado === true });
+        // El modelo NUNCA puede confirmar un borrado masivo: cualquier
+        // argumento "confirmado" se ignora deliberadamente. La confirmacion
+        // llega fuera de banda (mensaje directo de David) via
+        // destructiveActionService, como el OTP de los comandos bash.
+        const res = olvidarMemoria(args.criterio, { confirmado: false });
         if (res.requiereConfirmacion) {
-          resultadoTool = `ATENCION: borrado masivo pendiente de confirmacion. ${res.mensaje} Explica a David cuantos registros se borrarian (${res.total}) y NO vuelvas a invocar olvidar_memoria con confirmado=true hasta que David confirme expresamente.`;
+          const idConfirmacion = opciones.chatId
+            ? registrarBorradoMasivoPendiente(opciones.chatId, String(args.criterio), res.total)
+            : null;
+          resultadoTool = idConfirmacion
+            ? `ATENCION: borrado masivo pendiente de confirmacion humana. ${res.mensaje} Indica a David que, si esta seguro, responda exactamente "confirmar borrado ${idConfirmacion}" (validez: 5 minutos). Tu no puedes confirmarlo ni volver a intentarlo con otro argumento.`
+            : `ATENCION: borrado masivo solicitado sin canal de confirmacion directa (${res.total} registros). Solo puede confirmarse desde el chat de WhatsApp de David. Tu no puedes confirmarlo.`;
         } else {
           resultadoTool = res.mensaje || res.error || 'Operación completada, señor.';
         }
