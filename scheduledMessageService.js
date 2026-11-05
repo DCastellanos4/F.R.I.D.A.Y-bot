@@ -263,6 +263,10 @@ export function programarMensaje({ numero, mensaje, minutosEnElFuturo = null, ho
     timestamp: fechaObjetivo.getTime(),
     fechaHoraLocal: formatoLocal,
     enviado: false,
+    estado: 'programado', // programado -> enviado -> entregado/leido | fallido
+    intentos: 0,
+    ultimoError: null,
+    whatsappId: null,
     creadoEn: new Date().toISOString()
   };
 
@@ -338,21 +342,22 @@ export function cancelarMensajeProgramado(criterio) {
 let intervaloMonitorMensajes = null;
 let callbackEnvioGlobal = null;
 
+export const MAX_INTENTOS_ENVIO = 3;
+
 /**
  * Comprueba y despacha de inmediato cualquier mensaje programado pendiente cuyo timestamp haya vencido.
+ * Devuelve el array de despachados con la propiedad .fallidos para notificar errores.
  */
 export async function despacharMensajesPendientes() {
   const lista = leerMensajesProgramados();
   const ahora = Date.now();
   let huboCambios = false;
   const despachados = [];
+  const fallidos = [];
 
   for (const m of lista) {
     if (!m.enviado && m.timestamp <= ahora) {
-      m.enviado = true;
-      m.enviadoEn = new Date().toISOString();
       huboCambios = true;
-      despachados.push(m);
 
       console.log(`\n========================================`);
       console.log(`[DESPACHO DE MENSAJE WHATSAPP]`);
@@ -361,18 +366,48 @@ export async function despacharMensajesPendientes() {
       console.log(`Hora programada: ${m.fechaHoraLocal}`);
       console.log(`========================================\n`);
 
-      const entradaLog = `[${new Date().toISOString()}] Para: +${m.numero} | Mensaje: "${m.mensaje}" | Programado: ${m.fechaHoraLocal}\n`;
-      try {
-        fs.appendFileSync(ARCHIVO_LOG_ENVIOS, entradaLog, 'utf-8');
-      } catch (err) {
-        console.error('Error escribiendo log de envíos programados:', err.message);
-      }
-
+      // El mensaje solo se marca como enviado cuando el canal confirma la
+      // entrega al sistema de WhatsApp (callback resuelto sin error).
+      // Un fallo NO se traga: se registra y se reintenta hasta MAX_INTENTOS.
+      let resultadoEnvio;
+      let errorEnvio = null;
       if (typeof callbackEnvioGlobal === 'function') {
         try {
-          await callbackEnvioGlobal(m);
+          resultadoEnvio = await callbackEnvioGlobal(m);
         } catch (err) {
+          errorEnvio = err.message;
           console.error(`Error en callback de envío a +${m.numero}:`, err.message);
+        }
+      }
+
+      const fallo = errorEnvio !== null || resultadoEnvio === false;
+
+      if (!fallo) {
+        m.enviado = true;
+        m.enviadoEn = new Date().toISOString();
+        m.estado = 'enviado';
+        m.ultimoError = null;
+        despachados.push(m);
+
+        const entradaLog = `[${new Date().toISOString()}] Para: +${m.numero} | Mensaje: "${m.mensaje}" | Programado: ${m.fechaHoraLocal}\n`;
+        try {
+          fs.appendFileSync(ARCHIVO_LOG_ENVIOS, entradaLog, 'utf-8');
+        } catch (err) {
+          console.error('Error escribiendo log de envíos programados:', err.message);
+        }
+      } else {
+        m.intentos = (m.intentos || 0) + 1;
+        m.ultimoError = errorEnvio || 'El canal de envío no confirmó la entrega.';
+
+        if (m.intentos >= MAX_INTENTOS_ENVIO) {
+          // Se detiene el reintento y queda marcado como fallido: jamas se
+          // silencia un mensaje que no se pudo entregar.
+          m.enviado = true;
+          m.estado = 'fallido';
+          fallidos.push(m);
+          console.error(`[MENSAJE FALLIDO] Tras ${m.intentos} intentos no se pudo entregar a +${m.numero}: ${m.ultimoError}`);
+        } else {
+          console.warn(`[REINTENTO PENDIENTE] Envío a +${m.numero} falló (intento ${m.intentos}/${MAX_INTENTOS_ENVIO}): ${m.ultimoError}`);
         }
       }
     }
@@ -382,6 +417,10 @@ export async function despacharMensajesPendientes() {
     guardarMensajesProgramados(lista);
   }
 
+  // Compatibilidad: el valor devuelto sigue siendo el array de despachados
+  // (los consumidores antiguos usan .length); los fallidos viajan como
+  // propiedad adicional para quien quiera notificarlos.
+  despachados.fallidos = fallidos;
   return despachados;
 }
 
@@ -406,4 +445,61 @@ export function detenerMonitorMensajesProgramados() {
     intervaloMonitorMensajes = null;
   }
   callbackEnvioGlobal = null;
+}
+
+/**
+ * Vincula el ID de mensaje de WhatsApp (clave Baileys) con el mensaje
+ * programado, para poder reconciliar los acuses de recibo posteriores.
+ */
+export function registrarIdWhatsApp(idProgramado, whatsappId) {
+  if (!idProgramado || !whatsappId) return false;
+  const lista = leerMensajesProgramados();
+  const m = lista.find(x => x.id === idProgramado);
+  if (!m) return false;
+  m.whatsappId = whatsappId;
+  guardarMensajesProgramados(lista);
+  return true;
+}
+
+/**
+ * Procesa acuses de recibo de WhatsApp (evento messages.update de Baileys).
+ * Estados Baileys: 3 = entregado al dispositivo, 4 = reproducido/leido,
+ * 5 = leido; un error en update.status o update.error marca el mensaje como
+ * fallido. Devuelve las transiciones aplicadas para que el llamador decida
+ * si notifica a David.
+ */
+export function procesarActualizacionEntrega(actualizaciones = []) {
+  const lista = leerMensajesProgramados();
+  const transiciones = [];
+  let huboCambios = false;
+
+  for (const upd of actualizaciones || []) {
+    const idWa = upd?.key?.id;
+    if (!idWa) continue;
+    const m = lista.find(x => x.whatsappId === idWa);
+    if (!m || !m.enviado) continue;
+
+    const estado = upd?.update?.status;
+    if (upd?.update?.error) {
+      if (m.estado !== 'fallido') {
+        m.estado = 'fallido';
+        m.ultimoError = String(upd.update.error?.message || upd.update.error || 'Error de entrega de WhatsApp');
+        transiciones.push({ id: m.id, numero: m.numero, estado: 'fallido' });
+        huboCambios = true;
+      }
+    } else if (typeof estado === 'number' && estado >= 4 && m.estado !== 'leido') {
+      m.estado = 'leido';
+      transiciones.push({ id: m.id, numero: m.numero, estado: 'leido' });
+      huboCambios = true;
+    } else if (typeof estado === 'number' && estado >= 3 && m.estado === 'enviado') {
+      m.estado = 'entregado';
+      transiciones.push({ id: m.id, numero: m.numero, estado: 'entregado' });
+      huboCambios = true;
+    }
+  }
+
+  if (huboCambios) {
+    guardarMensajesProgramados(lista);
+  }
+  return transiciones;
 }

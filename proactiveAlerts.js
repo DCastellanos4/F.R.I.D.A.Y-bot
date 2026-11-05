@@ -2,6 +2,10 @@ import fs from 'fs';
 import path from 'path';
 import net from 'net';
 import os from 'os';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 const CARPETA_DATA = path.resolve('data');
 const ARCHIVO_ESTADO = path.join(CARPETA_DATA, 'watchdog_state.json');
@@ -132,8 +136,64 @@ export function consultarSaludServidor() {
     porcentajeUso,
     cpus,
     loadAvg,
-    critico: parseFloat(libreRamGB) < 1.0
+    critico: parseFloat(libreRamGB) < 1.0,
+    cpuSaturada: os.loadavg()[0] > cpus
   };
+}
+
+/**
+ * Diagnostico del sistema: los procesos que mas memoria y CPU consumen ahora
+ * mismo. Convierte una alerta ciega ("la RAM esta critica") en una alerta
+ * accionable ("la RAM esta critica y el proceso X es el responsable").
+ * deps.execFile permite inyectar un simulacro en pruebas.
+ */
+export async function diagnosticarSistema(deps = {}) {
+  const ejec = deps.execFile || execFileAsync;
+  const salud = consultarSaludServidor();
+  let procesos = [];
+
+  try {
+    const { stdout } = await ejec('ps', ['-eo', 'pid,comm,%mem,%cpu', '--sort=-rss', '--no-headers']);
+    procesos = stdout
+      .split('\n')
+      .map(l => l.trim())
+      .filter(Boolean)
+      .slice(0, 3)
+      .map(l => {
+        const partes = l.split(/\s+/);
+        return {
+          pid: partes[0],
+          nombre: partes[1],
+          memPct: partes[2],
+          cpuPct: partes[3]
+        };
+      });
+  } catch (err) {
+    return {
+      ok: false,
+      salud,
+      error: `No se pudo obtener el diagnostico de procesos: ${err.message}`
+    };
+  }
+
+  return { ok: true, salud, procesos };
+}
+
+/**
+ * Formatea el diagnostico para incluirlo en una alerta de WhatsApp.
+ */
+export function formatearDiagnostico(diag) {
+  if (!diag || !diag.ok) {
+    return diag && diag.error ? `Diagnostico no disponible: ${diag.error}` : 'Diagnostico no disponible.';
+  }
+  const lineas = [
+    `Carga media: ${diag.salud.loadAvg} (${diag.salud.cpus} nucleos)`,
+    'Procesos que mas memoria consumen:'
+  ];
+  for (const p of diag.procesos) {
+    lineas.push(`- ${p.nombre} (PID ${p.pid}): ${p.memPct}% RAM, ${p.cpuPct}% CPU`);
+  }
+  return lineas.join('\n');
 }
 
 /**
@@ -162,7 +222,8 @@ export function iniciarVigilanteProactivo(callbackAlerta = null) {
         let mensajeAlerta = '';
 
         if (nuevoEstado === 'CAIDO') {
-          mensajeAlerta = `[Aviso] *ALERTA VIGILANTE DE F.R.I.D.A.Y.* [Aviso]\n\nJefe, el *${estado.minecraft.nombre}* (${estado.minecraft.host}:${estado.minecraft.port}) ha dejado de responder a las ${ahoraStr}.\n\n¿Quieres que intente reiniciarlo?`;
+          const diag = await diagnosticarSistema();
+          mensajeAlerta = `[Aviso] *ALERTA VIGILANTE DE F.R.I.D.A.Y.* [Aviso]\n\nJefe, el *${estado.minecraft.nombre}* (${estado.minecraft.host}:${estado.minecraft.port}) ha dejado de responder a las ${ahoraStr}.\n\nDiagnostico del host:\n${formatearDiagnostico(diag)}\n\n¿Quieres que intente reiniciarlo?`;
         } else {
           mensajeAlerta = `[OK] *F.R.I.D.A.Y. INFORMA: SERVICIO RECUPERADO*\n\nEl *${estado.minecraft.nombre}* (${estado.minecraft.host}:${estado.minecraft.port}) vuelve a estar 100% operativo a las ${ahoraStr}.`;
         }
@@ -199,12 +260,23 @@ export function iniciarVigilanteProactivo(callbackAlerta = null) {
       estado.clima.ultimoAvisoFecha = hoyFechaStr;
     }
 
-    // 3. REVISIÓN DE SALUD DEL SERVIDOR ORACLE
+    // 3. REVISIÓN DE SALUD DEL SERVIDOR ORACLE (RAM critica y CPU saturada)
+    // Ambas alertas van con diagnostico de procesos y se repiten como maximo
+    // una vez cada 30 minutos mientras la condicion persista.
     const salud = consultarSaludServidor();
-    if (salud.critico) {
-      const alertaRam = `[Aviso] *ALERTA DE SISTEMA*: Memoria RAM del servidor Oracle en nivel crítico (Quedan solo ${salud.libreRamGB} GB libres de ${salud.totalRamGB} GB).`;
+    const ahoraMs = Date.now();
+    const ultimoAvisoMs = estado.sistema.ultimoAvisoRam ? Date.parse(estado.sistema.ultimoAvisoRam) : 0;
+    const tocaAvisar = ahoraMs - ultimoAvisoMs > 30 * 60 * 1000;
+
+    if ((salud.critico || salud.cpuSaturada) && tocaAvisar) {
+      const diag = await diagnosticarSistema();
+      const causa = salud.critico
+        ? `Memoria RAM del servidor Oracle en nivel critico (quedan solo ${salud.libreRamGB} GB libres de ${salud.totalRamGB} GB).`
+        : `CPU del servidor Oracle saturada (carga media ${salud.loadAvg} con ${salud.cpus} nucleos).`;
+      const alertaRam = `[Aviso] *ALERTA DE SISTEMA*: ${causa}\n\nDiagnostico:\n${formatearDiagnostico(diag)}`;
       console.warn(alertaRam);
       registrarAlertaEnLog(alertaRam);
+      estado.sistema.ultimoAvisoRam = new Date().toISOString();
       if (typeof callbackAlertaGlobal === 'function') {
         callbackAlertaGlobal(alertaRam).catch(() => {});
       }

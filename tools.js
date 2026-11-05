@@ -139,13 +139,17 @@ export const herramientasJarvis = [
     type: 'function',
     function: {
       name: 'olvidar_memoria',
-      description: 'Elimina un recuerdo específico o todos los recuerdos del Second Brain cuando David pide borrar o olvidar un dato.',
+      description: 'Elimina un recuerdo específico o todos los recuerdos del Second Brain cuando David pide borrar o olvidar un dato. El borrado masivo (criterio "*" o "todos") exige confirmación explícita de David: primero se informa del número de registros afectados y solo se ejecuta cuando David confirma.',
       parameters: {
         type: 'object',
         properties: {
           criterio: {
             type: 'string',
             description: 'Palabra clave, sujeto o "*" para borrar todas las memorias'
+          },
+          confirmado: {
+            type: 'boolean',
+            description: 'Obligatorio solo para borrado masivo: true únicamente después de que David haya confirmado expresamente que quiere borrarlo todo'
           }
         },
         required: ['criterio']
@@ -660,3 +664,47 @@ export const herramientasJarvis = [
     }
   }
 ];
+
+/**
+ * Mapa intencion -> herramientas, usado por el enrutador hibrido
+ * (regex primero, clasificador por modelo como respaldo).
+ * Las claves coinciden con las etiquetas que devuelve el clasificador.
+ */
+export const MAPA_INTENCION_HERRAMIENTAS = {
+  clima: ['consultar_clima'],
+  memoria: ['guardar_memoria', 'buscar_memoria', 'listar_memorias', 'olvidar_memoria'],
+  mensajeProgramado: ['programar_mensaje_whatsapp', 'listar_mensajes_programados', 'cancelar_mensaje_programado'],
+  recordatorio: ['crear_recordatorio', 'listar_recordatorios', 'cancelar_recordatorio'],
+  sniper: ['vigilar_producto', 'listar_productos_vigilados', 'cancelar_vigilancia'],
+  noticias: ['obtener_noticias_actuales', 'navegar_y_leer_noticia'],
+  navegacion: ['navegar_y_leer_noticia', 'resumir_enlace'],
+  servidor: ['consultar_estado_servidor'],
+  vip: ['activar_modo_vip', 'estado_modo_vip', 'agregar_contacto_vip'],
+  grupo: ['resumir_grupo'],
+  multimedia: ['descargar_multimedia'],
+  notas: ['guardar_nota_personal', 'listar_notas_recientes'],
+  vcard: ['enviar_contacto_vcard'],
+  encuestas: ['crear_encuesta_whatsapp'],
+  bash: ['execute_bash_command'],
+  crypto: ['generate_crypto_credential'],
+  docker: ['get_infrastructure_status'],
+  disco: ['get_infrastructure_status'],
+  infraestructura: ['get_infrastructure_status'],
+  tuneles: ['manage_tunnel'],
+  backup: ['trigger_encrypted_backup'],
+  conversacion: []
+};
+
+/**
+ * Devuelve las herramientas asociadas a una lista de etiquetas de intencion,
+ * sin duplicados y en el orden original de herramientasJarvis.
+ */
+export function herramientasParaIntenciones(intenciones) {
+  const nombres = new Set();
+  for (const intencion of intenciones || []) {
+    for (const nombre of MAPA_INTENCION_HERRAMIENTAS[intencion] || []) {
+      nombres.add(nombre);
+    }
+  }
+  return herramientasJarvis.filter(h => nombres.has(h.function.name));
+}

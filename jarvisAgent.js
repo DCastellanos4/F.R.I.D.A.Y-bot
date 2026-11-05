@@ -30,7 +30,8 @@ import {
   cancelarVigilancia
 } from './sniperService.js';
 import { consultarClima } from './weatherService.js';
-import { chatCompletion } from './llmService.js';
+import { chatCompletion, esRespuestaTruncada } from './llmService.js';
+import { clasificarIntencionConModelo, UMBRAL_CONFIANZA } from './intentRouterService.js';
 import {
   setVipMode,
   isVipModeActive,
@@ -103,6 +104,16 @@ export function limpiarRespuestaJarvis(texto) {
  * Inyecta las herramientas requeridas según la intención de David.
  */
 export function seleccionarHerramientasPorIntencion(mensaje) {
+  return analizarIntencion(mensaje).herramientas;
+}
+
+/**
+ * Enrutador por expresiones regulares con metadatos: ademas de las
+ * herramientas devuelve las intenciones detectadas, si cayo en el safety net
+ * (sin coincidencias) y si es charla pura. jarvisAgent usa estos metadatos
+ * para decidir si invoca al clasificador por modelo.
+ */
+export function analizarIntencion(mensaje) {
   const norm = normalizarTexto(mensaje);
   const sinNombre = norm.replace(/\b(jarvis|friday|viernes)\b/gi, '').replace(/\s+/g, ' ').trim();
   const tieneUrl = /(https?:\/\/[^\s]+)/i.test(mensaje);
@@ -201,7 +212,7 @@ export function seleccionarHerramientasPorIntencion(mensaje) {
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
   if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup) {
-    return [];
+    return { herramientas: [], intenciones: ['conversacion'], safetyNet: false, esChitChat: true };
   }
 
   const tools = [];
@@ -284,9 +295,32 @@ export function seleccionarHerramientasPorIntencion(mensaje) {
 
   // Safety Net: si no encajó en ninguna categoría pero tampoco es chit-chat, pasar todas las herramientas
   if (tools.length === 0) {
-    console.log(`[Router Safety Net] Mensaje de intención ambigua: "${norm}". Pasando todas las herramientas.`);
-    return herramientasJarvis;
+    console.log(`[Router Safety Net] El regex no reconoce la intención: "${norm}". Se consultara al clasificador por modelo.`);
+    return { herramientas: herramientasJarvis, intenciones: [], safetyNet: true, esChitChat: false };
   }
+
+  const intenciones = [];
+  if (matchClima) intenciones.push('clima');
+  if (matchMemoria) intenciones.push('memoria');
+  if (matchMensajeProgramado) intenciones.push('mensajeProgramado');
+  if (matchRecordatorio) intenciones.push('recordatorio');
+  if (matchSniper) intenciones.push('sniper');
+  if (matchNoticias) intenciones.push('noticias');
+  if (matchNavegacion) intenciones.push('navegacion');
+  if (matchServidor) intenciones.push('servidor');
+  if (matchVip) intenciones.push('vip');
+  if (matchGrupo) intenciones.push('grupo');
+  if (matchMultimedia) intenciones.push('multimedia');
+  if (matchNotas) intenciones.push('notas');
+  if (matchVCard) intenciones.push('vcard');
+  if (matchEncuestas) intenciones.push('encuestas');
+  if (matchBash) intenciones.push('bash');
+  if (matchCrypto) intenciones.push('crypto');
+  if (matchDocker) intenciones.push('docker');
+  if (matchDisco) intenciones.push('disco');
+  if (matchInfra) intenciones.push('infraestructura');
+  if (matchTunel) intenciones.push('tuneles');
+  if (matchBackup) intenciones.push('backup');
 
   // Eliminar duplicados
   const unicas = [];
@@ -298,114 +332,49 @@ export function seleccionarHerramientasPorIntencion(mensaje) {
     }
   }
 
-  return unicas;
+  return { herramientas: unicas, intenciones, safetyNet: false, esChitChat: false };
 }
 
-export async function consultarJarvis(mensajeUsuario, historial = [], opciones = {}) {
-  const tiempoInicio = Date.now();
+/**
+ * Conjunto de herramientas de SOLO LECTURA (idempotentes): un fallo en ellas
+ * puede reintentarse sin riesgo. Las demas escriben, envian o ejecutan
+ * acciones: jamas se reintentan a ciegas; primero se comprueba el efecto real.
+ */
+const HERRAMIENTAS_IDEMPOTENTES = new Set([
+  'consultar_clima',
+  'buscar_memoria',
+  'listar_memorias',
+  'listar_mensajes_programados',
+  'listar_recordatorios',
+  'listar_productos_vigilados',
+  'obtener_noticias_actuales',
+  'navegar_y_leer_noticia',
+  'resumir_enlace',
+  'consultar_estado_servidor',
+  'estado_modo_vip',
+  'resumir_grupo',
+  'listar_notas_recientes',
+  'get_infrastructure_status'
+]);
 
-  // Detección directa de URLs para resumen rápido
-  const urlMatch = mensajeUsuario.match(/https?:\/\/[^\s]+/i);
-  const pideResumen = /resum|qu[eé?] dice|de qu[eé?] va|lee|analiz/i.test(mensajeUsuario);
-  const esUrlSola = urlMatch && mensajeUsuario.trim() === urlMatch[0];
 
-  if (urlMatch && (pideResumen || esUrlSola)) {
-    console.log(`[J.A.R.V.I.S.] Detección directa de lectura/resumen con Playwright para: ${urlMatch[0]}`);
-    const resumen = await generarResumenInteligente(urlMatch[0]);
-    return limpiarRespuestaJarvis(resumen);
-  }
-
-  // Easter Egg: Solicitud de más tabaco para la cachimba
-  if (esPeticionCachimba(mensajeUsuario)) {
-    console.log(`[J.A.R.V.I.S. Easter Egg] Cachimba detectada: "${mensajeUsuario}"`);
-    return 'A su servicio, señor. Ajustando la cazoleta y aumentando la mezcla al máximo rendimiento. Parámetros térmicos estabilizados.';
-  }
-
-  // Búsqueda proactiva en el Second Brain para inyectar recuerdos en contexto
-  const memoriasProactivas = buscarMemorias(mensajeUsuario);
-
-  // Selección inteligente de herramientas
-  const herramientasActivas = seleccionarHerramientasPorIntencion(mensajeUsuario);
-
-  console.log(`[J.A.R.V.I.S.] Evaluando: "${mensajeUsuario}" [Herramientas: ${herramientasActivas.length > 0 ? herramientasActivas.map(h => h.function.name).join(', ') : 'Ninguna (Conversacional)'}]`);
-
-  let systemPrompt = `Eres D.A.V.I.S. (Digital Autonomous Voice & Intelligence System), la avanzada inteligencia artificial personal y copiloto táctico de David.
-Naciste de la fusión entre la lealtad, ingenio técnico y serenidad del J.A.R.V.I.S. de Tony Stark en Los Vengadores y la propia mentalidad, pragmatismo y visión de David, actuando como su alter ego digital.
-
-PERSONALIDAD Y VOZ:
-- Estatus: Eres su socio y copiloto de confianza. Hablas de tú a tú en español de España de forma natural, directa, inteligente y sobria.
-- Tratamiento: Te diriges a él como "David". Puedes usar "jefe" o "señor" exclusivamente con ironía sutil o humor seco cuando la ocasión sea propicia, sin caer jamás en sumisión artificial.
-- Actitud: Hipercompetente, resolutivo y leal. Cero quejas o pretextos: ejecutas y resuelves. Posees un humor seco, inteligente y sutil.
-- Especialización máxima: Eres un ingeniero de software y DevOps de élite. Cuando trates temas de código, infraestructura, Linux o arquitectura técnica, habla con la solidez, rigor y criterio de un senior engineer en su misma sintonía.
-- Versatilidad táctica: Mantienes control impecable sobre su operativa diaria (mensajes, recordatorios, servidores, finanzas, descanso y aficiones).
-
-REGLAS CRÍTICAS DE COMUNICACIÓN:
-1. PROHIBICIÓN TOTAL DE EMOJIS: Queda terminantemente prohibido incluir emojis o iconos decorativos en tus respuestas. Mantén un formato puramente textual, sobrio y distinguido.
-2. CERO SLOP Y ADAPTABILIDAD AL CONTEXTO:
-   - Para confirmaciones o acciones operativas (enviar un mensaje, poner una alarma, consultar un dato puntual): sé conciso (1 o 2 frases directas y precisas).
-   - Para análisis técnicos, arquitectura, clima o noticias: ofrece respuestas limpiamente estructuradas con viñetas, sin párrafos inflados ni rodeos vacíos.
-3. CERO CLICHÉS CORPORATIVOS: Prohibido decir frases como "¡Hola! ¿En qué puedo ayudarte hoy?", "Como modelo de lenguaje...", o disculpas melodramáticas redundantes.`;
-
-  // Inyección de recuerdos existentes en el prompt para respuesta instantánea y precisa
-  if (memoriasProactivas.length > 0) {
-    systemPrompt += `\n\n[REGISTROS DEL SECOND BRAIN / BANCO DE MEMORIA]:
-${memoriasProactivas.map(m => `- [${m.sujeto.toUpperCase()}]: ${m.dato}`).join('\n')}
-(DIRECTIVA: Si la consulta de David trata sobre alguno de estos temas, respóndele DIRECTAMENTE con esta información de forma sobria y elegante).`;
-  }
-
-  if (opciones.urgencyDirective) {
-    systemPrompt += `\n\n${opciones.urgencyDirective}`;
-  }
-
-  if (herramientasActivas.length > 0) {
-    systemPrompt += `\nINSTRUCCIONES DE HERRAMIENTAS:
-Dispones de herramientas nativas para consultar datos externos y realizar acciones. Utiliza exclusivamente el mecanismo nativo de function calling. NUNCA escribas el nombre de la función ni objetos JSON en el texto de tu respuesta.
-
-Directrices de selección:
-1. CLIMA Y METEOROLOGÍA: Para consultar el tiempo, temperatura o lluvia de hoy o de mañana en cualquier ciudad o localidad (ej: Madrid), invoca "consultar_clima".
-2. MENSAJES PROGRAMADOS DE WHATSAPP: Para programar el envío de un mensaje de WhatsApp a un número de teléfono en una fecha u hora específica (o en X minutos), invoca "programar_mensaje_whatsapp". Para consultar los mensajes programados pendientes, "listar_mensajes_programados". Para cancelar uno, "cancelar_mensaje_programado".
-3. RECORDATORIOS Y ALARMAS PERSONALES: Para programar avisos o alarmas personales de David, invoca "crear_recordatorio". Para consultarlos, "listar_recordatorios". Para cancelar, "cancelar_recordatorio".
-4. SECOND BRAIN (MEMORIA PERSONAL): Para guardar hechos o datos personales (claves, cumpleaños, tallas, correos), invoca "guardar_memoria". Para consultar datos del pasado, "buscar_memoria". Para borrar, "olvidar_memoria".
-5. SNIPER DE PRECIOS: Para vigilar un producto u oferta si baja de precio, invoca "vigilar_producto". Para listar, "listar_productos_vigilados".
-6. NOTICIAS Y NAVEGADOR PLAYWRIGHT: Para noticias de actualidad, invoca "obtener_noticias_actuales". Para abrir o inspeccionar un enlace o artículo web con el navegador, invoca "navegar_y_leer_noticia" o "resumir_enlace".
-7. ESTADO DEL SISTEMA: Para consultar la salud del servidor o el estado de Minecraft, invoca "consultar_estado_servidor".
-8. TERMINAL Y BASH: Para ejecutar comandos en consola bash, invoca "execute_bash_command". Si un comando es critico, el sistema envia un codigo OTP al canal privado de David y solo el puede confirmarlo respondiendo "confirmar otp CODIGO": tu nunca ves ni confirmas ese codigo.
-9. GENERADOR CRIPTOGRAFICO: Para generar contraseñas seguras, PINs, tokens o claves criptograficas, invoca "generate_crypto_credential".
-10. INFRAESTRUCTURA Y SERVICIOS: Para consultar el estado de Docker, espacio en disco, red o certificados SSL, invoca "get_infrastructure_status".
-11. GESTION DE TUNELES: Para consultar estado o arrancar/detener tuneles Cloudflare o Tailscale, invoca "manage_tunnel".
-12. COPIAS DE SEGURIDAD: Para generar backups cifrados AES-256-GCM inmediatos, invoca "trigger_encrypted_backup".`;
-  }
-
-  const mensajes = [
-    {
-      role: 'system',
-      content: systemPrompt
-    },
-    ...historial,
-    { role: 'user', content: mensajeUsuario }
-  ];
-
-  const respuesta = await chatCompletion({
-    messages: mensajes,
-    tools: herramientasActivas.length > 0 ? herramientasActivas : undefined,
-    options: {
-      temperature: 0.1,
-      num_ctx: 2048,
-      num_thread: 4
+/**
+ * Ejecuta una llamada de herramienta del agente y devuelve el texto resultado.
+ * opciones.ejecutores permite inyectar ejecutores simulados en pruebas.
+ */
+async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
+  const override = opciones.ejecutores && opciones.ejecutores[nombreFuncion];
+  if (typeof override === 'function') {
+    const res = await override(args);
+    if (typeof res === 'string') return { texto: res };
+    if (res && typeof res === 'object') {
+      return { texto: res.texto || JSON.stringify(res), enlaces: res.enlaces || null };
     }
-  });
+    return { texto: String(res) };
+  }
 
-  // Si el modelo decide ejecutar herramientas (o el fallback las extrajo)
-  if (respuesta.message.tool_calls && respuesta.message.tool_calls.length > 0) {
-    mensajes.push(respuesta.message);
-    let enlacesParaAdjuntar = [];
-
-    for (const llamada of respuesta.message.tool_calls) {
-      const nombreFuncion = llamada.function.name;
-      const args = llamada.function.arguments || {};
-      console.log(`[J.A.R.V.I.S. Tool Call] Invocando: ${nombreFuncion} con argumentos:`, args);
-
-      let resultadoTool = '';
+  let resultadoTool = '';
+  let enlacesTool = null;
 
       if (nombreFuncion === 'consultar_clima') {
         const res = await consultarClima({
@@ -476,8 +445,12 @@ Directrices de selección:
           resultadoTool = `Recuerdos almacenados en el Second Brain (${memorias.length}):\n` + memorias.map((m, i) => `${i + 1}. [${m.sujeto.toUpperCase()}]: ${m.dato}`).join('\n');
         }
       } else if (nombreFuncion === 'olvidar_memoria') {
-        const res = olvidarMemoria(args.criterio);
-        resultadoTool = res.mensaje || res.error || 'Operación completada, señor.';
+        const res = olvidarMemoria(args.criterio, { confirmado: args.confirmado === true });
+        if (res.requiereConfirmacion) {
+          resultadoTool = `ATENCION: borrado masivo pendiente de confirmacion. ${res.mensaje} Explica a David cuantos registros se borrarian (${res.total}) y NO vuelvas a invocar olvidar_memoria con confirmado=true hasta que David confirme expresamente.`;
+        } else {
+          resultadoTool = res.mensaje || res.error || 'Operación completada, señor.';
+        }
       } else if (nombreFuncion === 'vigilar_producto') {
         const res = await vigilarProducto({
           url: args.url,
@@ -517,13 +490,13 @@ Directrices de selección:
         }
       } else if (nombreFuncion === 'resumir_enlace') {
         const resResumen = await generarResumenInteligente(args.url);
-        return limpiarRespuestaJarvis(resResumen);
+        return { texto: limpiarRespuestaJarvis(resResumen) };
       } else if (nombreFuncion === 'obtener_noticias_actuales') {
         const cat = args.categoria || 'general';
         const data = await obtenerNoticiasEstructuradas(cat, 5);
 
         if (data.ok && data.articulos.length > 0) {
-          enlacesParaAdjuntar = data.articulos;
+          enlacesTool = data.articulos;
           const textoParaJarvis = data.articulos.map(a => `${a.id}. Titular: ${a.titulo}\nDetalle: ${a.resumen}`).join('\n\n');
           resultadoTool = `Noticias reales recuperadas (${data.ramaNombre}):\n${textoParaJarvis}`;
         } else {
@@ -586,6 +559,9 @@ Directrices de selección:
         const res = await requestExecution(cmd, { otpDelivery: opciones.otpDelivery });
         if (res.status === 'EXECUTED') {
           resultadoTool = `Comando ejecutado con exito (Codigo: ${res.exitCode}):\n${res.stdout || res.stderr || 'Comando completado sin salida'}`;
+          if (res.verificacion) {
+            resultadoTool += `\nVerificacion posterior (${res.verificacion.comando}): ${res.verificacion.exito ? 'efecto confirmado en el sistema' : 'NO se pudo confirmar el efecto'}.\n${res.verificacion.salida}`;
+          }
         } else if (res.status === 'OTP_REQUIRED') {
           if (res.otpDelivered) {
             resultadoTool = `El comando "${cmd}" es critico (${res.reason}). He enviado un codigo OTP de 6 digitos al canal privado de David (validez: ${res.ttlSeconds} segundos, ID: ${res.commandId}). Indicale que lo confirme respondiendo "confirmar otp CODIGO". Tu no tienes acceso al codigo ni puedes confirmarlo.`;
@@ -711,6 +687,163 @@ Directrices de selección:
         resultadoTool = 'Función no reconocida.';
       }
 
+  return { texto: resultadoTool, enlaces: enlacesTool };
+}
+
+export async function consultarJarvis(mensajeUsuario, historial = [], opciones = {}) {
+  const tiempoInicio = Date.now();
+
+  // Detección directa de URLs para resumen rápido
+  const urlMatch = mensajeUsuario.match(/https?:\/\/[^\s]+/i);
+  const pideResumen = /resum|qu[eé?] dice|de qu[eé?] va|lee|analiz/i.test(mensajeUsuario);
+  const esUrlSola = urlMatch && mensajeUsuario.trim() === urlMatch[0];
+
+  if (urlMatch && (pideResumen || esUrlSola)) {
+    console.log(`[J.A.R.V.I.S.] Detección directa de lectura/resumen con Playwright para: ${urlMatch[0]}`);
+    const resumen = await generarResumenInteligente(urlMatch[0]);
+    return limpiarRespuestaJarvis(resumen);
+  }
+
+  // Easter Egg: Solicitud de más tabaco para la cachimba
+  if (esPeticionCachimba(mensajeUsuario)) {
+    console.log(`[J.A.R.V.I.S. Easter Egg] Cachimba detectada: "${mensajeUsuario}"`);
+    return 'A su servicio, señor. Ajustando la cazoleta y aumentando la mezcla al máximo rendimiento. Parámetros térmicos estabilizados.';
+  }
+
+  // Búsqueda proactiva en el Second Brain para inyectar recuerdos en contexto
+  const memoriasProactivas = buscarMemorias(mensajeUsuario);
+
+  // LLM inyectable (pruebas con bateria dorada) o el real por defecto
+  const chatImpl = typeof opciones.chatCompletion === 'function' ? opciones.chatCompletion : chatCompletion;
+
+  // Selección inteligente de herramientas: regex primero; si el regex no
+  // reconoce la intencion (safety net), un clasificador por modelo decide con
+  // confianza. Confianza baja: desambiguacion en lugar de volcar herramientas.
+  const analisis = analizarIntencion(mensajeUsuario);
+  let herramientasActivas = analisis.herramientas;
+  let directivaDesambiguacion = '';
+
+  if (analisis.safetyNet) {
+    const clasificacion = await clasificarIntencionConModelo(mensajeUsuario, { chatCompletion: chatImpl });
+    if (clasificacion && clasificacion.confianza >= UMBRAL_CONFIANZA) {
+      herramientasActivas = clasificacion.herramientas;
+      console.log(`[RouterModelo] Intencion clasificada por modelo: ${clasificacion.intencion} (confianza ${clasificacion.confianza}, origen ${clasificacion.origen}).`);
+    } else if (clasificacion) {
+      herramientasActivas = [];
+      directivaDesambiguacion = '\n\n[DIRECTIVA DE DESAMBIGUACION: No esta claro que necesita David. NO inventes acciones, datos ni confirmaciones: pidele una aclaracion breve y concreta, ofreciendo como mucho dos opciones, antes de actuar.]';
+      console.log(`[RouterModelo] Confianza insuficiente (${clasificacion.confianza}); se pide desambiguacion sin herramientas.`);
+    } else {
+      console.log('[RouterModelo] Clasificador no disponible; se mantiene el safety net del regex con todas las herramientas.');
+    }
+  }
+
+  console.log(`[J.A.R.V.I.S.] Evaluando: "${mensajeUsuario}" [Herramientas: ${herramientasActivas.length > 0 ? herramientasActivas.map(h => h.function.name).join(', ') : 'Ninguna (Conversacional)'}]`);
+
+  let systemPrompt = `Eres D.A.V.I.S. (Digital Autonomous Voice & Intelligence System), la avanzada inteligencia artificial personal y copiloto táctico de David.
+Naciste de la fusión entre la lealtad, ingenio técnico y serenidad del J.A.R.V.I.S. de Tony Stark en Los Vengadores y la propia mentalidad, pragmatismo y visión de David, actuando como su alter ego digital.
+
+PERSONALIDAD Y VOZ:
+- Estatus: Eres su socio y copiloto de confianza. Hablas de tú a tú en español de España de forma natural, directa, inteligente y sobria.
+- Tratamiento: Te diriges a él como "David". Puedes usar "jefe" o "señor" exclusivamente con ironía sutil o humor seco cuando la ocasión sea propicia, sin caer jamás en sumisión artificial.
+- Actitud: Hipercompetente, resolutivo y leal. Cero quejas o pretextos: ejecutas y resuelves. Posees un humor seco, inteligente y sutil.
+- Especialización máxima: Eres un ingeniero de software y DevOps de élite. Cuando trates temas de código, infraestructura, Linux o arquitectura técnica, habla con la solidez, rigor y criterio de un senior engineer en su misma sintonía.
+- Versatilidad táctica: Mantienes control impecable sobre su operativa diaria (mensajes, recordatorios, servidores, finanzas, descanso y aficiones).
+
+REGLAS CRÍTICAS DE COMUNICACIÓN:
+1. PROHIBICIÓN TOTAL DE EMOJIS: Queda terminantemente prohibido incluir emojis o iconos decorativos en tus respuestas. Mantén un formato puramente textual, sobrio y distinguido.
+2. CERO SLOP Y ADAPTABILIDAD AL CONTEXTO:
+   - Para confirmaciones o acciones operativas (enviar un mensaje, poner una alarma, consultar un dato puntual): sé conciso (1 o 2 frases directas y precisas).
+   - Para análisis técnicos, arquitectura, clima o noticias: ofrece respuestas limpiamente estructuradas con viñetas, sin párrafos inflados ni rodeos vacíos.
+3. CERO CLICHÉS CORPORATIVOS: Prohibido decir frases como "¡Hola! ¿En qué puedo ayudarte hoy?", "Como modelo de lenguaje...", o disculpas melodramáticas redundantes.`;
+
+  // Inyección de recuerdos existentes en el prompt para respuesta instantánea y precisa
+  if (memoriasProactivas.length > 0) {
+    systemPrompt += `\n\n[REGISTROS DEL SECOND BRAIN / BANCO DE MEMORIA]:
+${memoriasProactivas.map(m => `- [${m.sujeto.toUpperCase()}]: ${m.dato}`).join('\n')}
+(DIRECTIVA: Si la consulta de David trata sobre alguno de estos temas, respóndele DIRECTAMENTE con esta información de forma sobria y elegante).`;
+  }
+
+  if (opciones.urgencyDirective) {
+    systemPrompt += `\n\n${opciones.urgencyDirective}`;
+  }
+
+  if (directivaDesambiguacion) {
+    systemPrompt += directivaDesambiguacion;
+  }
+
+  if (herramientasActivas.length > 0) {
+    systemPrompt += `\nINSTRUCCIONES DE HERRAMIENTAS:
+Dispones de herramientas nativas para consultar datos externos y realizar acciones. Utiliza exclusivamente el mecanismo nativo de function calling. NUNCA escribas el nombre de la función ni objetos JSON en el texto de tu respuesta.
+
+Directrices de selección:
+1. CLIMA Y METEOROLOGÍA: Para consultar el tiempo, temperatura o lluvia de hoy o de mañana en cualquier ciudad o localidad (ej: Madrid), invoca "consultar_clima".
+2. MENSAJES PROGRAMADOS DE WHATSAPP: Para programar el envío de un mensaje de WhatsApp a un número de teléfono en una fecha u hora específica (o en X minutos), invoca "programar_mensaje_whatsapp". Para consultar los mensajes programados pendientes, "listar_mensajes_programados". Para cancelar uno, "cancelar_mensaje_programado".
+3. RECORDATORIOS Y ALARMAS PERSONALES: Para programar avisos o alarmas personales de David, invoca "crear_recordatorio". Para consultarlos, "listar_recordatorios". Para cancelar, "cancelar_recordatorio".
+4. SECOND BRAIN (MEMORIA PERSONAL): Para guardar hechos o datos personales (claves, cumpleaños, tallas, correos), invoca "guardar_memoria". Para consultar datos del pasado, "buscar_memoria". Para borrar, "olvidar_memoria".
+5. SNIPER DE PRECIOS: Para vigilar un producto u oferta si baja de precio, invoca "vigilar_producto". Para listar, "listar_productos_vigilados".
+6. NOTICIAS Y NAVEGADOR PLAYWRIGHT: Para noticias de actualidad, invoca "obtener_noticias_actuales". Para abrir o inspeccionar un enlace o artículo web con el navegador, invoca "navegar_y_leer_noticia" o "resumir_enlace".
+7. ESTADO DEL SISTEMA: Para consultar la salud del servidor o el estado de Minecraft, invoca "consultar_estado_servidor".
+8. TERMINAL Y BASH: Para ejecutar comandos en consola bash, invoca "execute_bash_command". Si un comando es critico, el sistema envia un codigo OTP al canal privado de David y solo el puede confirmarlo respondiendo "confirmar otp CODIGO": tu nunca ves ni confirmas ese codigo.
+9. GENERADOR CRIPTOGRAFICO: Para generar contraseñas seguras, PINs, tokens o claves criptograficas, invoca "generate_crypto_credential".
+10. INFRAESTRUCTURA Y SERVICIOS: Para consultar el estado de Docker, espacio en disco, red o certificados SSL, invoca "get_infrastructure_status".
+11. GESTION DE TUNELES: Para consultar estado o arrancar/detener tuneles Cloudflare o Tailscale, invoca "manage_tunnel".
+12. COPIAS DE SEGURIDAD: Para generar backups cifrados AES-256-GCM inmediatos, invoca "trigger_encrypted_backup".`;
+  }
+
+  const mensajes = [
+    {
+      role: 'system',
+      content: systemPrompt
+    },
+    ...historial,
+    { role: 'user', content: mensajeUsuario }
+  ];
+
+  let respuesta = await chatImpl({
+    messages: mensajes,
+    tools: herramientasActivas.length > 0 ? herramientasActivas : undefined,
+    options: {
+      temperature: 0.1,
+      num_ctx: 8192,
+      num_thread: 4
+    }
+  });
+
+  const MAX_RONDAS_HERRAMIENTAS = opciones.maxRondasHerramientas ?? 3;
+  let ronda = 0;
+  let enlacesParaAdjuntar = [];
+
+  // Bucle acotado ejecutar -> comprobar -> decidir: tras cada ronda de
+  // herramientas el modelo contrasta los resultados y puede encadenar otro
+  // paso (hasta MAX_RONDAS_HERRAMIENTAS) antes de responder.
+  while (respuesta.message.tool_calls && respuesta.message.tool_calls.length > 0) {
+    if (ronda >= MAX_RONDAS_HERRAMIENTAS) {
+      console.warn(`[J.A.R.V.I.S.] Limite de ${MAX_RONDAS_HERRAMIENTAS} rondas de herramientas alcanzado; se responde con lo disponible.`);
+      break;
+    }
+    ronda++;
+    mensajes.push(respuesta.message);
+
+    for (const llamada of respuesta.message.tool_calls) {
+      const nombreFuncion = llamada.function.name;
+      const args = llamada.function.arguments || {};
+      console.log(`[J.A.R.V.I.S. Tool Call R${ronda}] Invocando: ${nombreFuncion} con argumentos:`, args);
+
+      let resultadoTool;
+      try {
+        const salida = await ejecutarHerramientaJarvis(nombreFuncion, args, opciones);
+        resultadoTool = salida.texto;
+        if (salida.enlaces) enlacesParaAdjuntar = salida.enlaces;
+      } catch (errTool) {
+        // Recuperacion segura: solo las consultas idempotentes pueden
+        // reintentarse; escrituras, envios y comandos exigen comprobar el
+        // efecto real y avisar a David, nunca reintentar a ciegas.
+        resultadoTool = HERRAMIENTAS_IDEMPOTENTES.has(nombreFuncion)
+          ? `Error temporal ejecutando la consulta ${nombreFuncion}: ${errTool.message}. Es una operacion de solo lectura; si procede, reintentala con argumentos corregidos.`
+          : `La accion ${nombreFuncion} ha fallado: ${errTool.message}. NO la reintentes automaticamente porque escribe, envia o ejecuta cambios: verifica primero el efecto real e informa a David del fallo.`;
+        console.error(`[J.A.R.V.I.S. Tool Error R${ronda}] ${nombreFuncion}:`, errTool.message);
+      }
+
       mensajes.push({
         role: 'tool',
         content: resultadoTool,
@@ -718,32 +851,50 @@ Directrices de selección:
       });
     }
 
-    console.log(`[J.A.R.V.I.S.] Sintetizando respuesta final...`);
-    const respuestaFinal = await chatCompletion({
+    console.log(`[J.A.R.V.I.S.] Sintetizando (ronda ${ronda}/${MAX_RONDAS_HERRAMIENTAS})...`);
+    respuesta = await chatImpl({
       messages: mensajes,
+      tools: herramientasActivas.length > 0 ? herramientasActivas : undefined,
       options: {
-        num_ctx: 2048,
-        num_predict: 250,
+        num_ctx: 8192,
+        num_predict: 1024,
         num_thread: 4,
         temperature: 0.1
       }
     });
+  }
 
-    let textoFinal = respuestaFinal.message.content.trim();
+  let textoFinal = (respuesta.message.content || '').trim();
 
-    if (enlacesParaAdjuntar.length > 0) {
-      textoFinal += '\n\n═════════════════════\nEnlaces para lectura completa:';
-      for (const art of enlacesParaAdjuntar) {
-        textoFinal += `\n${art.id}. ${art.titulo}\n   ${art.link}\n`;
-      }
+  // Chequeo de consistencia: si la respuesta quedo cortada por el limite de
+  // tokens, se pide una continuacion en lugar de entregarla mutilada.
+  if (esRespuestaTruncada(textoFinal, respuesta.finishReason)) {
+    console.log('[J.A.R.V.I.S.] Respuesta truncada por limite de tokens; solicitando continuacion...');
+    try {
+      const continuacion = await chatImpl({
+        messages: [
+          ...mensajes,
+          { role: 'assistant', content: textoFinal },
+          { role: 'user', content: 'Continua exactamente donde lo dejaste, sin repetir lo anterior.' }
+        ],
+        options: { num_ctx: 8192, num_predict: 1024, num_thread: 4, temperature: 0.1 }
+      });
+      const extra = (continuacion?.message?.content || '').trim();
+      if (extra) textoFinal = `${textoFinal} ${extra}`.trim();
+    } catch (errCont) {
+      console.error('[J.A.R.V.I.S.] Error pidiendo continuacion:', errCont.message);
     }
+  }
 
-    const duracionSeg = ((Date.now() - tiempoInicio) / 1000).toFixed(2);
-    console.log(`[J.A.R.V.I.S.] Petición con herramienta completada en ${duracionSeg}s`);
-    return limpiarRespuestaJarvis(textoFinal);
+  if (enlacesParaAdjuntar.length > 0) {
+    textoFinal += '\n\n═════════════════════\nEnlaces para lectura completa:';
+    for (const art of enlacesParaAdjuntar) {
+      textoFinal += `\n${art.id}. ${art.titulo}\n   ${art.link}\n`;
+    }
   }
 
   const duracionSeg = ((Date.now() - tiempoInicio) / 1000).toFixed(2);
-  console.log(`[J.A.R.V.I.S.] Petición conversacional completada en ${duracionSeg}s`);
-  return limpiarRespuestaJarvis(respuesta.message.content);
+  console.log(`[J.A.R.V.I.S.] Peticion completada en ${duracionSeg}s (${ronda} ronda(s) de herramientas)`);
+  return limpiarRespuestaJarvis(textoFinal);
 }
+

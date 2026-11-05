@@ -14,7 +14,9 @@ import { config } from './config.js';
 import { consultarJarvis } from './jarvisAgent.js';
 import { confirmAndExecute } from './bashConsoleService.js';
 import { iniciarMonitorRecordatorios } from './reminderService.js';
-import { iniciarMonitorMensajesProgramados } from './scheduledMessageService.js';
+import { iniciarMonitorMensajesProgramados, registrarIdWhatsApp, procesarActualizacionEntrega } from './scheduledMessageService.js';
+import { obtenerHistorial, registrarIntercambio } from './conversationHistoryService.js';
+import { esAccionCriticaPorVoz, guardarPendienteVoz, resolverConfirmacionVoz } from './voiceConfirmationService.js';
 import { iniciarVigilanteProactivo } from './proactiveAlerts.js';
 import { iniciarSniperWatchdog } from './sniperService.js';
 import { programarEnvioMatutino } from './dailyBriefing.js';
@@ -151,17 +153,17 @@ export async function enviarMensajeADavid(contenido) {
 export async function enviarMensajeWhatsApp(jidODestino, contenido) {
   if (!sock || !estaConectado) {
     console.warn('[WhatsApp] Intento de envío pero el cliente no está en línea.');
-    return false;
+    return { ok: false, id: null };
   }
   const payload = typeof contenido === 'string' ? { text: contenido } : contenido;
   const jid = jidODestino.includes('@') ? jidODestino : `${jidODestino}@s.whatsapp.net`;
   try {
-    await sock.sendMessage(jid, payload);
+    const enviado = await sock.sendMessage(jid, payload);
     console.log(`[WhatsApp Mensaje Enviado] Destino: ${jid}`);
-    return true;
+    return { ok: true, id: enviado?.key?.id || null };
   } catch (err) {
     console.error(`Error enviando mensaje WhatsApp a ${jid}:`, err.message);
-    return false;
+    return { ok: false, id: null };
   }
 }
 
@@ -241,12 +243,16 @@ function inicializarServiciosProactivos() {
   iniciarMonitorMensajesProgramados(async (m) => {
     console.log(`[WhatsApp Programado] Despachando mensaje programado para +${m.numero}...`);
     try {
-      const exito = await enviarMensajeWhatsApp(m.destinatarioJid, m.mensaje);
-      if (exito) {
+      const res = await enviarMensajeWhatsApp(m.destinatarioJid, m.mensaje);
+      if (res.ok) {
+        if (res.id) registrarIdWhatsApp(m.id, res.id);
         await enviarMensajeADavid(`[D.A.V.I.S. - MENSAJE ENTREGADO]\n\nEl mensaje para el número +${m.numero} ha sido transmitido con éxito:\n"${m.mensaje}".`);
-      } else {
-        await enviarMensajeADavid(`[D.A.V.I.S. - AVISO DE DISPACHO]\n\nNo se ha podido entregar el mensaje programado al número +${m.numero}.`);
+        return true;
       }
+      // Fallo de canal: el servicio reintenta y solo marca el mensaje como
+      // fallido tras agotar los intentos; no se notifica ruido intermedio.
+      console.warn(`[WhatsApp Programado] Envio a +${m.numero} no confirmado por el canal; se reintentara.`);
+      return false;
     } catch (errEnvio) {
       console.error(`Error en despacho de mensaje programado a +${m.numero}:`, errEnvio.message);
       await enviarMensajeADavid(`[D.A.V.I.S. - AVISO DE DISPACHO]\n\nSe ha producido una anomalía al entregar el mensaje al número +${m.numero}: ${errEnvio.message}`);
@@ -391,6 +397,15 @@ export async function iniciarWhatsApp() {
   });
 
   sock.ev.on('creds.update', saveCreds);
+
+  // Acuses de recibo (entregado / leido / error) de mensajes programados
+  sock.ev.on('messages.update', (updates) => {
+    try {
+      procesarActualizacionEntrega(updates);
+    } catch (errUpd) {
+      console.error('[WhatsApp] Error procesando acuse de recibo:', errUpd.message);
+    }
+  });
 
   // Procesamiento de mensajes entrantes
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
@@ -615,6 +630,29 @@ export async function iniciarWhatsApp() {
         continue;
       }
 
+      // Confirmacion de acciones criticas dictadas por voz: la transcripcion
+      // puede equivocarse, asi que envios a terceros, borrados y comandos
+      // exigen un "si" explicito de David. Tampoco pasa por el LLM.
+      const resVoz = resolverConfirmacionVoz(remoteJid, texto);
+      if (resVoz && resVoz.resultado === 'cancelado') {
+        await sock.sendMessage(remoteJid, {
+          text: 'Entendido, señor. Accion cancelada; no se ha realizado ningun cambio.'
+        }, { quoted: msg });
+        continue;
+      }
+      if (resVoz && resVoz.resultado === 'confirmado') {
+        console.log('[WhatsApp Voz] Accion critica confirmada por David; se procesa la peticion original.');
+        texto = resVoz.textoOriginal;
+      } else if (!resVoz && esAudio && esAccionCriticaPorVoz(texto)) {
+        guardarPendienteVoz(remoteJid, texto);
+        await sock.sendMessage(remoteJid, {
+          text: `Antes de actuar, señor. He entendido: "${texto}". Es una accion con efectos externos o destructivos; confirme respondiendo "si" o "confirmo", o bien "no" para cancelarla.`
+        }, { quoted: msg });
+        continue;
+      }
+      // resVoz === 'nuevo': la peticion pendiente queda descartada y se
+      // procesa el mensaje actual con normalidad.
+
       // Mantener el estado "escribiendo..." en WhatsApp mientras el LLM piensa
       const typingInterval = setInterval(() => {
         sock.sendPresenceUpdate('composing', remoteJid).catch(() => {});
@@ -627,8 +665,9 @@ export async function iniciarWhatsApp() {
         // 2. Primer pulso de "escribiendo..."
         await sock.sendPresenceUpdate('composing', remoteJid);
 
-        // 3. Procesar consulta con el agente
-        const respuesta = await consultarJarvis(texto, [], {
+        // 3. Procesar consulta con el agente (con memoria de conversacion aislada por chat)
+        const historialPrevio = obtenerHistorial(remoteJid);
+        const respuesta = await consultarJarvis(texto, historialPrevio, {
           urgencyDirective,
           otpDelivery: async ({ otpCode, ttlSeconds, reason, command }) => {
             await sock.sendMessage(remoteJid, {
@@ -655,6 +694,13 @@ export async function iniciarWhatsApp() {
         } else {
           await sock.sendMessage(remoteJid, { text: respuesta }, { quoted: msg });
           console.log(`[J.A.R.V.I.S. a David]: "${respuesta}"\n`);
+        }
+
+        // 8. Persistir el intercambio en el historial del chat
+        try {
+          registrarIntercambio(remoteJid, texto, respuesta);
+        } catch (errHist) {
+          console.error('[Historial] No se pudo registrar el intercambio:', errHist.message);
         }
       } catch (err) {
         clearInterval(typingInterval);
