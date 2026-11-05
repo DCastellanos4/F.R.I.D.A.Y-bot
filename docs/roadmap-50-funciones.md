@@ -139,6 +139,10 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 6. **Bloque 6 - Comunicacion (nº 32, 34, 35, 36)**: fechas senaladas, snooze de chats, estadisticas de grupos y aviso de llegada.
 7. **Resto**: se prioriza con David segun utilidad inmediata.
 
+## Bloques extra aprobados (fuera de las 50)
+
+- **Transporte publico de Madrid** (aprobado por David el 5 nov 2026, WhatsApp "sip metelas" en respuesta a la propuesta con alcance EMT + Cercanias, favoritos y consulta bajo demanda, sin avisos automaticos): paradas favoritas EMT y estaciones de Cercanias con consulta de llegadas cuando David pregunta. EMT: adaptador MobilityLabs config-required (alta gratuita; credenciales DAVIS_EMT_CLIENT_ID y DAVIS_EMT_PASS_KEY en el entorno, nunca por chat). Cercanias: feed GTFS-RT publico de Renfe, operativo sin credenciales; solo muestra servicios con informacion en vivo y lo declara. Metro: sin fuente publica verificada de llegadas en vivo; no se ofrece. Sin avisos automaticos ni monitores. No cuenta para el total de las 50.
+
 ## Configuracion que necesita David para el bloque 1
 
 - **Radar con InfoJobs**: variables INFOJOBS_CLIENT_ID e INFOJOBS_CLIENT_SECRET en el entorno del bot.

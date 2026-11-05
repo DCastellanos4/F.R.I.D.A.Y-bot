@@ -870,6 +870,11 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
           rutaArchivoFechas: deps.rutaArchivoFechas,
           rutaArchivoSnoozes: deps.rutaArchivoSnoozes,
           rutaArchivoLlegada: deps.rutaArchivoLlegada,
+          rutaArchivoTransporte: deps.rutaArchivoTransporte,
+          fetchFnEmt: deps.fetchFnEmt,
+          fetchFnCercanias: deps.fetchFnCercanias,
+          clientIdEmt: deps.clientIdEmt,
+          passKeyEmt: deps.passKeyEmt,
           otpDelivery: async ({ otpCode, ttlSeconds, reason, command }) => {
             await sock.sendMessage(remoteJid, {
               text: `Codigo de autorizacion 2FA para el comando critico "${command}" (${reason}):\n\n${otpCode}\n\nValidez: ${ttlSeconds} segundos. Responde "confirmar otp ${otpCode}" para autorizar la ejecucion. Este codigo solo lo ves tu.`

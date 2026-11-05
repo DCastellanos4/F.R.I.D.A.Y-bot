@@ -1187,6 +1187,59 @@ export const herramientasJarvis = [
         required: ['criterio']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'registrar_parada_favorita',
+      description: 'Guarda una parada de bus EMT o una estacion de Cercanias como favorita (ej: "mi parada de casa es la EMT 1234"). El Metro no tiene fuente publica de llegadas en vivo.',
+      parameters: {
+        type: 'object',
+        properties: {
+          nombre: { type: 'string', description: 'Nombre de la parada (ej: "casa").' },
+          tipo: { type: 'string', enum: ['emt', 'cercanias'], description: 'emt (bus) o cercanias.' },
+          codigo: { type: 'string', description: 'Numero de parada EMT (marquesina) o codigo de estacion de Cercanias.' }
+        },
+        required: ['nombre', 'tipo', 'codigo']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_paradas_favoritas',
+      description: 'Lista las paradas y estaciones favoritas de transporte.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'eliminar_parada_favorita',
+      description: 'Borra una parada favorita por nombre o id.',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string', description: 'Nombre o id de la parada.' }
+        },
+        required: ['criterio']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'proximas_llegadas_transporte',
+      description: 'Consulta bajo demanda las proximas llegadas de una parada favorita (o de un codigo con tipo). Sin avisos automaticos: solo responde cuando David pregunta.',
+      parameters: {
+        type: 'object',
+        properties: {
+          parada: { type: 'string', description: 'Nombre o id de la parada favorita.' },
+          tipo: { type: 'string', enum: ['emt', 'cercanias'], description: 'Tipo si se pasa un codigo directo.' },
+          codigo: { type: 'string', description: 'Codigo directo si no es favorita.' }
+        }
+      }
+    }
   }
 ];
 
@@ -1220,6 +1273,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   empleo: ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura', 'escanear_ofertas_empleo', 'configurar_radar_ofertas'],
   estudio: ['planificar_estudio', 'listar_planes_estudio', 'registrar_avance_estudio', 'programar_recordatorios_estudio', 'crear_flashcard', 'repasar_flashcards', 'responder_flashcard', 'configurar_repaso_flashcards'],
   comunicacion: ['activar_traductor', 'desactivar_traductor', 'sugerir_respuestas', 'buscar_en_historial', 'registrar_fecha_senalada', 'listar_fechas_senaladas', 'eliminar_fecha_senalada', 'configurar_avisos_fechas', 'programar_snooze', 'listar_snoozes', 'cancelar_snooze', 'estadisticas_grupo', 'registrar_aviso_llegada', 'listar_avisos_llegada', 'cancelar_aviso_llegada'],
+  transporte: ['registrar_parada_favorita', 'listar_paradas_favoritas', 'eliminar_parada_favorita', 'proximas_llegadas_transporte'],
   procesos: ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'],
   finanzas: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'],
   conversacion: []
