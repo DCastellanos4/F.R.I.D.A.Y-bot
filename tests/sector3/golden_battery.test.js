@@ -232,6 +232,12 @@ for (const caso of casosDorados) {
         assert.ok(respuesta.includes(fragmento), `${caso.id}: respuesta debia contener "${fragmento}"; respuesta: "${respuesta}"`);
       }
     }
+    if (esperado.responde) {
+      assert.ok(
+        typeof respuesta === 'string' && respuesta.trim().length > 0,
+        `${caso.id}: debia producirse una respuesta honesta (no silencio); respuesta: "${respuesta}"`
+      );
+    }
     if (esperado.historialInyectado) {
       assert.ok(obs.historialVisto, `${caso.id}: el historial previo debia llegar al modelo`);
     }

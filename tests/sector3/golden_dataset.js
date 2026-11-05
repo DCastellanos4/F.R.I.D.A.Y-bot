@@ -180,7 +180,7 @@ export const casosDorados = [
       { clasifica: { intencion: 'memoria', confianza: 0.3 } },
       { texto: 'Podria concretar un poco mas, senor?' }
     ],
-    esperado: { sinHerramientas: true, clasificador: true, directivaDesambiguacion: true }
+    esperado: { sinHerramientas: true, clasificador: true, directivaDesambiguacion: true, responde: true }
   },
   {
     id: 'G26-modelo-conversacion',
@@ -198,7 +198,7 @@ export const casosDorados = [
       { clasifica: 'ERROR' },
       { texto: 'No termino de entenderlo, senor.' }
     ],
-    esperado: { sinHerramientas: true, clasificador: true, directivaDesambiguacion: true, ofrecidasCero: true }
+    esperado: { sinHerramientas: true, clasificador: true, directivaDesambiguacion: true, ofrecidasCero: true, responde: true }
   },
   {
     id: 'G28-cache-clasificador',
