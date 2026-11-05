@@ -40,6 +40,10 @@ export const config = {
   // Servidor API REST
   port: parseInt(process.env.PORT, 10) || 3000,
 
+  // Seguridad del API REST y del webhook de GitHub (sin valores por defecto)
+  apiToken: process.env.API_TOKEN || '',
+  githubWebhookSecret: process.env.GITHUB_WEBHOOK_SECRET || '',
+
   // Monitor de Servidores y Minecraft
   minecraft: {
     host: process.env.MINECRAFT_HOST || '192.168.1.24',

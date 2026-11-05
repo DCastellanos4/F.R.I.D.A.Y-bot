@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -9,6 +10,68 @@ const ARCHIVO_MEMORIA = path.join(CARPETA_DATA, 'brain_memory.json');
 if (!fs.existsSync(CARPETA_DATA)) {
   fs.mkdirSync(CARPETA_DATA, { recursive: true });
 }
+
+// ---------------------------------------------------------------------------
+// Cifrado en reposo para la categoria "clave" (AES-256-GCM, clave scrypt)
+// Las memorias de credenciales se guardan cifradas; las antiguas en texto
+// plano siguen leyendose igual (compatibilidad con datos existentes).
+// ---------------------------------------------------------------------------
+const FORMATO_CIFRADO = 'aes-256-gcm';
+
+// La clave de cifrado de memorias es exclusiva de este servicio: no reutiliza
+// la passphrase de las copias de seguridad (BACKUP_PASSPHRASE), que tiene un
+// alcance distinto.
+function obtenerClaveCifrado(salt) {
+  const pass = process.env.MEMORY_ENCRYPTION_KEY || '';
+  if (!pass) return null;
+  return crypto.scryptSync(pass, salt, 32, { N: 16384, r: 8, p: 1 });
+}
+
+export function cifrarDato(dato) {
+  const salt = crypto.randomBytes(16);
+  const key = obtenerClaveCifrado(salt);
+  if (!key) return null;
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv(FORMATO_CIFRADO, key, iv);
+  const enc = Buffer.concat([cipher.update(dato, 'utf-8'), cipher.final()]);
+  return {
+    cifrado: FORMATO_CIFRADO,
+    salt: salt.toString('base64'),
+    iv: iv.toString('base64'),
+    tag: cipher.getAuthTag().toString('base64'),
+    dato: enc.toString('base64')
+  };
+}
+
+function descifrarDato(m) {
+  try {
+    const key = obtenerClaveCifrado(Buffer.from(m.salt, 'base64'));
+    if (!key) return null;
+    const decipher = crypto.createDecipheriv(FORMATO_CIFRADO, key, Buffer.from(m.iv, 'base64'));
+    decipher.setAuthTag(Buffer.from(m.tag, 'base64'));
+    return Buffer.concat([decipher.update(Buffer.from(m.dato, 'base64')), decipher.final()]).toString('utf-8');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Devuelve la memoria con el dato en claro si estaba cifrada.
+ */
+export function descifrarMemoria(m) {
+  if (!m || m.cifrado !== FORMATO_CIFRADO) return m;
+  const plano = descifrarDato(m);
+  if (plano === null) {
+    return { ...m, dato: '[cifrado: falta la clave de descifrado en el entorno]' };
+  }
+  const { cifrado, salt, iv, tag, ...resto } = m;
+  return { ...resto, dato: plano };
+}
+
+export function esCifrada(m) {
+  return m && m.cifrado === FORMATO_CIFRADO;
+}
+
 
 function leerMemorias() {
   try {
@@ -143,20 +206,33 @@ export function guardarMemoria({ sujeto, dato, categoria = 'general', tags = [] 
     fechaLocal: formatoLocal
   };
 
+  // Las credenciales (categoria "clave") se cifran en reposo; sin clave de
+  // cifrado configurada se rechaza el guardado en vez de escribir en plano.
+  let memoriaAlmacenada = nuevaMemoria;
+  if (nuevaMemoria.categoria === 'clave') {
+    const cifrada = cifrarDato(nuevaMemoria.dato);
+    if (!cifrada) {
+      return { ok: false, error: 'No se puede guardar una credencial sin cifrar: define MEMORY_ENCRYPTION_KEY en el entorno.' };
+    }
+    memoriaAlmacenada = { ...nuevaMemoria, ...cifrada };
+  }
+
+  const datoParaLog = nuevaMemoria.categoria === 'clave' ? '[cifrado]' : nuevaMemoria.dato;
+
   // Comprobar si ya existe un hecho exactamente igual para actualizarlo
   const idxExistente = lista.findIndex(m => sonElMismoHecho(m, nuevaMemoria));
 
   if (idxExistente !== -1) {
     const idAnterior = lista[idxExistente].id;
-    lista[idxExistente] = { ...nuevaMemoria, id: idAnterior };
+    lista[idxExistente] = { ...memoriaAlmacenada, id: idAnterior };
     guardarMemorias(lista);
-    console.log(`[Memoria] [Memoria Actualizada] "${nuevaMemoria.sujeto}": ${nuevaMemoria.dato}`);
-    return { ok: true, accion: 'actualizada', memoria: lista[idxExistente] };
+    console.log(`[Memoria] [Memoria Actualizada] "${nuevaMemoria.sujeto}": ${datoParaLog}`);
+    return { ok: true, accion: 'actualizada', memoria: descifrarMemoria(lista[idxExistente]) };
   }
 
-  lista.push(nuevaMemoria);
+  lista.push(memoriaAlmacenada);
   guardarMemorias(lista);
-  console.log(`[Memoria] [Memoria Guardada] "${nuevaMemoria.sujeto}": ${nuevaMemoria.dato}`);
+  console.log(`[Memoria] [Memoria Guardada] "${nuevaMemoria.sujeto}": ${datoParaLog}`);
 
   return { ok: true, accion: 'creada', memoria: nuevaMemoria };
 }
@@ -211,7 +287,7 @@ export function buscarMemorias(consulta) {
   return resultadosConScore
     .filter(r => r.score > 0)
     .sort((a, b) => b.score - a.score)
-    .map(r => r.item)
+    .map(r => descifrarMemoria(r.item))
     .slice(0, 5);
 }
 
@@ -220,8 +296,8 @@ export function buscarMemorias(consulta) {
  */
 export function listarMemorias(categoria = null) {
   const lista = leerMemorias();
-  if (!categoria) return lista;
-  return lista.filter(m => m.categoria.toLowerCase() === categoria.toLowerCase());
+  if (!categoria) return lista.map(descifrarMemoria);
+  return lista.filter(m => m.categoria.toLowerCase() === categoria.toLowerCase()).map(descifrarMemoria);
 }
 
 /**
@@ -252,6 +328,7 @@ export function olvidarMemoria(criterio) {
 
   const [eliminada] = lista.splice(idx, 1);
   guardarMemorias(lista);
-  console.log(`[Memoria] [Memoria Olvidada] "${eliminada.sujeto}": ${eliminada.dato}`);
-  return { ok: true, memoria: eliminada, mensaje: `Recuerdo olvidado con éxito: "${eliminada.sujeto}".` };
+  const datoLog = esCifrada(eliminada) ? '[cifrado]' : eliminada.dato;
+  console.log(`[Memoria] [Memoria Olvidada] "${eliminada.sujeto}": ${datoLog}`);
+  return { ok: true, memoria: descifrarMemoria(eliminada), mensaje: `Recuerdo olvidado con éxito: "${eliminada.sujeto}".` };
 }

@@ -288,6 +288,7 @@ describe('Sector 2 - Task 20: High-Entropy Cryptographic Generator', () => {
     });
 
     it('should integrate seamlessly with live memoryService without errors', async () => {
+      process.env.MEMORY_ENCRYPTION_KEY = 'test_memory_key_crypto_suite';
       const testKeyName = 'Test Credential Unit ' + Date.now();
       const testSecret = generateToken(16, 'hex');
 
@@ -306,6 +307,7 @@ describe('Sector 2 - Task 20: High-Entropy Cryptographic Generator', () => {
 
       // Cleanup
       olvidarMemoria(testKeyName);
+      delete process.env.MEMORY_ENCRYPTION_KEY;
     });
   });
 

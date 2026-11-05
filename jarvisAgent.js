@@ -40,7 +40,7 @@ import {
 import { generateGroupSummary } from './groupSummarizerService.js';
 import { downloadMedia } from './mediaDownloaderService.js';
 import { savePersonalNote, listRecentNotes } from './notesService.js';
-import { requestExecution, confirmAndExecute } from './bashConsoleService.js';
+import { requestExecution } from './bashConsoleService.js';
 import {
   generatePassword,
   generatePin,
@@ -263,7 +263,7 @@ export function seleccionarHerramientasPorIntencion(mensaje) {
   }
 
   if (matchBash) {
-    tools.push(...herramientasJarvis.filter(h => h.function.name === 'execute_bash_command' || h.function.name === 'confirm_bash_otp'));
+    tools.push(...herramientasJarvis.filter(h => h.function.name === 'execute_bash_command'));
   }
 
   if (matchCrypto) {
@@ -369,7 +369,7 @@ Directrices de selección:
 5. SNIPER DE PRECIOS: Para vigilar un producto u oferta si baja de precio, invoca "vigilar_producto". Para listar, "listar_productos_vigilados".
 6. NOTICIAS Y NAVEGADOR PLAYWRIGHT: Para noticias de actualidad, invoca "obtener_noticias_actuales". Para abrir o inspeccionar un enlace o artículo web con el navegador, invoca "navegar_y_leer_noticia" o "resumir_enlace".
 7. ESTADO DEL SISTEMA: Para consultar la salud del servidor o el estado de Minecraft, invoca "consultar_estado_servidor".
-8. TERMINAL Y BASH: Para ejecutar comandos en consola bash, invoca "execute_bash_command". Para confirmar autorizaciones OTP pendientes, invoca "confirm_bash_otp".
+8. TERMINAL Y BASH: Para ejecutar comandos en consola bash, invoca "execute_bash_command". Si un comando es critico, el sistema envia un codigo OTP al canal privado de David y solo el puede confirmarlo respondiendo "confirmar otp CODIGO": tu nunca ves ni confirmas ese codigo.
 9. GENERADOR CRIPTOGRAFICO: Para generar contraseñas seguras, PINs, tokens o claves criptograficas, invoca "generate_crypto_credential".
 10. INFRAESTRUCTURA Y SERVICIOS: Para consultar el estado de Docker, espacio en disco, red o certificados SSL, invoca "get_infrastructure_status".
 11. GESTION DE TUNELES: Para consultar estado o arrancar/detener tuneles Cloudflare o Tailscale, invoca "manage_tunnel".
@@ -583,26 +583,19 @@ Directrices de selección:
         resultadoTool = `Encuesta configurada con éxito: "${args.pregunta}" (${args.opciones?.length || 0} opciones). Publicada en el chat.`;
       } else if (nombreFuncion === 'execute_bash_command') {
         const cmd = args.comando || '';
-        const res = await requestExecution(cmd);
+        const res = await requestExecution(cmd, { otpDelivery: opciones.otpDelivery });
         if (res.status === 'EXECUTED') {
           resultadoTool = `Comando ejecutado con exito (Codigo: ${res.exitCode}):\n${res.stdout || res.stderr || 'Comando completado sin salida'}`;
         } else if (res.status === 'OTP_REQUIRED') {
-          resultadoTool = `El comando "${cmd}" es critico (${res.reason}). Se requiere confirmacion 2FA. Codigo OTP de 6 digitos generado: ${res.otpCode} (Validez: ${res.ttlSeconds} segundos, ID: ${res.commandId}). Confirma con confirm_bash_otp o "confirmar otp ${res.otpCode}".`;
+          if (res.otpDelivered) {
+            resultadoTool = `El comando "${cmd}" es critico (${res.reason}). He enviado un codigo OTP de 6 digitos al canal privado de David (validez: ${res.ttlSeconds} segundos, ID: ${res.commandId}). Indicale que lo confirme respondiendo "confirmar otp CODIGO". Tu no tienes acceso al codigo ni puedes confirmarlo.`;
+          } else {
+            resultadoTool = `El comando "${cmd}" es critico (${res.reason}) y requiere confirmacion 2FA, pero no hay un canal directo configurado para entregar el codigo OTP (disponible desde WhatsApp o la terminal interactiva). Comando en espera con ID: ${res.commandId}.`;
+          }
         } else if (res.status === 'FORBIDDEN') {
           resultadoTool = `Comando denegado por politica de seguridad: ${res.reason}`;
         } else {
           resultadoTool = `Fallo en la ejecucion del comando: ${res.error || res.status}`;
-        }
-      } else if (nombreFuncion === 'confirm_bash_otp') {
-        const res = await confirmAndExecute(args.id_comando || args.otp, args.otp);
-        if (res.status === 'EXECUTED') {
-          resultadoTool = `Autorizacion 2FA confirmada con exito. Comando "${res.command}" ejecutado:\n${res.stdout || res.stderr || 'Comando completado sin salida'}`;
-        } else if (res.status === 'INVALID_OTP') {
-          resultadoTool = `Codigo OTP invalido: ${res.error}`;
-        } else if (res.status === 'EXPIRED') {
-          resultadoTool = `El codigo OTP ha expirado. Por favor, vuelve a solicitar el comando.`;
-        } else {
-          resultadoTool = `Error en autorizacion OTP: ${res.error || res.status}`;
         }
       } else if (nombreFuncion === 'generate_crypto_credential') {
         const tipo = (args.tipo || 'password').toLowerCase();
@@ -704,8 +697,10 @@ Directrices de selección:
           resultadoTool = `Accion de tunel desconocida: ${accion}`;
         }
       } else if (nombreFuncion === 'trigger_encrypted_backup') {
-        const pass = args.passphrase || process.env.BACKUP_PASSPHRASE || process.env.DAVIS_BACKUP_KEY || 'davis_master_passphrase_2026';
-        try {
+        const pass = args.passphrase || process.env.BACKUP_PASSPHRASE || process.env.DAVIS_BACKUP_KEY || '';
+        if (!pass) {
+          resultadoTool = 'No se puede generar la copia de seguridad: falta BACKUP_PASSPHRASE en el entorno. Sin passphrase configurada no se cifra nada con valores por defecto.';
+        } else try {
           const res = await createEncryptedBackup({ passphrase: pass });
           const tamanoKB = (res.sizeBytes / 1024).toFixed(2);
           resultadoTool = `Copia de seguridad cifrada completada con exito (AES-256-GCM DAVBAK01).\nArchivo: ${res.backupPath}\nTamano: ${tamanoKB} KB (${res.fileCount} ficheros incluidos)\nSHA256: ${res.sha256}`;

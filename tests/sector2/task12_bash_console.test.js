@@ -202,9 +202,11 @@ describe('Sector 2 - Task 12: Secure Remote Bash Console with 2FA OTP', () => {
   describe('3. Critical Command 2FA OTP State Machine', () => {
     it('should generate an ephemeral 6-digit OTP code with 120s TTL for critical commands', async () => {
       const fixedTime = 1700000000000;
+      let deliveredPayload = null;
       const res = await requestExecution('pm2 restart jarvis-api', {
         runner: mockRunner.asRunner(),
-        now: () => fixedTime
+        now: () => fixedTime,
+        otpDelivery: async (payload) => { deliveredPayload = payload; }
       });
 
       assert.strictEqual(res.status, 'OTP_REQUIRED');
@@ -213,7 +215,12 @@ describe('Sector 2 - Task 12: Secure Remote Bash Console with 2FA OTP', () => {
       assert.strictEqual(res.expiresAt, fixedTime + DEFAULT_OTP_TTL_MS);
       assert.strictEqual(res.ttlSeconds, 120);
 
-      assertValidOtpCode(res.otpCode, 6);
+      // El OTP nunca se expone en el resultado: solo viaja por el canal directo
+      assert.strictEqual(res.otpCode, undefined);
+      assert.strictEqual(res.otpDelivered, true);
+      assert.ok(deliveredPayload);
+      assertValidOtpCode(deliveredPayload.otpCode, 6);
+      assert.strictEqual(deliveredPayload.commandId, res.commandId);
       assertNoEmojis(res);
 
       // Verify command was NOT executed prematurely
@@ -231,10 +238,11 @@ describe('Sector 2 - Task 12: Secure Remote Bash Console with 2FA OTP', () => {
       const fixedTime = 1700000000000;
       const req = await requestExecution('pm2 restart jarvis-api', {
         runner: mockRunner.asRunner(),
-        now: () => fixedTime
+        now: () => fixedTime,
+        otpGenerator: () => '483920'
       });
 
-      const confirmRes = await confirmAndExecute(req.commandId, req.otpCode, {
+      const confirmRes = await confirmAndExecute(req.commandId, '483920', {
         runner: mockRunner.asRunner(),
         now: () => fixedTime + 5000
       });
@@ -258,11 +266,12 @@ describe('Sector 2 - Task 12: Secure Remote Bash Console with 2FA OTP', () => {
       const fixedTime = 1700000000000;
       const req = await requestExecution('pm2 restart jarvis-api', {
         runner: mockRunner.asRunner(),
-        now: () => fixedTime
+        now: () => fixedTime,
+        otpGenerator: () => '483920'
       });
 
       // Confirm with only the OTP code
-      const confirmRes = await confirmAndExecute(req.otpCode, {
+      const confirmRes = await confirmAndExecute('483920', {
         runner: mockRunner.asRunner(),
         now: () => fixedTime + 1000
       });
@@ -276,7 +285,8 @@ describe('Sector 2 - Task 12: Secure Remote Bash Console with 2FA OTP', () => {
       const fixedTime = 1700000000000;
       const req = await requestExecution('pm2 restart jarvis-api', {
         runner: mockRunner.asRunner(),
-        now: () => fixedTime
+        now: () => fixedTime,
+        otpGenerator: () => '483920'
       });
 
       // Attempt 1: wrong OTP
@@ -314,7 +324,7 @@ describe('Sector 2 - Task 12: Secure Remote Bash Console with 2FA OTP', () => {
       assertNoEmojis(fail3);
 
       // Attempt 4: Even with correct OTP, should be locked and rejected
-      const failAfterLock = await confirmAndExecute(req.commandId, req.otpCode, {
+      const failAfterLock = await confirmAndExecute(req.commandId, '483920', {
         runner: mockRunner.asRunner(),
         now: () => fixedTime + 4000
       });
@@ -327,7 +337,8 @@ describe('Sector 2 - Task 12: Secure Remote Bash Console with 2FA OTP', () => {
       const startTime = 1700000000000;
       const req = await requestExecution('pm2 restart jarvis-api', {
         runner: mockRunner.asRunner(),
-        now: () => startTime
+        now: () => startTime,
+        otpGenerator: () => '483920'
       });
 
       // Verify valid at 119s
@@ -335,7 +346,7 @@ describe('Sector 2 - Task 12: Secure Remote Bash Console with 2FA OTP', () => {
       assert.strictEqual(pendingAt119.length, 1);
 
       // Expire at 120s + 1ms
-      const confirmExpired = await confirmAndExecute(req.commandId, req.otpCode, {
+      const confirmExpired = await confirmAndExecute(req.commandId, '483920', {
         runner: mockRunner.asRunner(),
         now: () => startTime + 120001
       });
@@ -354,7 +365,8 @@ describe('Sector 2 - Task 12: Secure Remote Bash Console with 2FA OTP', () => {
 
     it('should allow David to cancel a pending authorization request', async () => {
       const req = await requestExecution('pm2 restart jarvis-api', {
-        runner: mockRunner.asRunner()
+        runner: mockRunner.asRunner(),
+        otpGenerator: () => '483920'
       });
 
       const cancelRes = cancelPendingExecution(req.commandId);
@@ -363,11 +375,55 @@ describe('Sector 2 - Task 12: Secure Remote Bash Console with 2FA OTP', () => {
       assertNoEmojis(cancelRes);
 
       // Cannot execute after cancellation
-      const confirmRes = await confirmAndExecute(req.commandId, req.otpCode, {
+      const confirmRes = await confirmAndExecute(req.commandId, '483920', {
         runner: mockRunner.asRunner()
       });
       assert.strictEqual(confirmRes.status, 'NOT_FOUND');
       assert.strictEqual(mockRunner.getCallCount('pm2 restart'), 0);
+    });
+  });
+
+  describe('3b. OTP Confidentiality (no LLM self-confirmation)', () => {
+    it('should never expose the OTP code in the OTP_REQUIRED result', async () => {
+      const res = await requestExecution('pm2 restart jarvis-api', {
+        runner: mockRunner.asRunner(),
+        otpGenerator: () => '483920'
+      });
+
+      assert.strictEqual(res.status, 'OTP_REQUIRED');
+      assert.strictEqual(res.otpCode, undefined);
+      assert.ok(!('otpCode' in res));
+      assert.strictEqual(JSON.stringify(res).includes('483920'), false);
+      assertNoEmojis(res);
+    });
+
+    it('should report otpDelivered false when no direct delivery channel is configured', async () => {
+      const res = await requestExecution('pm2 restart jarvis-api', {
+        runner: mockRunner.asRunner()
+      });
+
+      assert.strictEqual(res.status, 'OTP_REQUIRED');
+      assert.strictEqual(res.otpDelivered, false);
+      assertNoEmojis(res);
+    });
+
+    it('should deliver the OTP through the injected direct channel only', async () => {
+      let deliveredPayload = null;
+      const res = await requestExecution('pm2 restart jarvis-api', {
+        runner: mockRunner.asRunner(),
+        otpDelivery: async (payload) => { deliveredPayload = payload; }
+      });
+
+      assert.strictEqual(res.otpDelivered, true);
+      assert.ok(deliveredPayload);
+      assertValidOtpCode(deliveredPayload.otpCode, 6);
+
+      // El codigo entregado es el que autoriza la ejecucion
+      const confirmRes = await confirmAndExecute(res.commandId, deliveredPayload.otpCode, {
+        runner: mockRunner.asRunner()
+      });
+      assert.strictEqual(confirmRes.status, 'EXECUTED');
+      assertNoEmojis(confirmRes);
     });
   });
 
@@ -458,10 +514,10 @@ describe('Sector 2 - Task 12: Secure Remote Bash Console with 2FA OTP', () => {
       const safeRes = await requestExecution('uptime', { runner: mockRunner.asRunner() });
       assertNoEmojis(safeRes);
 
-      const otpRes = await requestExecution('pm2 restart jarvis-api', { runner: mockRunner.asRunner() });
+      const otpRes = await requestExecution('pm2 restart jarvis-api', { runner: mockRunner.asRunner(), otpGenerator: () => '483920' });
       assertNoEmojis(otpRes);
 
-      const confirmRes = await confirmAndExecute(otpRes.commandId, otpRes.otpCode, { runner: mockRunner.asRunner() });
+      const confirmRes = await confirmAndExecute(otpRes.commandId, '483920', { runner: mockRunner.asRunner() });
       assertNoEmojis(confirmRes);
 
       const forbiddenRes = await requestExecution('rm -rf /', { runner: mockRunner.asRunner() });

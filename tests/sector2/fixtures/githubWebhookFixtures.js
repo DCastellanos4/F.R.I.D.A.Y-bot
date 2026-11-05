@@ -9,7 +9,7 @@ import crypto from 'node:crypto';
  * Strict Policy: Zero Emojis.
  */
 
-export const TEST_WEBHOOK_SECRET = 'davis_ci_webhook_secret_998877';
+export const TEST_WEBHOOK_SECRET = 'test_only_webhook_secret_fixture';
 
 export const GITHUB_PAYLOADS = {
   workflowFailed: {

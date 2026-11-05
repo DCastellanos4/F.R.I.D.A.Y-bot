@@ -393,14 +393,33 @@ export async function requestExecution(cmd, deps = {}) {
 
   pendingRequests.set(commandId, pendingRecord);
 
+  // El OTP nunca se devuelve al llamador: se entrega al usuario por un canal
+  // directo (deps.otpDelivery) para que ningun modelo de lenguaje pueda
+  // leerlo ni confirmar el comando por si mismo.
+  let otpDelivered = false;
+  if (typeof deps.otpDelivery === 'function') {
+    try {
+      await deps.otpDelivery({
+        otpCode,
+        commandId,
+        ttlSeconds: Math.round(ttlMs / 1000),
+        reason: classification.reason,
+        command: cmd
+      });
+      otpDelivered = true;
+    } catch (err) {
+      console.error('[BashConsole] Fallo entregando el OTP por el canal directo:', err.message);
+    }
+  }
+
   return {
     status: 'OTP_REQUIRED',
-    otpCode,
     commandId,
     expiresAt,
     ttlSeconds: Math.round(ttlMs / 1000),
     reason: classification.reason,
-    command: cmd
+    command: cmd,
+    otpDelivered
   };
 }
 

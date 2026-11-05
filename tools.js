@@ -548,27 +548,6 @@ export const herramientasJarvis = [
   {
     type: 'function',
     function: {
-      name: 'confirm_bash_otp',
-      description: 'Valida un codigo OTP numerico de 6 digitos para autorizar y ejecutar un comando critico de bash pendiente de confirmacion.',
-      parameters: {
-        type: 'object',
-        properties: {
-          otp: {
-            type: 'string',
-            description: 'Codigo numerico OTP de 6 digitos recibido para autorizacion.'
-          },
-          id_comando: {
-            type: 'string',
-            description: 'Identificador unico opcional de la orden pendiente si existen varias simultaneas.'
-          }
-        },
-        required: ['otp']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
       name: 'generate_crypto_credential',
       description: 'Genera credenciales criptograficas seguras mediante CSPRNG (contraseñas de alta entropia, PINs numericos, tokens aleatorios o claves simetricas AES) con opcion de guardado permanente en el Second Brain.',
       parameters: {

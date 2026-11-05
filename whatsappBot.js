@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 
 import { config } from './config.js';
 import { consultarJarvis } from './jarvisAgent.js';
+import { confirmAndExecute } from './bashConsoleService.js';
 import { iniciarMonitorRecordatorios } from './reminderService.js';
 import { iniciarMonitorMensajesProgramados } from './scheduledMessageService.js';
 import { iniciarVigilanteProactivo } from './proactiveAlerts.js';
@@ -595,6 +596,25 @@ export async function iniciarWhatsApp() {
         }
       }
 
+      // Confirmacion humana de comandos criticos (2FA): nunca pasa por el LLM
+      const mOtp = texto.match(/^confirma(?:r|me)?\s+(?:otp\s+|c[oó]digo\s+|codigo\s+)?[:#-]?\s*(\d{6})\s*$/i);
+      if (mOtp) {
+        console.log('[WhatsApp 2FA] Confirmacion OTP recibida directamente de David, sin pasar por el LLM.');
+        const resOtp = await confirmAndExecute(mOtp[1]);
+        let textoOtp;
+        if (resOtp.status === 'EXECUTED') {
+          textoOtp = `Autorizacion 2FA confirmada. Comando "${resOtp.command}" ejecutado:\n${resOtp.stdout || resOtp.stderr || 'Comando completado sin salida'}`;
+        } else if (resOtp.status === 'INVALID_OTP') {
+          textoOtp = `Codigo OTP invalido: ${resOtp.error}`;
+        } else if (resOtp.status === 'EXPIRED') {
+          textoOtp = 'El codigo OTP ha expirado. Vuelve a solicitar el comando.';
+        } else {
+          textoOtp = `No se pudo confirmar el OTP: ${resOtp.error || resOtp.status}`;
+        }
+        await sock.sendMessage(remoteJid, { text: textoOtp }, { quoted: msg });
+        continue;
+      }
+
       // Mantener el estado "escribiendo..." en WhatsApp mientras el LLM piensa
       const typingInterval = setInterval(() => {
         sock.sendPresenceUpdate('composing', remoteJid).catch(() => {});
@@ -608,7 +628,14 @@ export async function iniciarWhatsApp() {
         await sock.sendPresenceUpdate('composing', remoteJid);
 
         // 3. Procesar consulta con el agente
-        const respuesta = await consultarJarvis(texto, [], { urgencyDirective });
+        const respuesta = await consultarJarvis(texto, [], {
+          urgencyDirective,
+          otpDelivery: async ({ otpCode, ttlSeconds, reason, command }) => {
+            await sock.sendMessage(remoteJid, {
+              text: `Codigo de autorizacion 2FA para el comando critico "${command}" (${reason}):\n\n${otpCode}\n\nValidez: ${ttlSeconds} segundos. Responde "confirmar otp ${otpCode}" para autorizar la ejecucion. Este codigo solo lo ves tu.`
+            });
+          }
+        });
 
         // 4. Detener estado de escritura y enviar respuesta
         clearInterval(typingInterval);
