@@ -129,6 +129,15 @@ if [ -d "$ENLACE" ] && [ ! -L "$ENLACE" ]; then
 fi
 ln -sfn "$DESTINO" "$ENLACE"
 CORTE=1
+# Marca PRE-restart: ruta y tamano del log de salida del proceso VIEJO. La
+# evidencia del proceso NUEVO se liga asi: si PM2 rota a otro fichero (p.ej.
+# sufijo -1), todo su contenido es del proceso nuevo; si mantiene el mismo
+# fichero, lo nuevo son los bytes posteriores a este offset. Capturar DESPUES
+# del restart perderia un CONECTADO o un QR inmediatos.
+JLIST_PRE=$($PM2 jlist || true)
+OUT_LOG_PRE=$(echo "$JLIST_PRE" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);const p=j.find(x=>x.name==='jarvis-whatsapp');console.log(p&&p.pm2_env?p.pm2_env.pm_out_log_path||'':'')}catch(e){console.log('')}})")
+OFFSET_PRE=0
+[ -n "$OUT_LOG_PRE" ] && [ -f "$OUT_LOG_PRE" ] && OFFSET_PRE=$(stat -c %s "$OUT_LOG_PRE")
 if ! $PM2 restart jarvis-whatsapp jarvis-api --update-env; then
   echo "ESTADO PARCIAL TRAS EL CORTE: el symlink ya apunta a $DESTINO pero pm2 restart FALLO." >&2
   echo "El bot puede estar caido. El codigo nuevo esta activo en disco; el anterior sigue en ${ANTERIOR:-la copia pre-cicd}." >&2
@@ -153,8 +162,11 @@ VENTANA="${VENTANA_SALUD:-75}"
 JLIST0=$($PM2 jlist)
 OUT_LOG=$(echo "$JLIST0" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);const p=j.find(x=>x.name==='jarvis-whatsapp');console.log(p&&p.pm2_env?p.pm2_env.pm_out_log_path||'':'')})")
 CONT_T0=$(echo "$JLIST0" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);const r=n=>{const p=j.find(x=>x.name===n);console.log(p?p.pm2_env.restart_time:-1)};r('jarvis-whatsapp');r('jarvis-api')})" | paste -sd' ' -)
-OFFSET=0
-[ -n "$OUT_LOG" ] && [ -f "$OUT_LOG" ] && OFFSET=$(stat -c %s "$OUT_LOG")
+# Rota si PM2 cambio la ruta del log al rearrancar: entonces TODO el fichero
+# nuevo pertenece al proceso nuevo. Si no rota, lo nuevo son los bytes tras
+# OFFSET_PRE (marcado antes del restart: incluye eventos inmediatos).
+ROTADO=0
+if [ -n "$OUT_LOG" ] && [ "$OUT_LOG" != "$OUT_LOG_PRE" ]; then ROTADO=1; fi
 sleep "$VENTANA"
 if ! $PM2 jlist | node -e "
 let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
@@ -181,7 +193,11 @@ if [ -z "$OUT_LOG" ] || [ ! -f "$OUT_LOG" ]; then
   echo "ESTADO PARCIAL TRAS EL CORTE: no se pudo resolver el log de salida de jarvis-whatsapp; sin evidencia de conexion." >&2
   exit 1
 fi
-NUEVO=$(tail -c +$((OFFSET+1)) "$OUT_LOG" || true)
+if [ "$ROTADO" = "1" ]; then
+  NUEVO=$(cat "$OUT_LOG" || true)
+else
+  NUEVO=$(tail -c +$((OFFSET_PRE+1)) "$OUT_LOG" || true)
+fi
 if echo "$NUEVO" | grep -qE "ESCANEA ESTE CODIGO QR|CODIGO DE VINCULACION"; then
   echo "ESTADO PARCIAL TRAS EL CORTE: WhatsApp pide vinculacion (QR/codigo): sesion invalidada con el estado actual." >&2
   echo "PARAR: solo David puede re-vincular con la SIM del bot. NO restaurar nada por cuenta propia." >&2
