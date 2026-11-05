@@ -431,6 +431,62 @@ export async function requestExecution(cmd, deps = {}) {
  * @param {object} [deps={}] - Injected dependencies
  * @returns {Promise<object>}
  */
+/**
+ * Builds a read-only verification probe for a mutating command, so the result
+ * is never reported without checking the actual effect on the system.
+ * Returns null when there is no meaningful automatic probe.
+ *
+ * @param {string} cmd
+ * @returns {string|null}
+ */
+export function buildVerificationCommand(cmd) {
+  if (typeof cmd !== 'string' || !cmd.trim()) return null;
+  const c = cmd.trim();
+
+  let m = c.match(/\bpm2\s+(?:restart|reload|start|stop|delete)\s+([\w@./-]+)/i);
+  if (m) return `pm2 status ${m[1]}`;
+  if (/\bpm2\s+(restart|reload|start|stop|delete)\b/i.test(c)) return 'pm2 status';
+
+  m = c.match(/\bsystemctl\s+(?:restart|start|stop|reload|enable|disable)\s+([\w@.-]+)/i);
+  if (m) return `systemctl is-active ${m[1]}`;
+
+  m = c.match(/\bservice\s+([\w@.-]+)\s+(?:restart|start|stop|reload)/i);
+  if (m) return `service ${m[1]} status`;
+
+  m = c.match(/\bdocker\s+(?:restart|start|stop|pause|unpause)\s+([\w.-]+)/i);
+  if (m) return `docker inspect -f '{{.State.Status}}' ${m[1]}`;
+
+  if (/\bdocker-compose\s+(?:up|down|restart|start|stop)\b/i.test(c)) return 'docker ps';
+
+  if (/\bufw\s+(enable|disable|reload|allow|deny|delete)\b/i.test(c)) return 'ufw status';
+
+  return null;
+}
+
+/**
+ * Runs the verification probe after a mutating command and shapes the result.
+ * The probe is always read-only; a probe failure is reported, never hidden.
+ */
+async function verificarEfectoComando(cmd, deps = {}) {
+  const probe = buildVerificationCommand(cmd);
+  if (!probe) return null;
+
+  try {
+    const res = await executeBashCommand(probe, deps);
+    return {
+      comando: probe,
+      exito: res.ok,
+      salida: (res.stdout || res.stderr || '').trim().slice(0, 800)
+    };
+  } catch (err) {
+    return {
+      comando: probe,
+      exito: false,
+      salida: `Fallo ejecutando la verificacion posterior: ${err.message}`
+    };
+  }
+}
+
 export async function confirmAndExecute(commandIdOrOtp, otpCodeOptional, deps = {}) {
   let commandId = commandIdOrOtp;
   let otpCode = otpCodeOptional;
@@ -539,6 +595,13 @@ export async function confirmAndExecute(commandIdOrOtp, otpCodeOptional, deps = 
 
   const execResult = await executeBashCommand(record.command, dependencies);
 
+  // Verificacion posterior: un comando mutante no se da por bueno solo por su
+  // codigo de salida; se comprueba el efecto real con una sonda de solo
+  // lectura (pm2 status, systemctl is-active, docker inspect...).
+  const verificacion = execResult.ok
+    ? await verificarEfectoComando(record.command, dependencies)
+    : null;
+
   return {
     status: 'EXECUTED',
     command: record.command,
@@ -547,7 +610,8 @@ export async function confirmAndExecute(commandIdOrOtp, otpCodeOptional, deps = 
     stderr: execResult.stderr,
     exitCode: execResult.exitCode,
     durationMs: execResult.durationMs,
-    ok: execResult.ok
+    ok: execResult.ok,
+    verificacion
   };
 }
 

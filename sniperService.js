@@ -30,18 +30,71 @@ function guardarItems(lista) {
   }
 }
 
-function parsearPrecioTexto(texto) {
+export function parsearPrecioTexto(texto) {
   if (!texto) return null;
-  const limpio = texto.replace(/[^\d.,]/g, '').trim();
+  const limpio = String(texto).replace(/[^\d.,]/g, '').trim();
   if (!limpio) return null;
 
-  if (limpio.includes(',') && !limpio.includes('.')) {
-    return parseFloat(limpio.replace(',', '.'));
+  const iComa = limpio.lastIndexOf(',');
+  const iPunto = limpio.lastIndexOf('.');
+  let normalizado;
+
+  if (iComa !== -1 && iPunto !== -1) {
+    // Con ambos separadores, el que aparece mas a la derecha es el decimal:
+    // "1.299,99" (es) -> 1299.99 | "1,299.99" (en) -> 1299.99
+    normalizado = iComa > iPunto
+      ? limpio.replace(/\./g, '').replace(',', '.')
+      : limpio.replace(/,/g, '');
+  } else if (iComa !== -1) {
+    // Solo comas: "1,299" (miles en) -> 1299 | "12,99" (decimal es) -> 12.99
+    normalizado = /^\d{1,3}(,\d{3})+$/.test(limpio)
+      ? limpio.replace(/,/g, '')
+      : limpio.replace(',', '.');
+  } else if (iPunto !== -1) {
+    // Solo puntos: "1.299" (miles es) -> 1299 | "12.99" (decimal en) -> 12.99
+    normalizado = /^\d{1,3}(\.\d{3})+$/.test(limpio)
+      ? limpio.replace(/\./g, '')
+      : limpio;
+  } else {
+    normalizado = limpio;
   }
-  if (limpio.includes('.') && limpio.includes(',')) {
-    return parseFloat(limpio.replace(/\./g, '').replace(',', '.'));
-  }
-  return parseFloat(limpio);
+
+  const valor = parseFloat(normalizado);
+  // Autocomprobacion de cordura: un precio nunca es 0, negativo ni astronomico
+  if (!isFinite(valor) || valor <= 0 || valor > 1000000) return null;
+  return valor;
+}
+
+/**
+ * Extrae el precio de los bloques JSON-LD (schema.org Product/offers),
+ * la fuente mas fiable cuando la pagina la incluye.
+ */
+export function extraerPrecioJsonLd($) {
+  let precio = null;
+  $('script[type="application/ld+json"]').each((_, el) => {
+    if (precio) return;
+    try {
+      const data = JSON.parse($(el).contents().text());
+      const nodos = Array.isArray(data) ? data : [data];
+      for (const nodo of nodos) {
+        const grafo = nodo['@graph'] || [nodo];
+        for (const item of grafo) {
+          if (precio) break;
+          const tipo = item['@type'];
+          if (tipo === 'Product' || (Array.isArray(tipo) && tipo.includes('Product'))) {
+            const ofertas = item.offers ? (Array.isArray(item.offers) ? item.offers : [item.offers]) : [];
+            for (const oferta of ofertas) {
+              const p = parsearPrecioTexto(String(oferta.price ?? oferta.lowPrice ?? ''));
+              if (p) { precio = p; break; }
+            }
+          }
+        }
+      }
+    } catch {
+      // JSON-LD mal formado: se ignora y se sigue con otras fuentes
+    }
+  });
+  return precio;
 }
 
 export async function extraerPrecioYTitulo(url) {
@@ -139,7 +192,8 @@ export async function extraerPrecioYTitulo(url) {
                  'Producto';
     titulo = titulo.replace(/\s+/g, ' ').slice(0, 90).trim();
 
-    let precio = parsearPrecioTexto($('meta[property="product:price:amount"]').attr('content')) ||
+    let precio = extraerPrecioJsonLd($) ||
+                 parsearPrecioTexto($('meta[property="product:price:amount"]').attr('content')) ||
                  parsearPrecioTexto($('meta[property="og:price:amount"]').attr('content'));
 
     if (!precio) {
@@ -275,6 +329,45 @@ export async function ejecutarRondaSniper(callbackAlerta = null) {
   for (const item of activos) {
     const data = await extraerPrecioYTitulo(item.url);
     item.ultimaComprobacion = new Date().toISOString();
+
+    // Autocomprobacion 1: si la lectura falla o no hay precio, no se compara
+    // basura. A los 3 fallos seguidos se avisa una sola vez.
+    if (!data.ok || !data.precio) {
+      item.erroresConsecutivos = (item.erroresConsecutivos || 0) + 1;
+      if (item.erroresConsecutivos >= 3 && !item.avisoErrorEnviado) {
+        item.avisoErrorEnviado = true;
+        const textoError = `[Sniper] *AVISO DEL SNIPER*
+
+Jefe, llevo ${item.erroresConsecutivos} comprobaciones seguidas sin poder leer el precio de *${item.nombre}* (${data.error || 'precio no encontrado en la pagina'}). La tienda puede haber cambiado su estructura o bloqueado el acceso.
+
+${item.url}`;
+        console.log(`\n========================================\n${textoError}\n========================================\n`);
+        alertasGeneradas.push(textoError);
+        fs.appendFileSync(ARCHIVO_LOG_ALERTAS, `[${new Date().toISOString()}] SNIPER ERROR PARSEO: ${item.nombre}: ${data.error || 'sin precio'}\n`, 'utf-8');
+        if (typeof callbackAlerta === 'function') {
+          callbackAlerta(textoError).catch(() => {});
+        }
+      }
+      continue;
+    }
+    item.erroresConsecutivos = 0;
+    item.avisoErrorEnviado = false;
+
+    // Autocomprobacion 2: una caida superior al 60% de una sola lectura es
+    // sospechosa de error de parseo; exige dos lecturas consecutivas
+    // consistentes antes de aceptarla (y de disparar cualquier alerta).
+    if (item.precioActual && data.precio < item.precioActual * 0.4) {
+      if (item.precioSospechoso && Math.abs(item.precioSospechoso - data.precio) < 0.01) {
+        console.log(`[Sniper] Caida drastica confirmada por segunda lectura en "${item.nombre}": ${item.precioActual}€ -> ${data.precio}€`);
+        item.precioSospechoso = null;
+      } else {
+        console.warn(`[Sniper] Caida drastica sospechosa en "${item.nombre}" (${item.precioActual}€ -> ${data.precio}€): se exige confirmacion en la siguiente ronda.`);
+        item.precioSospechoso = data.precio;
+        continue;
+      }
+    } else {
+      item.precioSospechoso = null;
+    }
 
     if (data.ok && data.precio) {
       item.precioActual = data.precio;

@@ -2,6 +2,12 @@ import { Ollama } from 'ollama';
 import OpenAI from 'openai';
 import { config } from './config.js';
 
+// Ventana de contexto y limite de generacion configurables por entorno.
+// Subirlos en un VPS ARM es una HIPOTESIS a medir (latencia y memoria suben
+// con el contexto); no hay ganancia garantizada. Valores por defecto: 8192/1024.
+export const NUM_CTX_DEFECTO = Number.parseInt(process.env.DAVIS_LLM_NUM_CTX || '8192', 10) || 8192;
+export const NUM_PREDICT_DEFECTO = Number.parseInt(process.env.DAVIS_LLM_NUM_PREDICT || '1024', 10) || 1024;
+
 let defaultOllamaInstance = null;
 let defaultOpenAIInstance = null;
 let defaultOpenAIConfig = null;
@@ -276,10 +282,10 @@ export async function chatCompletion({
       messages: preparedMessages,
       keep_alive: -1,
       options: {
-        num_ctx: options.num_ctx || 2048,
+        num_ctx: options.num_ctx || NUM_CTX_DEFECTO,
         temperature: options.temperature ?? 0.1,
         num_thread: options.num_thread || 4,
-        ...(options.max_tokens ? { num_predict: options.max_tokens } : (options.num_predict ? { num_predict: options.num_predict } : {}))
+        ...(options.max_tokens ? { num_predict: options.max_tokens } : { num_predict: options.num_predict || NUM_PREDICT_DEFECTO })
       }
     };
 
@@ -324,6 +330,7 @@ export async function chatCompletion({
       },
       provider: 'ollama',
       model,
+      finishReason: res.done_reason || null,
       raw: res
     };
   }
@@ -391,6 +398,20 @@ export async function chatCompletion({
     },
     provider: cloudConfig.provider,
     model,
+    finishReason: res.choices?.[0]?.finish_reason || null,
     raw: res
   };
+}
+
+/**
+ * Detecta respuestas cortadas por el limite de tokens: el proveedor marca
+ * 'length' o el texto termina a media frase. En ese caso el llamador puede
+ * pedir una continuacion en lugar de entregar una respuesta mutilada.
+ */
+export function esRespuestaTruncada(content, finishReason) {
+  if (finishReason === 'length') return true;
+  if (!content || typeof content !== 'string') return false;
+  const limpio = content.trim();
+  if (limpio.length < 200) return false;
+  return !/[.!?"')\]|:]$/.test(limpio);
 }

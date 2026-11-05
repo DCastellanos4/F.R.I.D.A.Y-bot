@@ -281,12 +281,24 @@ export function buscarMemorias(consulta) {
       }
     }
 
+    // Bonus de cobertura: todos los terminos de la consulta aparecen en el registro
+    const todosCubiertos = terminosExpandidos.every(term =>
+      sujNorm.includes(term) || datoNorm.includes(term) || tagsNorm.some(t => t.includes(term) || term.includes(t))
+    );
+    if (todosCubiertos && terminosExpandidos.length > 1) {
+      score += 8;
+    }
+
     return { item, score };
   });
 
   return resultadosConScore
     .filter(r => r.score > 0)
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      // A igualdad de relevancia, el recuerdo mas reciente primero
+      return new Date(b.item.fechaRegistro) - new Date(a.item.fechaRegistro);
+    })
     .map(r => descifrarMemoria(r.item))
     .slice(0, 5);
 }
@@ -303,15 +315,25 @@ export function listarMemorias(categoria = null) {
 /**
  * Elimina una o todas las memorias guardadas
  */
-export function olvidarMemoria(criterio) {
+export function olvidarMemoria(criterio, opciones = {}) {
   const lista = leerMemorias();
   const rawCrit = (criterio || '').toString().trim().toLowerCase();
 
   // Comprobación de comodín ANTES de normalizar
   if (rawCrit === '*' || rawCrit === 'todos' || rawCrit === 'todas' || rawCrit.includes('todo') || rawCrit.includes('toda')) {
+    // El borrado masivo es destructivo e irreversible: exige confirmacion
+    // explicita (opciones.confirmado === true) en la misma peticion.
+    if (opciones.confirmado !== true) {
+      return {
+        ok: false,
+        requiereConfirmacion: true,
+        total: lista.length,
+        mensaje: `Vas a borrar TODOS los recuerdos del Second Brain (${lista.length} registros). Esta accion no se puede deshacer. Confirma que quieres borrarlo todo.`
+      };
+    }
     const total = lista.length;
     guardarMemorias([]);
-    console.log(`[Memoria] [Memoria Vaciada] Se eliminaron todos los recuerdos (${total}).`);
+    console.log(`[Memoria] [Memoria Vaciada] Se eliminaron todos los recuerdos (${total}) tras confirmacion explicita.`);
     return { ok: true, mensaje: `Se han eliminado todos los recuerdos del Second Brain (${total} registros).` };
   }
 
