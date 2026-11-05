@@ -72,8 +72,15 @@ echo "== [3/7] Release aislada del SHA exacto =="
 DESTINO=$RELEASES/${TS}-${SHA:0:8}
 git -C "$REPO" worktree add --detach "$DESTINO" "$SHA"
 mkdir -p "$DESTINO/.git-meta" && echo "$SHA" > "$DESTINO/.git-meta/sha"
+# El checkout del worktree puede traer data/ VERSIONADO (metricas.jsonl).
+# ln -sfn sobre un directorio real NO lo reemplaza: crea el enlace DENTRO.
+# Se elimina la copia del checkout (contenido recuperable de git; el estado
+# vivo ya migro a $ESTADO) y luego se enlaza. La sesion de WhatsApp vive
+# dentro de data/ (data/auth_info_baileys).
+if [ -d "$DESTINO/data" ] && [ ! -L "$DESTINO/data" ]; then
+  rm -rf "$DESTINO/data"
+fi
 ln -sfn "$ESTADO/data" "$DESTINO/data"
-ln -sfn "$ESTADO/auth_info_baileys" "$DESTINO/auth_info_baileys"
 ln -sfn "$ESTADO/.env" "$DESTINO/.env"
 cd "$DESTINO"
 npm ci --no-audit --no-fund
