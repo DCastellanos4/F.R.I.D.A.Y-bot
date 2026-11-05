@@ -10,8 +10,8 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ## Resumen
 
-- Implementadas: 15 de 50 operativas (nº 2 CRM, nº 5 planificador, nº 6 flashcards, nº 17 procesos, nº 25 resumen mensual, nº 26 suscripciones, nº 27 presupuestos, nº 29 traductor, nº 30 respuestas sugeridas, nº 31 buscador de historial, nº 32 fechas senaladas, nº 33 resumen de enlaces, nº 34 snooze de chats, nº 35 estadisticas de grupos, nº 36 aviso de llegada) + 3 pendientes de config del propietario (nº 1 radar; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: via de texto operativa, lectura de imagen pendiente de configurar el adaptador).
-- Pendientes: 42 de 50.
+- Implementadas: 15 de 50 operativas (nº 2, 5, 6, 17, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36) + 3 pendientes de config del propietario (nº 1 radar; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: via de texto operativa, lectura de imagen pendiente de configurar el adaptador). La nº 36 lleva una dependencia externa relevante, ver su entrada.
+- Pendientes: 32 de 50 (50 - 15 operativas - 3 config-required).
 
 ## Detalle por funcion
 
@@ -95,7 +95,7 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 - **35. Estadísticas de grupos** - Operativa (Bloque 6): estadisticas_grupo cuenta mensajes, reparto por rol, actividad por dia y hora punta del historial que el bot ha visto de ese chat. Limitacion declarada: solo cubre lo que el bot ha procesado, no todo el historial de WhatsApp.
 
-- **36. Aviso de llegada** - Operativa (Bloque 6): registrar_aviso_llegada con coordenadas del destino (si faltan, el bot pide el pin por WhatsApp). Vigila las ubicaciones (pin o en vivo) que llegan al chat; al entrar en el radio avisa una vez y se completa. Caduca a las 12 h. Limitacion honesta: el bot no tiene GPS propio, depende de las ubicaciones que WhatsApp entrega al chat.
+- **36. Aviso de llegada** - Implementada (Bloque 6), con dependencia externa declarada: registrar_aviso_llegada con coordenadas del destino (si faltan, el bot pide el pin por WhatsApp). Vigila las ubicaciones (pin o en vivo) que llegan al chat; al entrar en el radio avisa una vez y se completa; caduca a las 12 h. DEPENDENCIA: el bot no tiene GPS propio; solo ve las ubicaciones que WhatsApp entrega al chat. Si la ubicacion en vivo se pausa, queda desactualizada o no se comparte, el aviso puede no dispararse. Probada con ubicaciones simuladas en la entrada real; el comportamiento con comparticion en vivo real queda por verificar en uso.
 
 ### Segundo cerebro
 
