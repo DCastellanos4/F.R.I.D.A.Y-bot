@@ -62,7 +62,10 @@ jobs:
             tests/sector3/process_watchdog.test.js | tee criticos.tap
       - name: Suite completa (TAP a fichero)
         shell: bash
-        run: node tests/run_all.js | tee suite.tap
+        run: |
+          # El runner fallando NO bloquea aqui: decide la puerta con el
+          # criterio aprobado (fallos no criticos <=5% pasan con aviso).
+          node tests/run_all.js | tee suite.tap || true
       - name: 'Puerta de calidad aprobada (criticos 100% y suite >=95% de ejecutados)'
         run: node deploy/quality-gate.mjs --critical criticos.tap --suite suite.tap --min-pct 95
 

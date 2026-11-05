@@ -78,10 +78,18 @@ mkdir -p "$DESTINO/.git-meta" && echo "$SHA" > "$DESTINO/.git-meta/sha"
 # vivo ya migro a $ESTADO) y luego se enlaza. La sesion de WhatsApp vive
 # dentro de data/ (data/auth_info_baileys).
 if [ -d "$DESTINO/data" ] && [ ! -L "$DESTINO/data" ]; then
-  rm -rf "$DESTINO/data"
+  mv "$DESTINO/data" "$DESTINO/.git-meta/data-checkout"
 fi
 ln -sfn "$ESTADO/data" "$DESTINO/data"
 ln -sfn "$ESTADO/.env" "$DESTINO/.env"
+
+# Validacion REAL de los enlaces antes de instalar nada (falla cerrada):
+# data debe ser el enlace al estado compartido y la sesion debe ser legible
+# a traves de el; .env idem. Sin esto, el bot arrancaria sin estado/sesion.
+[ -L "$DESTINO/data" ] && [ "$(readlink -f "$DESTINO/data")" = "$ESTADO/data" ]   || { echo "PARADA: $DESTINO/data no enlaza a $ESTADO/data (colision de ruta)." >&2; exit 1; }
+[ -r "$DESTINO/data/auth_info_baileys/creds.json" ]   || { echo "PARADA: sesion de WhatsApp no legible en el estado compartido; no se despliega a ciegas." >&2; exit 1; }
+[ -L "$DESTINO/.env" ] && [ "$(readlink -f "$DESTINO/.env")" = "$ESTADO/.env" ]   || { echo "PARADA: $DESTINO/.env no enlaza a $ESTADO/.env." >&2; exit 1; }
+echo "enlaces de estado verificados (data, sesion, .env)"
 cd "$DESTINO"
 npm ci --no-audit --no-fund
 
