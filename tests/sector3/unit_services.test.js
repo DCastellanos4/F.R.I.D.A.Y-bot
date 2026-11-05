@@ -240,3 +240,68 @@ test('[Unit] Borrado masivo: confirmacion ligada a chat, id, TTL y un solo uso',
   assert.equal(tarde.confirmado, false);
   assert.ok(tarde.motivo.includes('caducado'));
 });
+
+test('[Unit] Programados: entrega incierta no se reintenta (sin duplicados)', async () => {
+  const creado = programados.programarMensaje({
+    numero: '+34600998111',
+    mensaje: 'prueba de entrega incierta',
+    minutosEnElFuturo: 0,
+    inmediato: false
+  });
+  assert.equal(creado.ok, true);
+  const idInc = creado.programado.id;
+
+  // Forzar que este pendiente de despacho inmediato
+  const lista0 = programados.leerMensajesProgramados();
+  lista0.find((m) => m.id === idInc).timestamp = Date.now() - 1000;
+  programados.guardarMensajesProgramados(lista0);
+
+  // 1) Envio confirmado por el canal: se marca enviado y NO se reenvia aunque el acuse se pierda
+  programados.iniciarMonitorMensajesProgramados(async () => true, 60 * 60 * 1000);
+  let despachados = await programados.despacharMensajesPendientes();
+  assert.ok(despachados.some((m) => m.id === idInc), 'debe despacharse la primera vez');
+  despachados = await programados.despacharMensajesPendientes();
+  assert.ok(!despachados.some((m) => m.id === idInc), 'no debe reenviarse aunque no llegue acuse');
+
+  // 2) Resultado incierto: sale de la cola como 'incierto' y no se reintenta
+  const creado2 = programados.programarMensaje({
+    numero: '+34600998222',
+    mensaje: 'prueba incierta 2',
+    minutosEnElFuturo: 0,
+    inmediato: false
+  });
+  const idInc2 = creado2.programado.id;
+  const lista1 = programados.leerMensajesProgramados();
+  lista1.find((m) => m.id === idInc2).timestamp = Date.now() - 1000;
+  programados.guardarMensajesProgramados(lista1);
+
+  programados.iniciarMonitorMensajesProgramados(async () => ({ incierto: true }), 60 * 60 * 1000);
+  const ronda = await programados.despacharMensajesPendientes();
+  assert.ok(ronda.fallidos.some((m) => m.id === idInc2 && m.estado === 'incierto'), 'debe marcarse incierto');
+  const ronda2 = await programados.despacharMensajesPendientes();
+  assert.ok(!ronda2.some((m) => m.id === idInc2) && !ronda2.fallidos.some((m) => m.id === idInc2), 'el incierto no se reintenta');
+
+  // 3) Fallo SIN transmision: se reintenta
+  const creado3 = programados.programarMensaje({
+    numero: '+34600998333',
+    mensaje: 'prueba fallo seguro 3',
+    minutosEnElFuturo: 0,
+    inmediato: false
+  });
+  const idInc3 = creado3.programado.id;
+  const lista2 = programados.leerMensajesProgramados();
+  lista2.find((m) => m.id === idInc3).timestamp = Date.now() - 1000;
+  programados.guardarMensajesProgramados(lista2);
+
+  let intentos = 0;
+  programados.iniciarMonitorMensajesProgramados(async () => { intentos += 1; return false; }, 60 * 60 * 1000);
+  await programados.despacharMensajesPendientes();
+  await programados.despacharMensajesPendientes();
+  assert.equal(intentos, 2, 'el fallo sin transmision si se reintenta');
+
+  // Limpieza
+  programados.detenerMonitorMensajesProgramados();
+  programados.cancelarMensajeProgramado(idInc);
+  programados.cancelarMensajeProgramado(idInc2);
+  programados.cancelarMensajeProgramado(idInc3);
+});

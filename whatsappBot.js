@@ -155,7 +155,8 @@ export async function enviarMensajeADavid(contenido) {
 export async function enviarMensajeWhatsApp(jidODestino, contenido) {
   if (!sock || !estaConectado) {
     console.warn('[WhatsApp] Intento de envío pero el cliente no está en línea.');
-    return { ok: false, id: null };
+    // Cliente desconectado: nada se transmitio, reintentar es seguro.
+    return { ok: false, id: null, incierto: false };
   }
   const payload = typeof contenido === 'string' ? { text: contenido } : contenido;
   const jid = jidODestino.includes('@') ? jidODestino : `${jidODestino}@s.whatsapp.net`;
@@ -165,7 +166,9 @@ export async function enviarMensajeWhatsApp(jidODestino, contenido) {
     return { ok: true, id: enviado?.key?.id || null };
   } catch (err) {
     console.error(`Error enviando mensaje WhatsApp a ${jid}:`, err.message);
-    return { ok: false, id: null };
+    // La excepcion llega tras iniciar la transmision: no se sabe si el
+    // servidor lo acepto. Reintentar podria DUPLICAR el mensaje.
+    return { ok: false, id: null, incierto: true };
   }
 }
 
@@ -251,8 +254,14 @@ function inicializarServiciosProactivos() {
         await enviarMensajeADavid(`[D.A.V.I.S. - MENSAJE ENTREGADO]\n\nEl mensaje para el número +${m.numero} ha sido transmitido con éxito:\n"${m.mensaje}".`);
         return true;
       }
-      // Fallo de canal: el servicio reintenta y solo marca el mensaje como
-      // fallido tras agotar los intentos; no se notifica ruido intermedio.
+      if (res.incierto) {
+        // Resultado desconocido tras transmitir: no se reintenta para no
+        // duplicar; queda marcado como incierto para revision de David.
+        await enviarMensajeADavid(`[D.A.V.I.S. - ENTREGA INCIERTA]\n\nEl mensaje para +${m.numero} pudo haberse transmitido pero el canal no lo confirmo. No se reintentara automaticamente para evitar duplicados:\n"${m.mensaje}".`);
+        return { incierto: true };
+      }
+      // Fallo sin transmision: el servicio reintenta y solo marca el mensaje
+      // como fallido tras agotar los intentos; no se notifica ruido intermedio.
       console.warn(`[WhatsApp Programado] Envio a +${m.numero} no confirmado por el canal; se reintentara.`);
       return false;
     } catch (errEnvio) {

@@ -297,6 +297,21 @@ export const casosDorados = [
     }
   },
   {
+    id: 'G38-duplicado-bloqueado',
+    entrada: 'recuerda que la clave del garaje es 4482',
+    pasos: [
+      { llama: 'guardar_memoria', args: { contenido: 'clave garaje 4482' } },
+      { llama: 'guardar_memoria', args: { contenido: 'clave garaje 4482' } },
+      { texto: 'Ya lo tenia guardado, senor.' }
+    ],
+    esperado: {
+      invoca: ['guardar_memoria'],
+      clasificador: false,
+      invocaVeces: { guardar_memoria: 1 },
+      mensajeToolContiene: ['NO se duplica']
+    }
+  },
+  {
     id: 'G36-precio-consulta',
     entrada: 'cuanto cuesta ahora el articulo que vigilamos?',
     pasos: [

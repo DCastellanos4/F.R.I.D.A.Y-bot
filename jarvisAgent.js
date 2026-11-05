@@ -822,6 +822,10 @@ Directrices de selección:
   const MAX_RONDAS_HERRAMIENTAS = opciones.maxRondasHerramientas ?? 3;
   let ronda = 0;
   let enlacesParaAdjuntar = [];
+  // Registro de acciones con efectos ya ejecutadas en ESTA peticion: una
+  // instruccion en el prompt no basta; el ejecutor impide duplicar envios,
+  // escrituras o comandos identicos entre rondas.
+  const accionesConEfectosEjecutadas = new Set();
 
   // Bucle acotado ejecutar -> comprobar -> decidir: tras cada ronda de
   // herramientas el modelo contrasta los resultados y puede encadenar otro
@@ -840,6 +844,16 @@ Directrices de selección:
       console.log(`[J.A.R.V.I.S. Tool Call R${ronda}] Invocando: ${nombreFuncion} con argumentos:`, args);
 
       let resultadoTool;
+      const claveAccion = `${nombreFuncion}:${JSON.stringify(args)}`;
+      if (!HERRAMIENTAS_IDEMPOTENTES.has(nombreFuncion) && accionesConEfectosEjecutadas.has(claveAccion)) {
+        resultadoTool = `La accion ${nombreFuncion} con esos mismos argumentos ya se ejecuto en esta peticion. NO se duplica una accion con efectos externos: verifica su resultado e informa a David en lugar de repetirla.`;
+        console.warn(`[J.A.R.V.I.S. Tool Dedup] Duplicado bloqueado: ${claveAccion}`);
+        mensajes.push({ role: 'tool', content: resultadoTool, tool_call_id: llamada.id });
+        continue;
+      }
+      if (!HERRAMIENTAS_IDEMPOTENTES.has(nombreFuncion)) {
+        accionesConEfectosEjecutadas.add(claveAccion);
+      }
       try {
         const salida = await ejecutarHerramientaJarvis(nombreFuncion, args, opciones);
         resultadoTool = salida.texto;

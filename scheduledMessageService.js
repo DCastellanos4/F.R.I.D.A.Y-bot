@@ -380,6 +380,21 @@ export async function despacharMensajesPendientes() {
         }
       }
 
+      // Resultado incierto: el canal no confirmo ni descarto la transmision.
+      // Se persiste como 'incierto' y sale de la cola de pendientes: un
+      // reintento automatico podria duplicar el mensaje. La reconciliacion
+      // (comprobar con el destinatario y reenviar o cancelar) es decision de
+      // David, no automatica.
+      if (!errorEnvio && resultadoEnvio && typeof resultadoEnvio === 'object' && resultadoEnvio.incierto === true) {
+        m.enviado = true;
+        m.estado = 'incierto';
+        m.ultimoError = 'El canal no confirmo la transmision; no se reintenta para evitar duplicados.';
+        fallidos.push(m);
+        huboCambios = true;
+        console.error(`[ENTREGA INCIERTA] Mensaje para +${m.numero} en estado desconocido; requiere revision manual.`);
+        continue;
+      }
+
       const fallo = errorEnvio !== null || resultadoEnvio === false;
 
       if (!fallo) {

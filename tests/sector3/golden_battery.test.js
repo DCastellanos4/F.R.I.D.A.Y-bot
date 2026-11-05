@@ -171,6 +171,13 @@ for (const caso of casosDorados) {
       metricas.enrutadoOk += 1;
     }
 
+    if (esperado.invocaVeces) {
+      for (const [herramienta, veces] of Object.entries(esperado.invocaVeces)) {
+        const reales = obs.invocadas.filter((h) => h === herramienta).length;
+        assert.equal(reales, veces, `${caso.id}: ${herramienta} debia ejecutarse ${veces} vez/veces, se ejecuto ${reales}`);
+      }
+    }
+
     if (esperado.sinHerramientas) {
       assert.deepEqual(
         obs.invocadas,
