@@ -142,6 +142,79 @@ if ! $PM2 jlist | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()
   echo "NO se revierte automaticamente; restaurar es decision aprobada aparte. Si WhatsApp pidiera QR: PARAR y avisar a David, NO restaurar sesion solo." >&2
   exit 1
 fi
+echo "== Verificacion de salud post-corte (ventana ${VENTANA_SALUD:-75}s; cierra el falso verde de un crash-loop) =="
+# Un proceso en crash-loop aparece 'online' en cualquier muestra instantanea:
+# la prueba fiable es que el CONTADOR DE REINICIOS y el UPTIME no se muevan
+# durante una ventana mas larga que el periodo del bucle, y que la evidencia
+# de WhatsApp sea del proceso NUEVO (offset de log marcado ahora, no lineas
+# historicas). Nunca se vuelcan contenidos de mensajes ni variables: solo
+# contadores, timestamps y cadenas fijas de banner.
+VENTANA="${VENTANA_SALUD:-75}"
+JLIST0=$($PM2 jlist)
+OUT_LOG=$(echo "$JLIST0" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);const p=j.find(x=>x.name==='jarvis-whatsapp');console.log(p&&p.pm2_env?p.pm2_env.pm_out_log_path||'':'')})")
+CONT_T0=$(echo "$JLIST0" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);const r=n=>{const p=j.find(x=>x.name===n);console.log(p?p.pm2_env.restart_time:-1)};r('jarvis-whatsapp');r('jarvis-api')})" | paste -sd' ' -)
+OFFSET=0
+[ -n "$OUT_LOG" ] && [ -f "$OUT_LOG" ] && OFFSET=$(stat -c %s "$OUT_LOG")
+sleep "$VENTANA"
+if ! $PM2 jlist | node -e "
+let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
+  const [wa0,api0]=process.argv[1].split(' ').map(Number);
+  const win=Number(process.argv[2]);
+  const antes={'jarvis-whatsapp':wa0,'jarvis-api':api0};
+  const ahora=JSON.parse(d);
+  const mal=[];
+  for(const n of ['jarvis-whatsapp','jarvis-api']){
+    const p=ahora.find(x=>x.name===n);
+    if(!p||p.pm2_env.status!=='online'){mal.push(n+' no online');continue}
+    if(p.pm2_env.restart_time!==antes[n]){mal.push(n+' reinicio en ventana ('+antes[n]+'->'+p.pm2_env.restart_time+')');continue}
+    if(Date.now()-p.pm2_env.pm_uptime<win*1000){mal.push(n+' uptime menor que la ventana (bucle posible)')}
+  }
+  if(mal.length){console.error('inestabilidad post-corte: '+mal.join('; '));process.exit(1)}
+})" "$CONT_T0" "$VENTANA"; then
+  echo "ESTADO PARCIAL TRAS EL CORTE: procesos inestables (posible crash-loop). Release activa: $DESTINO." >&2
+  echo "NO se revierte automaticamente; restaurar es decision aprobada aparte. Diagnosticar: pm2 describe y pm2 logs --lines 50." >&2
+  exit 1
+fi
+echo "procesos estables durante ${VENTANA}s (contadores de reinicio inmoviles)."
+
+if [ -z "$OUT_LOG" ] || [ ! -f "$OUT_LOG" ]; then
+  echo "ESTADO PARCIAL TRAS EL CORTE: no se pudo resolver el log de salida de jarvis-whatsapp; sin evidencia de conexion." >&2
+  exit 1
+fi
+NUEVO=$(tail -c +$((OFFSET+1)) "$OUT_LOG" || true)
+if echo "$NUEVO" | grep -qE "ESCANEA ESTE CODIGO QR|CODIGO DE VINCULACION"; then
+  echo "ESTADO PARCIAL TRAS EL CORTE: WhatsApp pide vinculacion (QR/codigo): sesion invalidada con el estado actual." >&2
+  echo "PARAR: solo David puede re-vincular con la SIM del bot. NO restaurar nada por cuenta propia." >&2
+  exit 1
+fi
+if ! echo "$NUEVO" | grep -q "D.A.V.I.S. CONECTADO Y EN LINEA"; then
+  echo "ESTADO PARCIAL TRAS EL CORTE: sin evidencia fresca de conexion de WhatsApp del proceso nuevo en ${VENTANA}s." >&2
+  echo "Release activa: $DESTINO. NO se revierte automaticamente; restaurar es decision aprobada aparte." >&2
+  exit 1
+fi
+echo "WhatsApp: conexion fresca confirmada (banner del proceso nuevo, sin QR)."
+
+# API: solo se acepta el estado ESPERADO. Sin API_TOKEN en el .env compartido,
+# el estado esperado es el fail-closed 'API REST deshabilitada' (comportamiento
+# del PR de seguridad); con API_TOKEN configurado se exige ok:true. Cualquier
+# otra respuesta (puerto cerrado, 5xx, body inesperado) FALLA el despliegue:
+# nunca se ignora un error inesperado.
+PUERTO_API=$(grep -E "^PORT=" "$ESTADO/.env" 2>/dev/null | tail -1 | cut -d= -f2 || true)
+PUERTO_API="${PUERTO_API:-3000}"
+if grep -qE "^API_TOKEN=.+" "$ESTADO/.env" 2>/dev/null; then
+  PATRON_API='"ok":true';  ESTADO_API="habilitada (API_TOKEN configurado), se exige ok:true"
+else
+  PATRON_API='API REST deshabilitada'; ESTADO_API="deshabilitada por configuracion (sin API_TOKEN), se exige el fail-closed"
+fi
+RESP_API=$(curl -s -m 10 "http://127.0.0.1:$PUERTO_API/api/salud" || true)
+if ! echo "$RESP_API" | grep -q "$PATRON_API"; then
+  echo "ESTADO PARCIAL TRAS EL CORTE: API en 127.0.0.1:$PUERTO_API no devuelve el estado esperado ($ESTADO_API)." >&2
+  echo "Respuesta (200 primeros caracteres): $(echo "$RESP_API" | cut -c1-200)" >&2
+  echo "NO se revierte automaticamente; restaurar es decision aprobada aparte." >&2
+  exit 1
+fi
+echo "API: estado esperado confirmado ($ESTADO_API)."
+
 $PM2 ls
 
 echo "== [7/7] Limpieza: conservar las 3 releases mas recientes (NUNCA la viva) =="
