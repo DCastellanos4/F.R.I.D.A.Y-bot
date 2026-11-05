@@ -10,8 +10,8 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ## Resumen
 
-- Implementadas: 40 de 50 operativas (nº 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50) + 4 pendientes de config del propietario (nº 1 radar; nº 16 backup: cifrado local operativo, subida externa pendiente de URL PAR; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: via de texto operativa, lectura de imagen pendiente de configurar el adaptador). La nº 36 lleva una dependencia externa relevante, ver su entrada.
-- Pendientes: 6 de 50 (50 - 40 operativas - 4 config-required).
+- Implementadas: 41 de 50 operativas (nº 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 19, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50) + 8 pendientes de config del propietario (nº 1 radar; nº 16 backup: cifrado local GCM operativo, subida externa pendiente de URL PAR; nº 18 WoL: falta DAVIS_WOL_MAC; nº 20 domotica: falta Home Assistant; nº 21 descargas: disco operativo, falta qBittorrent; nº 22 factura Oracle: falta OCI CLI; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: via de texto operativa, lectura de imagen pendiente del adaptador). La nº 36 lleva una dependencia externa relevante, ver su entrada.
+- Pendientes: 1 de 50 (50 - 41 operativas - 8 config-required): nº 28 vuelos y trenes.
 
 ## Detalle por funcion
 
@@ -55,15 +55,15 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 - **17. Vigilante de CPU y procesos del VPS** - Operativa (Bloque 4): la saturacion global de CPU/RAM con diagnostico de procesos ya la cubria el vigilante proactivo; se suma el registro de procesos concretos con limites de CPU/memoria, aviso una vez por caida/recuperacion y enfriamiento de 30 minutos por limite. La vigilancia proactiva solo arranca con opt-in explicito del propietario; solo mide y avisa, nunca reinicia procesos.
 
-- **18. Wake-on-LAN** - Pendiente. Bloque por priorizar.
+- **18. Wake-on-LAN** - Implementada parcialmente, requiere config (bloque 14). Paquete magico UDP real (puerto 9, broadcast configurable) a la MAC de DAVIS_WOL_MAC (entorno, nunca por chat); sin ella, config-required honesto. Herramienta: encender_pc.
 
-- **19. Monitor de red doméstica** - Pendiente. Bloque por priorizar.
+- **19. Monitor de red doméstica** - Implementada (bloque 14). Lista vecinos del equipo donde corre el bot (ip neigh/arp) y lo declara: si el bot esta en el VPS, NO es la red de casa. Aviso de desconocidos solo con opt-in textual (guard en el ejecutor; sin opt-in no escanea nada). Herramientas: listar_dispositivos_red, configurar_vigilancia_red.
 
-- **20. Control de domótica** - Pendiente. Bloque por priorizar.
+- **20. Control de domótica** - Implementada parcialmente, requiere config (bloque 14). Via Home Assistant (DAVIS_HA_URL + DAVIS_HA_TOKEN por entorno; la URL la fija el propietario y puede ser IP privada de su LAN: por eso NO pasa por safeFetch, diseno deliberado). Dominios light/switch/fan, acciones on/off/toggle. Tapo/Tuya directos: no implementados. Herramienta: controlar_domotica.
 
-- **21. Panel de descargas** - Pendiente. Bloque por priorizar.
+- **21. Panel de descargas** - Implementada parcialmente, requiere config (bloque 14). Espacio en disco local operativo ya (df); cola de qBittorrent via Web API (DAVIS_QBIT_URL/USER/PASS por entorno; URL del propietario, LAN alcanzable por diseno). Aviso al terminar solo con opt-in textual. Herramientas: estado_descargas, configurar_aviso_descargas.
 
-- **22. Termómetro de la factura de Oracle** - Pendiente. Bloque por priorizar.
+- **22. Termómetro de la factura de Oracle** - Implementada parcialmente, requiere config (bloque 14). Estimacion real via OCI CLI (oci ce cost-summary) en el servidor; sin ella, config-required y recuerda que Always Free suele ser 0 EUR: nunca inventa cifras. Herramienta: estimar_factura_oracle.
 
 - **23. Watchdog externo del bot** - Pendiente de configuracion (Bloque 4): scripts/watchdog.js comprueba la URL publica de salud del bot (/api/salud) y avisa por webhook si cae. Requiere que David lo ejecute en un host o servicio EXTERNO al VPS (un vigilante en el mismo host no cubre la caida del host) y defina DAVIS_HEALTHCHECK_URL (+ DAVIS_WATCHDOG_WEBHOOK opcional). Sin esa configuracion no es operativo.
 

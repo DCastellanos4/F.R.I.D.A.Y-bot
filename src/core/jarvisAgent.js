@@ -64,7 +64,8 @@ import { iniciarEntrevista, terminarEntrevista } from '../services/interviewServ
 import { analizarCvContraOferta } from '../services/cvAnalyzerService.js';
 import { resumirApuntes } from '../services/notesSummarizerService.js';
 import { anotarIdea, listarIdeas, priorizarIdeas, generarEntradaChangelog, guiarDepuracion, revisarPullRequest } from '../services/devToolsService.js';
-import { auditarDependencias, configurarVigilanciaDependencias, informeMetricas, configurarInformeMetricas, actividadRepos, configurarAlertasRepos, crearBackupSesion } from '../services/opsService.js';
+import { auditarDependencias, configurarVigilanciaDependencias, informeMetricas, configurarInformeMetricas, actividadRepos, configurarAlertasRepos, crearBackupSesion, verificarBackupSesion } from '../services/opsService.js';
+import { encenderPc, listarDispositivosRed, configurarVigilanciaRed, controlarDomotica, estadoDescargas, configurarAvisoDescargas, estimarFacturaOracle } from '../services/hogarService.js';
 import { registrarEntrega, listarEntregas, eliminarEntrega } from '../services/deadlinesService.js';
 import { buscarProducto, verificarOferta } from '../services/productSearchService.js';
 import { escanearRadar, configurarRadar, leerConfigRadar, iniciarMonitorRadar } from '../services/jobRadarService.js';
@@ -221,6 +222,7 @@ export function analizarIntencion(mensaje) {
     carrera: /(simulacro\s+de\s+entrevista|practica(r)?\s+(una\s+)?entrevista|entrevista\s+(t[eé]cnica|de\s+trabajo)|analiza(r)?\s+(mi\s+)?cv|encaja(r)?\s+(mi\s+)?cv|mi\s+cv\s+(con|para)|resume(me)?\s+(mis\s+)?apuntes|resumen\s+de\s+(mis\s+)?apuntes|apunta(r)?\s+(un(a)?\s+)?(entrega|ex[aá]men)|\bentregas?\b\s+(y|o)\s+ex[aá]menes|qu[eé]\s+(entregas|ex[aá]menes)\s+(tengo|hay)|cu[aá]ndo\s+(es|tengo)\s+(el|la|mi)\s+(ex[aá]men|entrega)|calendario\s+de\s+(entregas|ex[aá]menes))/i,
     // Ops del bot (bloque 13): dependencias, metricas, repos, backup
     ops: /(audita(r)?\s+(las\s+)?dependencias|npm\s+audit|vulnerabilidades\s+de\s+(las\s+)?dependencias|m[eé]tricas\s+del\s+bot|informe\s+(semanal\s+)?de\s+m[eé]tricas|actividad\s+de\s+(mis\s+)?repos|alertas\s+de\s+(mis\s+)?repos|backup\s+de\s+(la\s+)?sesi[oó]n|copia\s+de\s+seguridad\s+(de\s+la\s+)?sesi[oó]n)/i,
+    hogar: /(enciende\s+(el|mi)\s+(pc|ordenador)|wake[ -]?on[ -]?lan|dispositivos\s+(conectados\s+)?(a|en|de)\s+(mi\s+|la\s+)?red|vigilancia\s+de\s+(mi\s+|la\s+)?red|dispositivos\s+desconocidos|qui[eé]n\s+(est[aá]|hay)\s+conectado|dom[oó]tica|home\s+assistant|enciende\s+(la\s+)?(luz|l[aá]mpara)|apaga\s+(la\s+)?(luz|l[aá]mpara)|panel\s+de\s+descargas|estado\s+de\s+(las\s+)?descargas|avisa(me)?\s+cuando\s+(termine|acabe|baje)\s+(la\s+)?descarga|aviso\s+de\s+descargas|factura\s+de\s+oracle|term[oó]metro\s+de\s+oracle|cu[aá]nto\s+(me\s+)?(cuesta|costar[aá]|gasta)\s+(el\s+)?(oracle|vps|servidor))/i,
     // DevTools (bloque 12): revisor PRs, changelog, pair programming, ideas
     devtools: /(revisa(r)?\s+(la\s+|el\s+|esta\s+)?(pr|pull\s+request)|changelog|guia(r)?\s+(la\s+)?depuraci[oó]n|depura(r)?\s+(este|el|mi)\s+(fallo|error|c[oó]digo)|pair\s+programming|tengo\s+un\s+fallo|anota(r)?\s+(esta\s+|una\s+)?idea|mis\s+ideas|prioriza(r)?\s+(mis\s+)?ideas)/i,
     // Compras bajo demanda (extra aprobado por David, 5 nov 2026): sin compras ni vigilancia
@@ -278,9 +280,10 @@ export function analizarIntencion(mensaje) {
   let matchCompras = intents.compras.test(sinNombre);
   let matchDevtools = intents.devtools.test(sinNombre);
   let matchOps = intents.ops.test(sinNombre);
+  let matchHogar = intents.hogar.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
-  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro && !matchBienestar && !matchCarrera && !matchCompras && !matchDevtools && !matchOps) {
+  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro && !matchBienestar && !matchCarrera && !matchCompras && !matchDevtools && !matchOps && !matchHogar) {
     return { herramientas: [], intenciones: ['conversacion'], safetyNet: false, esChitChat: true };
   }
 
@@ -396,7 +399,10 @@ export function analizarIntencion(mensaje) {
     tools.push(...herramientasJarvis.filter(h => ['anotar_idea', 'listar_ideas', 'priorizar_ideas', 'generar_changelog', 'guiar_depuracion', 'revisar_pr'].includes(h.function.name)));
   }
   if (matchOps) {
-    tools.push(...herramientasJarvis.filter(h => ['auditar_dependencias', 'configurar_vigilancia_dependencias', 'informe_metricas', 'configurar_informe_metricas', 'actividad_repos', 'configurar_alertas_repos', 'crear_backup_sesion'].includes(h.function.name)));
+    tools.push(...herramientasJarvis.filter(h => ['auditar_dependencias', 'configurar_vigilancia_dependencias', 'informe_metricas', 'configurar_informe_metricas', 'actividad_repos', 'configurar_alertas_repos', 'crear_backup_sesion', 'verificar_backup_sesion'].includes(h.function.name)));
+  }
+  if (matchHogar) {
+    tools.push(...herramientasJarvis.filter(h => ['encender_pc', 'listar_dispositivos_red', 'configurar_vigilancia_red', 'controlar_domotica', 'estado_descargas', 'configurar_aviso_descargas', 'estimar_factura_oracle'].includes(h.function.name)));
   }
 
   // Safety Net: si no encajó en ninguna categoría pero tampoco es chit-chat, pasar todas las herramientas
@@ -439,6 +445,7 @@ export function analizarIntencion(mensaje) {
   if (matchCompras) intenciones.push('compras');
   if (matchDevtools) intenciones.push('devtools');
   if (matchOps) intenciones.push('ops');
+  if (matchHogar) intenciones.push('hogar');
 
   // Eliminar duplicados
   const unicas = [];
@@ -1062,6 +1069,56 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
       } else if (nombreFuncion === 'crear_backup_sesion') {
         const res = await crearBackupSesion({});
         resultadoTool = !res.ok ? res.error : `Backup cifrado creado: ${res.archivo} (${Math.round(res.bytes / 1024)} KB).\n${res.nota}`;
+      } else if (nombreFuncion === 'verificar_backup_sesion') {
+        const res = await verificarBackupSesion({ archivo: args.archivo }, {});
+        resultadoTool = !res.ok ? res.error : `Backup verificado: ${Math.round(res.bytes / 1024)} KB recuperables.\n${res.nota}`;
+      } else if (nombreFuncion === 'encender_pc') {
+        const res = await encenderPc({});
+        resultadoTool = !res.ok ? res.error : res.nota;
+      } else if (nombreFuncion === 'listar_dispositivos_red') {
+        const res = await listarDispositivosRed({ rutaConfig: opciones.rutaConfigHogar });
+        resultadoTool = !res.ok ? res.error
+          : res.dispositivos.length === 0
+            ? `No veo dispositivos vecinos ahora mismo.\n${res.alcance}`
+            : `Dispositivos vecinos (${res.dispositivos.length}):\n` + res.dispositivos.map((d) => `- ${d.ip} (${d.mac}) ${d.estado}${res.desconocidos.some((x) => x.mac === d.mac) ? ' - DESCONOCIDO' : ''}`).join('\n') + `\n${res.alcance}`;
+      } else if (nombreFuncion === 'configurar_vigilancia_red') {
+        const quiere = args.activo === true;
+        const pideTexto = /(activa(r|s|do)?|enciend(e|er)|pon\s+en\s+marcha|quiero|vigila(r)?)\s+.{0,40}(red|dispositivos)/i.test(opciones.mensajeUsuario || '');
+        if (quiere && !pideTexto) {
+          resultadoTool = 'No he activado la vigilancia de red porque tu mensaje no lo pedia explicitamente. Si la quieres, dime "activa la vigilancia de mi red".';
+        } else {
+          const res = configurarVigilanciaRed({ activo: args.activo, conocidos: args.conocidos }, { rutaConfig: opciones.rutaConfigHogar });
+          resultadoTool = res.activo ? `Vigilancia de red ACTIVADA (${res.conocidos} MACs conocidas; aviso si aparece un desconocido).` : 'Vigilancia de red desactivada.';
+        }
+      } else if (nombreFuncion === 'controlar_domotica') {
+        const mapaAccion = { encender: 'on', apagar: 'off', conmutar: 'toggle' };
+        const res = await controlarDomotica({ entidad: args.entidad, accion: mapaAccion[args.accion] || args.accion }, {});
+        resultadoTool = !res.ok ? res.error : res.nota;
+      } else if (nombreFuncion === 'estado_descargas') {
+        const res = await estadoDescargas({});
+        if (!res.ok) {
+          resultadoTool = res.error;
+        } else {
+          const partes = [];
+          partes.push(res.disco ? `Disco: ${res.disco.usado} de ${res.disco.total} usados (${res.disco.porcentaje}); libres ${res.disco.libre}.` : 'No he podido leer el disco.');
+          if (res.qbit) {
+            partes.push(res.qbit.length === 0 ? 'qBittorrent: sin torrents activos.' : 'qBittorrent:\n' + res.qbit.map((t) => `- ${t.nombre}: ${t.progreso}% (${t.estado})`).join('\n'));
+          }
+          partes.push(res.nota);
+          resultadoTool = partes.join('\n');
+        }
+      } else if (nombreFuncion === 'configurar_aviso_descargas') {
+        const quiere = args.activo === true;
+        const pideTexto = /(activa(r|s|do)?|enciend(e|er)|quiero|avisa(me)?)\s+.{0,40}(descarga|torrent)/i.test(opciones.mensajeUsuario || '');
+        if (quiere && !pideTexto) {
+          resultadoTool = 'No he activado el aviso de descargas porque tu mensaje no lo pedia explicitamente. Si lo quieres, dime "avisame cuando termine la descarga".';
+        } else {
+          const res = configurarAvisoDescargas({ activo: args.activo }, { rutaConfig: opciones.rutaConfigHogar });
+          resultadoTool = res.activo ? 'Aviso de descargas ACTIVADO: te escribo cuando termine alguna.' : 'Aviso de descargas desactivado.';
+        }
+      } else if (nombreFuncion === 'estimar_factura_oracle') {
+        const res = await estimarFacturaOracle({});
+        resultadoTool = !res.ok ? res.error : res.nota;
       } else if (nombreFuncion === 'revisar_pr') {
         const res = await revisarPullRequest({ numero: args.numero, repo: args.repo }, { fetchFn: opciones.fetchFnGitHub, chatCompletion: opciones.chatCompletion });
         resultadoTool = res.ok
@@ -1514,6 +1571,7 @@ Directrices de selección:
 13k. COMPRAS (extra aprobado): buscar_producto y verificar_oferta son SOLO bajo demanda: nada de compras, vigilancia automatica ni altas. La busqueda usa el comparador integrado PriceRadars (gratis, sin alta): transmite su aviso (precios orientativos de feeds; cobertura desigual; si salen accesorios o no aparece el producto, dilo y ofrece verificar el enlace exacto). verificar_oferta lee la propia pagina y declara la hora: respeta vinculacion y precioConfirmado (si la pagina parece de OTRO producto o variante, NO presentes ese precio como el del producto pedido; dilo claro) y las advertencias de moneda; lo no legible es no-verificable (nunca inventes precio, stock ni envio). El pago es siempre de David.
 13l. DEVTOOLS (nº 9-15): revisar_pr trae la resena AQUI (nunca publiques comentarios en GitHub); generar_changelog propone texto sin tocar archivos ni commits; guiar_depuracion va paso a paso, una hipotesis cada vez y pidiendo salidas concretas; las ideas se anotan con anotar_idea y se priorizan solo cuando David lo pide (sin revision proactiva sin opt-in explicito).
 13m. OPS DEL BOT (nº 10-16): auditar_dependencias informa y propone, NUNCA actualiza; informe_metricas resume lo registrado localmente; actividad_repos es instantanea publica; los tres avisos proactivos (dependencias, informe semanal, alertas de repos) solo se activan con peticion textual de David (el guard ya lo aplica); crear_backup_sesion hace copia cifrada LOCAL (sin DAVIS_BACKUP_KEY por entorno es config-required) y la subida externa esta sin implementar hasta configurar URL de subida: nunca pidas la clave por chat.
+13n. HOGAR (nº 18-22): encender_pc usa WoL con la MAC del entorno (sin ella, config-required: nunca pidas la MAC por chat); listar_dispositivos_red muestra la LAN DEL EQUIPO DEL BOT y lo dice (si esta en el VPS no es la casa de David); domotica va por Home Assistant con URL/token de entorno; el aviso de descargas y la vigilancia de red solo se activan con peticion textual (el guard ya lo aplica); estimar_factura_oracle es config-required sin OCI CLI: nunca inventes cifras de facturacion.
 13g. TRANSPORTE MADRID (extra): paradas favoritas con registrar_parada_favorita (emt o cercanias; el Metro no tiene fuente publica de llegadas en vivo, dilo si lo piden) y consulta bajo demanda con proximas_llegadas_transporte. NUNCA programes avisos automaticos de transporte. Si la EMT responde config-required, explica que falta el acceso gratuito de MobilityLabs, no inventes llegadas.
 13f. FECHAS Y CHATS: fechas senaladas (registrar_fecha_senalada con dia y mes; los avisos proactivos solo con configurar_avisos_fechas y peticion textual de David), snooze de chats (programar_snooze en este chat, un solo aviso), estadisticas del chat (estadisticas_grupo, solo lo que el bot ha visto) y aviso de llegada (registrar_aviso_llegada necesita latitud/longitud; si faltan, pide a David que comparta el pin del destino).
 13e. COMUNICACION: modo traductor por chat ("activar_traductor" con el idioma; David lo desactiva con "desactivar_traductor"), sugerencias de respuesta ("sugerir_respuestas": propon 3, nunca las envies) y buscador del historial del chat ("buscar_en_historial").

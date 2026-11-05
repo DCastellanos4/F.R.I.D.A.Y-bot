@@ -1847,7 +1847,93 @@ export const herramientasJarvis = [
     type: 'function',
     function: {
       name: 'crear_backup_sesion',
-      description: 'Crea una copia CIFRADA local de la sesion del bot (AES-256; requiere DAVIS_BACKUP_KEY por entorno). La subida externa es config-required.',
+      description: 'Crea una copia CIFRADA local de la sesion del bot (AES-256-GCM; requiere DAVIS_BACKUP_KEY por entorno). La subida externa es config-required.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'verificar_backup_sesion',
+      description: 'Verifica que un backup DBK1 descifra con la clave actual y es recuperable (autenticacion GCM + contenido tar.gz).',
+      parameters: {
+        type: 'object',
+        properties: { archivo: { type: 'string', description: 'Ruta del fichero .dbk1 a verificar.' } },
+        required: ['archivo']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'encender_pc',
+      description: 'Enciende el PC de casa por Wake-on-LAN. Requiere DAVIS_WOL_MAC por entorno; sin ella es config-required (nunca pedir la MAC por chat).',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_dispositivos_red',
+      description: 'Lista los dispositivos vecinos del equipo donde corre el bot (su propia LAN; si el bot esta en el VPS NO es la red de casa).',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'configurar_vigilancia_red',
+      description: 'Activa o desactiva el aviso de dispositivos desconocidos en la red del equipo del bot. activo=true SOLO si David lo pide textualmente.',
+      parameters: {
+        type: 'object',
+        properties: {
+          activo: { type: 'boolean' },
+          conocidos: { type: 'array', items: { type: 'string' }, description: 'MACs conocidas (aa:bb:cc:dd:ee:ff).' }
+        },
+        required: ['activo']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'controlar_domotica',
+      description: 'Controla dispositivos de Home Assistant (requiere DAVIS_HA_URL y DAVIS_HA_TOKEN por entorno; la URL la fija el propietario, nunca llega por chat).',
+      parameters: {
+        type: 'object',
+        properties: {
+          entidad: { type: 'string', description: 'Entidad de HA, p.ej. light.salon.' },
+          accion: { type: 'string', enum: ['encender', 'apagar', 'conmutar'] }
+        },
+        required: ['entidad', 'accion']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'estado_descargas',
+      description: 'Panel de descargas: espacio en disco local (operativo) y cola de qBittorrent (requiere DAVIS_QBIT_URL/USER/PASS por entorno).',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'configurar_aviso_descargas',
+      description: 'Activa o desactiva el aviso cuando termina una descarga. activo=true SOLO si David lo pide textualmente.',
+      parameters: {
+        type: 'object',
+        properties: { activo: { type: 'boolean' } },
+        required: ['activo']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'estimar_factura_oracle',
+      description: 'Termometro de la factura de Oracle Cloud via OCI CLI/Cost API: config-required si el servidor no tiene OCI configurado; no inventa cifras.',
       parameters: { type: 'object', properties: {} }
     }
   }
@@ -1889,6 +1975,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   compras: ['buscar_producto', 'verificar_oferta'],
   devtools: ['anotar_idea', 'listar_ideas', 'priorizar_ideas', 'generar_changelog', 'guiar_depuracion', 'revisar_pr'],
   ops: ['auditar_dependencias', 'configurar_vigilancia_dependencias', 'informe_metricas', 'configurar_informe_metricas', 'actividad_repos', 'configurar_alertas_repos', 'crear_backup_sesion'],
+  hogar: ['encender_pc', 'listar_dispositivos_red', 'configurar_vigilancia_red', 'controlar_domotica', 'estado_descargas', 'configurar_aviso_descargas', 'estimar_factura_oracle', 'verificar_backup_sesion'],
   carrera: ['iniciar_simulacro_entrevista', 'analizar_cv_oferta', 'resumir_apuntes', 'registrar_entrega', 'listar_entregas', 'eliminar_entrega'],
   procesos: ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'],
   finanzas: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'],
