@@ -27,6 +27,9 @@ import { iniciarMonitorFinanzas, crearBorradorDesdeTicket, borradorPendiente, co
 import { crearAnalizadorTicket } from './src/services/ticketVisionAdapter.js';
 import { iniciarMonitorProcesos } from './src/services/processWatchdogService.js';
 import { estadoTraductor, desactivarTraductor, traducir } from './src/services/translatorModeService.js';
+import { iniciarMonitorFechas } from './src/services/specialDatesService.js';
+import { iniciarMonitorSnoozes } from './src/services/snoozeService.js';
+import { procesarUbicacionEntrante } from './src/services/arrivalWatchService.js';
 import { programarEnvioMatutino } from './src/services/dailyBriefing.js';
 import { normalizarTexto } from './src/services/memoryService.js';
 import { transcribirAudioBuffer } from './src/services/voiceService.js';
@@ -328,6 +331,22 @@ function inicializarServiciosProactivos() {
     console.error('Error iniciando vigilante de procesos:', errProc.message);
   }
 
+  // 6f. Fechas senaladas: avisos de cumpleanos/aniversarios. Solo arranca si
+  // el propietario activo los avisos explicitamente y registro alguna fecha.
+  try {
+    iniciarMonitorFechas();
+  } catch (errFechas) {
+    console.error('Error iniciando monitor de fechas senaladas:', errFechas.message);
+  }
+
+  // 6g. Snoozes de chats: cada snooze es una peticion puntual de David; el
+  // monitor solo corre mientras haya alguno pendiente.
+  try {
+    iniciarMonitorSnoozes();
+  } catch (errSnooze) {
+    console.error('Error iniciando monitor de snoozes:', errSnooze.message);
+  }
+
   // 7. Watchdog de Docker y Auto-Healing (cada 60 segundos)
   setInterval(async () => {
     try {
@@ -601,6 +620,28 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         }
       }
 
+      // 4e. Ubicacion entrante (pin o ubicacion en vivo): aviso de llegada.
+      // Solo se evalua contra las vigilancias activas registradas por David;
+      // la ubicacion no se persiste ni se usa para nada mas.
+      const ubicacionMsg = msg.message.locationMessage || msg.message.liveLocationMessage || null;
+      if (ubicacionMsg) {
+        try {
+          const rUbic = procesarUbicacionEntrante({
+            chatId: remoteJid,
+            latitud: ubicacionMsg.degreesLatitude,
+            longitud: ubicacionMsg.degreesLongitude
+          }, { rutaArchivo: deps.rutaArchivoLlegada });
+          if (rUbic.disparados > 0) {
+            await sock.sendMessage(remoteJid, {
+              text: 'Has entrado en la zona de un aviso de llegada, David: te he dejado el aviso y lo he dado por completado.'
+            }, { quoted: msg });
+          }
+        } catch (errUbic) {
+          console.error('Error procesando ubicacion entrante:', errUbic.message);
+        }
+        if (!texto) continue;
+      }
+
       if (!texto) continue;
 
       // 4c. Confirmacion de borrador de ticket: respuesta determinista, sin LLM,
@@ -826,6 +867,9 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
           rutaArchivoFinanzas: deps.rutaArchivoFinanzas,
           rutaArchivoProcesos: deps.rutaArchivoProcesos,
           rutaArchivoTraductor: deps.rutaArchivoTraductor,
+          rutaArchivoFechas: deps.rutaArchivoFechas,
+          rutaArchivoSnoozes: deps.rutaArchivoSnoozes,
+          rutaArchivoLlegada: deps.rutaArchivoLlegada,
           otpDelivery: async ({ otpCode, ttlSeconds, reason, command }) => {
             await sock.sendMessage(remoteJid, {
               text: `Codigo de autorizacion 2FA para el comando critico "${command}" (${reason}):\n\n${otpCode}\n\nValidez: ${ttlSeconds} segundos. Responde "confirmar otp ${otpCode}" para autorizar la ejecucion. Este codigo solo lo ves tu.`
