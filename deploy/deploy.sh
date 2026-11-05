@@ -178,17 +178,16 @@ echo "== Verificacion de salud post-corte (ventana ${VENTANA_SALUD:-75}s; cierra
 # Un proceso en crash-loop aparece 'online' en cualquier muestra instantanea:
 # la prueba fiable es que el CONTADOR DE REINICIOS y el UPTIME no se muevan
 # durante una ventana mas larga que el periodo del bucle, y que la evidencia
-# de WhatsApp sea del proceso NUEVO (offset de log marcado ahora, no lineas
-# historicas). Nunca se vuelcan contenidos de mensajes ni variables: solo
+# de WhatsApp sea del proceso NUEVO (offsets de log por ruta marcados antes
+# del corte, no lineas historicas). Nunca se vuelcan contenidos de mensajes ni variables: solo
 # contadores, timestamps y cadenas fijas de banner.
 VENTANA="${VENTANA_SALUD:-75}"
 JLIST0=$($PM2 jlist)
 OUT_LOG=$(echo "$JLIST0" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);const p=j.find(x=>x.name==='jarvis-whatsapp');console.log(p&&p.pm2_env?p.pm2_env.pm_out_log_path||'':'')})")
 CONT_T0=$(echo "$JLIST0" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);const r=n=>{const p=j.find(x=>x.name===n);console.log(p?p.pm2_env.restart_time:-1)};r('jarvis-whatsapp');r('jarvis-api')})" | paste -sd' ' -)
-# Rota si PM2 cambio la ruta del log al rearrancar: entonces TODO el fichero
-# nuevo pertenece al proceso nuevo. Si no rota, lo nuevo son los bytes tras
-# OFFSET_PRE (marcado antes del restart: incluye eventos inmediatos).
-# (la rotacion la resuelven los offsets por ruta; no hace falta flag)
+# La rotacion y el reuso de ficheros los resuelven los offsets por ruta
+# (OFFSETS_PRE, marcados antes del corte): un fichero reutilizado solo aporta
+# sus bytes nuevos; uno inexistente antes del corte aporta todo su contenido.
 sleep "$VENTANA"
 if ! $PM2 jlist | node -e "
 let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
