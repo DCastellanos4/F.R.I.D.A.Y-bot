@@ -1,9 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { DATA_DIR } from '../config/paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CARPETA_DATA = path.join(__dirname, 'data');
+const CARPETA_DATA = DATA_DIR;
 const ARCHIVO_MENSAJES = path.join(CARPETA_DATA, 'scheduled_messages.json');
 const ARCHIVO_LOG_ENVIOS = path.join(CARPETA_DATA, 'scheduled_messages.log');
 

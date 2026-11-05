@@ -14,7 +14,7 @@ import {
   despacharMensajesPendientes,
   leerMensajesProgramados,
   guardarMensajesProgramados
-} from './scheduledMessageService.js';
+} from '../src/services/scheduledMessageService.js';
 
 import {
   crearRecordatorio,
@@ -23,15 +23,15 @@ import {
   iniciarMonitorRecordatorios,
   detenerMonitorRecordatorios,
   despacharRecordatoriosPendientes
-} from './reminderService.js';
+} from '../src/services/reminderService.js';
 
 import {
   seleccionarHerramientasPorIntencion,
   limpiarRespuestaJarvis
-} from './jarvisAgent.js';
+} from '../src/core/jarvisAgent.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ARCHIVO_MENSAJES = path.join(__dirname, 'data', 'scheduled_messages.json');
+const ARCHIVO_MENSAJES = path.join(__dirname, '..', 'data', 'scheduled_messages.json');
 const ARCHIVO_RECORDATORIOS = path.join(__dirname, 'data', 'reminders.json');
 
 let testsPassed = 0;

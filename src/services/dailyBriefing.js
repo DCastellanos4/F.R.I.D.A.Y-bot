@@ -5,10 +5,10 @@
  */
 
 import cron from 'node-cron';
-import { config } from './config.js';
+import { config } from '../config/config.js';
 import { consultarClima } from './weatherService.js';
 import { listarRecordatorios } from './reminderService.js';
-import { consultarSaludServidor } from './proactiveAlerts.js';
+import { consultarSaludServidor } from '../monitors/proactiveAlerts.js';
 
 /**
  * Elimina cualquier caracter emoji o pictografico del texto

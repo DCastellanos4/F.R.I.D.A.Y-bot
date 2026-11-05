@@ -1,37 +1,37 @@
-import { config } from './config.js';
+import { config } from '../config/config.js';
 import { herramientasJarvis } from './tools.js';
-import { obtenerNoticiasEstructuradas } from './newsService.js';
+import { obtenerNoticiasEstructuradas } from '../services/newsService.js';
 import {
   crearRecordatorio,
   listarRecordatorios,
   cancelarRecordatorio
-} from './reminderService.js';
+} from '../services/reminderService.js';
 import {
   programarMensaje,
   listarMensajesProgramados,
   cancelarMensajeProgramado
-} from './scheduledMessageService.js';
-import { generarResumenInteligente } from './summarizerService.js';
-import { navegarYExtraerArticulo } from './browserService.js';
+} from '../services/scheduledMessageService.js';
+import { generarResumenInteligente } from '../services/summarizerService.js';
+import { navegarYExtraerArticulo } from '../services/browserService.js';
 import {
   consultarSaludServidor,
   comprobarPuertoTCP
-} from './proactiveAlerts.js';
+} from '../monitors/proactiveAlerts.js';
 import {
   guardarMemoria,
   buscarMemorias,
   listarMemorias,
   olvidarMemoria,
   normalizarTexto
-} from './memoryService.js';
-import { registrarBorradoMasivoPendiente } from './destructiveActionService.js';
+} from '../services/memoryService.js';
+import { registrarBorradoMasivoPendiente } from '../services/destructiveActionService.js';
 import { NUM_CTX_DEFECTO, NUM_PREDICT_DEFECTO } from './llmService.js';
 import {
   vigilarProducto,
   listarProductosVigilados,
   cancelarVigilancia
-} from './sniperService.js';
-import { consultarClima } from './weatherService.js';
+} from '../monitors/sniperService.js';
+import { consultarClima } from '../services/weatherService.js';
 import { chatCompletion, esRespuestaTruncada } from './llmService.js';
 import { clasificarIntencionConModelo, UMBRAL_CONFIANZA } from './intentRouterService.js';
 import {
@@ -39,24 +39,24 @@ import {
   isVipModeActive,
   addVipContact,
   getVipContacts
-} from './vipFilterService.js';
-import { generateGroupSummary } from './groupSummarizerService.js';
-import { downloadMedia } from './mediaDownloaderService.js';
-import { savePersonalNote, listRecentNotes } from './notesService.js';
-import { requestExecution } from './bashConsoleService.js';
+} from '../services/vipFilterService.js';
+import { generateGroupSummary } from '../services/groupSummarizerService.js';
+import { downloadMedia } from '../services/mediaDownloaderService.js';
+import { savePersonalNote, listRecentNotes } from '../services/notesService.js';
+import { requestExecution } from '../system/bashConsoleService.js';
 import {
   generatePassword,
   generatePin,
   generateToken,
   generateCryptoKey,
   saveCredentialToMemory
-} from './cryptoGeneratorService.js';
-import { inspectContainers } from './dockerMonitorService.js';
-import { checkDiskUsage } from './diskStorageService.js';
-import { readNetworkBytes } from './networkMonitorService.js';
-import { checkCertificateExpiry } from './sslMonitorService.js';
-import { getTunnelStatus, startTunnel, stopTunnel } from './tunnelManagerService.js';
-import { createEncryptedBackup } from './backupService.js';
+} from '../services/cryptoGeneratorService.js';
+import { inspectContainers } from '../monitors/dockerMonitorService.js';
+import { checkDiskUsage } from '../system/diskStorageService.js';
+import { readNetworkBytes } from '../monitors/networkMonitorService.js';
+import { checkCertificateExpiry } from '../monitors/sslMonitorService.js';
+import { getTunnelStatus, startTunnel, stopTunnel } from '../system/tunnelManagerService.js';
+import { createEncryptedBackup } from '../system/backupService.js';
 
 /**
  * Detecta si David pide poner más tabaco a la cachimba (Easter Egg Iron Man)

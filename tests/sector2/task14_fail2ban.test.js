@@ -20,8 +20,8 @@ import {
   scanFail2banLog,
   createFail2banScanState,
   DEFAULT_DEDUP_TTL_MS
-} from '../../fail2banMonitorService.js';
-import { drainAlerts } from '../../alertQueueService.js';
+} from '../../src/monitors/fail2banMonitorService.js';
+import { drainAlerts } from '../../src/services/alertQueueService.js';
 
 describe('Sector 2 - Task 14: Fail2ban & SSH Intrusion Security Surveillance', () => {
   let tempDir;

@@ -1,9 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { DATA_DIR } from '../config/paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CARPETA_DATA = path.join(__dirname, 'data');
+const CARPETA_DATA = DATA_DIR;
 const ARCHIVO_RECORDATORIOS = path.join(CARPETA_DATA, 'reminders.json');
 const ARCHIVO_LOG_ALERTAS = path.join(CARPETA_DATA, 'alerts.log');
 

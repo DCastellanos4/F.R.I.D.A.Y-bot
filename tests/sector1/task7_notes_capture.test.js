@@ -10,7 +10,7 @@ describe('Sector 1 - Task 7: Personal Notes Transcription & Markdown Capture', (
 
   beforeEach(async () => {
     try {
-      notesService = await import('../../notesService.js');
+      notesService = await import('../../src/services/notesService.js');
     } catch {
       notesService = null;
     }

@@ -1,7 +1,7 @@
 import * as cheerio from 'cheerio';
 import { YoutubeTranscript } from 'youtube-transcript';
-import { chatCompletion } from './llmService.js';
-import { config } from './config.js';
+import { chatCompletion } from '../core/llmService.js';
+import { config } from '../config/config.js';
 import { navegarYExtraerArticulo } from './browserService.js';
 
 /**

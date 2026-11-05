@@ -2,9 +2,10 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+import { DATA_DIR } from '../config/paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CARPETA_DATA = path.join(__dirname, 'data');
+const CARPETA_DATA = DATA_DIR;
 const ARCHIVO_MEMORIA = path.join(CARPETA_DATA, 'brain_memory.json');
 
 if (!fs.existsSync(CARPETA_DATA)) {

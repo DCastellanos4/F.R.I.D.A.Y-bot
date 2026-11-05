@@ -4,12 +4,13 @@ import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import cron from 'node-cron';
+import { PROJECT_ROOT, DATA_DIR } from '../config/paths.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export const DEFAULT_ROOT_DIR = __dirname;
-export const DEFAULT_DATA_DIR = path.resolve(__dirname, 'data');
+export const DEFAULT_ROOT_DIR = PROJECT_ROOT;
+export const DEFAULT_DATA_DIR = DATA_DIR;
 export const DEFAULT_BACKUP_DIR = path.resolve(DEFAULT_DATA_DIR, 'backups');
 
 export const DAVBAK_MAGIC = Buffer.from('DAVBAK01', 'ascii');

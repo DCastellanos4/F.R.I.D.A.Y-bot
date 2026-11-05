@@ -1,4 +1,4 @@
-import { normalizarTexto } from './memoryService.js';
+import { normalizarTexto } from '../services/memoryService.js';
 import { herramientasParaIntenciones, MAPA_INTENCION_HERRAMIENTAS } from './tools.js';
 
 /**

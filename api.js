@@ -1,36 +1,36 @@
 import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { config } from './config.js';
-import { consultarJarvis } from './jarvisAgent.js';
+import { config } from './src/config/config.js';
+import { consultarJarvis } from './src/core/jarvisAgent.js';
 import {
   listarRecordatorios,
   crearRecordatorio,
   cancelarRecordatorio
-} from './reminderService.js';
-import { generarBriefingCompleto } from './dailyBriefing.js';
+} from './src/services/reminderService.js';
+import { generarBriefingCompleto } from './src/services/dailyBriefing.js';
 import {
   consultarSaludServidor,
   iniciarVigilanteProactivo
-} from './proactiveAlerts.js';
-import { generarResumenInteligente } from './summarizerService.js';
+} from './src/monitors/proactiveAlerts.js';
+import { generarResumenInteligente } from './src/services/summarizerService.js';
 import {
   listarMemorias,
   guardarMemoria,
   buscarMemorias,
   olvidarMemoria
-} from './memoryService.js';
+} from './src/services/memoryService.js';
 import {
   listarProductosVigilados,
   vigilarProducto,
   cancelarVigilancia,
   iniciarSniperWatchdog
-} from './sniperService.js';
-import { consultarClima } from './weatherService.js';
+} from './src/monitors/sniperService.js';
+import { consultarClima } from './src/services/weatherService.js';
 import {
   verifySignature,
   handleWebhookPayload
-} from './githubWebhookService.js';
+} from './src/monitors/githubWebhookService.js';
 
 const PUERTO = config.port;
 

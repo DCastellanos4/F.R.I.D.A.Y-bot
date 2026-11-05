@@ -11,7 +11,7 @@ describe('Sector 1 - Task 2: VIP Filter & DND Mode', () => {
   beforeEach(async () => {
     mockSocket = createMockSocket();
     try {
-      vipFilterService = await import('../../vipFilterService.js');
+      vipFilterService = await import('../../src/services/vipFilterService.js');
     } catch {
       vipFilterService = null;
     }

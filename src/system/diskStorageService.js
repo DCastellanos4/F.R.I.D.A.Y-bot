@@ -2,11 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runCommand } from './sysCommandRunner.js';
-import { enqueueAlert as defaultEnqueueAlert } from './alertQueueService.js';
+import { enqueueAlert as defaultEnqueueAlert } from '../services/alertQueueService.js';
+import { DATA_DIR } from '../config/paths.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-export const DEFAULT_TEMP_DOWNLOADS_DIR = path.resolve(__dirname, 'data', 'temp_downloads');
+export const DEFAULT_TEMP_DOWNLOADS_DIR = path.join(DATA_DIR, 'temp_downloads');
 export const DEFAULT_STORAGE_THRESHOLD_PERCENT = 85;
 
 /**

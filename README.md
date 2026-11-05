@@ -194,6 +194,29 @@ pm2 status
 
 ---
 
+## Project Structure
+
+```text
+.
+├── api.js                  # REST API entry point (PM2: jarvis-api)
+├── whatsappBot.js          # WhatsApp bot entry point (PM2: jarvis-whatsapp)
+├── chat.js                 # Interactive terminal client entry point
+├── ecosystem.config.cjs    # PM2 process configuration
+├── src/
+│   ├── config/             # Environment loading (config.js) and project path anchors (paths.js)
+│   ├── core/               # Agent orchestration: jarvisAgent, intent router, LLM service, tools, interactive service
+│   ├── services/           # Application services: memory, history, notes, reminders, scheduled messages,
+│   │                       # confirmations, media, voice, TTS, browser, weather, news, summarizers, briefing
+│   ├── system/             # System-level services: command runner, bash console, backups, disk storage, tunnels
+│   └── monitors/           # Watchdogs and monitors: sniper, proactive alerts, SSL, Docker, network, fail2ban, GitHub webhook
+├── scripts/                # Ad-hoc development and diagnostic scripts
+└── tests/                  # Unified test suite (run_all.js) with harness and sector batteries
+```
+
+Data (`data/`) stays at the project root and is resolved through `src/config/paths.js`, so modules can live in subfolders without depending on their own location. Entry points and PM2 script names are unchanged.
+
+---
+
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.

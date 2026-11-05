@@ -5,13 +5,14 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { DATA_DIR } from '../config/paths.js';
 
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const WHATSAPP_MAX_INLINE_BYTES = 16 * 1024 * 1024; // 16 MB limit
-const TEMP_DOWNLOADS_DIR = path.join(__dirname, 'data', 'temp_downloads');
+const TEMP_DOWNLOADS_DIR = path.join(DATA_DIR, 'temp_downloads');
 
 const EMOJI_FILTER_REGEX = /\p{Extended_Pictographic}/gu;
 

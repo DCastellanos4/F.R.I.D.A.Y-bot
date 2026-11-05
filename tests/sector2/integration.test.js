@@ -11,35 +11,35 @@ import {
   ejecutarWatchdogsSector2,
   setMockSocket
 } from '../../whatsappBot.js';
-import { herramientasJarvis } from '../../tools.js';
+import { herramientasJarvis } from '../../src/core/tools.js';
 import {
   seleccionarHerramientasPorIntencion
-} from '../../jarvisAgent.js';
+} from '../../src/core/jarvisAgent.js';
 import {
   enqueueAlert,
   drainAlerts,
   clearQueue,
   getQueueLength,
   DEFAULT_QUEUE_FILE
-} from '../../alertQueueService.js';
+} from '../../src/services/alertQueueService.js';
 import {
   requestExecution,
   confirmAndExecute,
   clearPendingExecutions
-} from '../../bashConsoleService.js';
+} from '../../src/system/bashConsoleService.js';
 import {
   generatePassword,
   generatePin,
   generateToken,
   generateCryptoKey,
   saveCredentialToMemory
-} from '../../cryptoGeneratorService.js';
-import { inspectContainers } from '../../dockerMonitorService.js';
-import { checkDiskUsage } from '../../diskStorageService.js';
-import { readNetworkBytes } from '../../networkMonitorService.js';
-import { checkCertificateExpiry } from '../../sslMonitorService.js';
-import { getTunnelStatus, startTunnel, stopTunnel } from '../../tunnelManagerService.js';
-import { createEncryptedBackup, DAVBAK_MAGIC } from '../../backupService.js';
+} from '../../src/services/cryptoGeneratorService.js';
+import { inspectContainers } from '../../src/monitors/dockerMonitorService.js';
+import { checkDiskUsage } from '../../src/system/diskStorageService.js';
+import { readNetworkBytes } from '../../src/monitors/networkMonitorService.js';
+import { checkCertificateExpiry } from '../../src/monitors/sslMonitorService.js';
+import { getTunnelStatus, startTunnel, stopTunnel } from '../../src/system/tunnelManagerService.js';
+import { createEncryptedBackup, DAVBAK_MAGIC } from '../../src/system/backupService.js';
 
 import {
   TEST_WEBHOOK_SECRET,

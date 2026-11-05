@@ -12,7 +12,7 @@ import {
   parseDockerPruneReclaimedBytes,
   resolveMountPath,
   DEFAULT_STORAGE_THRESHOLD_PERCENT
-} from '../../diskStorageService.js';
+} from '../../src/system/diskStorageService.js';
 import { SysCommandMock } from './helpers/sysCommandMock.js';
 import { AlertCaptureMock } from './helpers/alertCaptureMock.js';
 import { assertNoEmojis } from './helpers/s2Validators.js';

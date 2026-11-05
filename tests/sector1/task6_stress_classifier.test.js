@@ -7,7 +7,7 @@ describe('Sector 1 - Task 6: Audio Urgency & Stress Classifier', () => {
 
   beforeEach(async () => {
     try {
-      urgencyService = await import('../../urgencyService.js');
+      urgencyService = await import('../../src/services/urgencyService.js');
     } catch {
       urgencyService = null;
     }

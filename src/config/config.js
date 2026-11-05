@@ -1,9 +1,10 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { PROJECT_ROOT } from './paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, '.env') });
+dotenv.config({ path: path.join(PROJECT_ROOT, '.env') });
 
 const hasCloudKey = Boolean(
   process.env.OPENAI_API_KEY ||

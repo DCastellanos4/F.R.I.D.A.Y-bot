@@ -7,11 +7,11 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { EMOJI_REGEX } from './tests/harness/validators.js';
+import { EMOJI_REGEX } from '../tests/harness/validators.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const ROOT_DIR = __dirname;
+const ROOT_DIR = path.resolve(__dirname, '..');
 
 const EXCLUDE_DIRS = new Set([
   'node_modules',

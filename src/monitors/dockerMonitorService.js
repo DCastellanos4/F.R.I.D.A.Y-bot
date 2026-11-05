@@ -1,5 +1,5 @@
-import { runCommand } from './sysCommandRunner.js';
-import { enqueueAlert as defaultEnqueueAlert } from './alertQueueService.js';
+import { runCommand } from '../system/sysCommandRunner.js';
+import { enqueueAlert as defaultEnqueueAlert } from '../services/alertQueueService.js';
 
 /**
  * In-memory registry tracking container restart history for circuit-breaker

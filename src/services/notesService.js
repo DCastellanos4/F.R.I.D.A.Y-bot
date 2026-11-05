@@ -1,10 +1,11 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DATA_DIR } from '../config/paths.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const NOTES_BASE_DIR = path.resolve(__dirname, 'data', 'notes');
+const NOTES_BASE_DIR = path.join(DATA_DIR, 'notes');
 
 /**
  * Triggers indicating an explicit personal note instruction.

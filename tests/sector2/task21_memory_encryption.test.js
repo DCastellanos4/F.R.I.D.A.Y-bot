@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 
-import { guardarMemoria, buscarMemorias, listarMemorias, olvidarMemoria } from '../../memoryService.js';
+import { guardarMemoria, buscarMemorias, listarMemorias, olvidarMemoria } from '../../src/services/memoryService.js';
 import { assertNoEmojis } from './helpers/s2Validators.js';
 
 const __filename = fileURLToPath(import.meta.url);

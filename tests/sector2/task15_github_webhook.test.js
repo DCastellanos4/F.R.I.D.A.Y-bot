@@ -6,7 +6,7 @@ import {
   formatWorkflowFailureAlert,
   handleWebhookPayload,
   processWebhookRequest
-} from '../../githubWebhookService.js';
+} from '../../src/monitors/githubWebhookService.js';
 import {
   GITHUB_PAYLOADS,
   TEST_WEBHOOK_SECRET,

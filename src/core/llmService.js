@@ -1,6 +1,6 @@
 import { Ollama } from 'ollama';
 import OpenAI from 'openai';
-import { config } from './config.js';
+import { config } from '../config/config.js';
 
 // Ventana de contexto y limite de generacion configurables por entorno.
 // Subirlos en un VPS ARM es una HIPOTESIS a medir (latencia y memoria suben

@@ -4,7 +4,7 @@ import {
   getTunnelStatus,
   startTunnel,
   stopTunnel
-} from '../../tunnelManagerService.js';
+} from '../../src/system/tunnelManagerService.js';
 import {
   CLOUDFLARE_TUNNEL_OUTPUTS,
   TAILSCALE_JSON_OUTPUTS
