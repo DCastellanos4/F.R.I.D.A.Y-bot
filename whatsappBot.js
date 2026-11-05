@@ -31,6 +31,7 @@ import { iniciarMonitorFechas } from './src/services/specialDatesService.js';
 import { iniciarMonitorSnoozes } from './src/services/snoozeService.js';
 import { procesarUbicacionEntrante } from './src/services/arrivalWatchService.js';
 import { iniciarMonitorDigest } from './src/services/brainDigestService.js';
+import { enHorarioSilencio } from './src/services/quietHoursService.js';
 import { programarEnvioMatutino } from './src/services/dailyBriefing.js';
 import { normalizarTexto } from './src/services/memoryService.js';
 import { transcribirAudioBuffer } from './src/services/voiceService.js';
@@ -193,8 +194,11 @@ export function setMockSocket(mockSock) {
 /**
  * Drena y despacha las alertas pendientes de la cola entre procesos al chat de David.
  */
-export async function drenarColaAlertas() {
-  const alertas = drainAlerts();
+export async function drenarColaAlertas(deps = {}) {
+  // Modo desconexion nocturno (nº 50): dentro de la franja las alertas no
+  // urgentes se quedan en cola hasta que acabe; no se descartan.
+  if (enHorarioSilencio(deps.quietDeps || {})) return [];
+  const alertas = (deps.drenar || drainAlerts)();
   for (const alerta of alertas) {
     const textoAlerta = formatAlertText(alerta);
     await enviarMensajeADavid(textoAlerta);
@@ -695,8 +699,11 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
       }
 
       // 5. Captura y persistencia automatica de Notas Personales
+      // Las entradas de diario (nº 43) van al diario via JARVIS, no a las
+      // notas del Second Brain.
       const esSelfChat = remoteJid.includes(NUMERO_DAVID_AUTORIZADO);
-      if (isPersonalNote(texto, esSelfChat)) {
+      const esEntradaDiario = /\bdiario\b/i.test(texto);
+      if (!esEntradaDiario && isPersonalNote(texto, esSelfChat)) {
         console.log(`[WhatsApp Nota Personal] Detectada: "${texto}"`);
         const resNota = await savePersonalNote(texto, {
           source: esAudio ? 'audio' : 'text',
@@ -888,6 +895,15 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
           rutaArchivoDigest: deps.rutaArchivoDigest,
           carpetaNotas: deps.carpetaNotas,
           extraerArticulo: deps.extraerArticulo,
+          carpetaDiario: deps.carpetaDiario,
+          rutaArchivoHabitos: deps.rutaArchivoHabitos,
+          rutaArchivoMenus: deps.rutaArchivoMenus,
+          rutaArchivoCompra: deps.rutaArchivoCompra,
+          rutaArchivoRecomendador: deps.rutaArchivoRecomendador,
+          rutaArchivoQuedadas: deps.rutaArchivoQuedadas,
+          rutaArchivoNocturno: deps.rutaArchivoNocturno,
+          obtenerNoticiasDeportes: deps.obtenerNoticiasDeportes,
+          obtenerMemorias: deps.obtenerMemorias,
           otpDelivery: async ({ otpCode, ttlSeconds, reason, command }) => {
             await sock.sendMessage(remoteJid, {
               text: `Codigo de autorizacion 2FA para el comando critico "${command}" (${reason}):\n\n${otpCode}\n\nValidez: ${ttlSeconds} segundos. Responde "confirmar otp ${otpCode}" para autorizar la ejecucion. Este codigo solo lo ves tu.`

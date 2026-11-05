@@ -10,8 +10,8 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ## Resumen
 
-- Implementadas: 21 de 50 operativas (nº 2, 5, 6, 17, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42) + 3 pendientes de config del propietario (nº 1 radar; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: via de texto operativa, lectura de imagen pendiente de configurar el adaptador). La nº 36 lleva una dependencia externa relevante, ver su entrada.
-- Pendientes: 26 de 50 (50 - 21 operativas - 3 config-required).
+- Implementadas: 29 de 50 operativas (nº 2, 5, 6, 17, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50) + 3 pendientes de config del propietario (nº 1 radar; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: via de texto operativa, lectura de imagen pendiente de configurar el adaptador). La nº 36 lleva una dependencia externa relevante, ver su entrada.
+- Pendientes: 18 de 50 (50 - 29 operativas - 3 config-required).
 
 ## Detalle por funcion
 
@@ -113,21 +113,21 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ### Bienestar y ocio
 
-- **43. Diario personal por voz** - Pendiente. Bloque por priorizar.
+- **43. Diario personal por voz o texto** - Implementada (bloque 9). Entradas por dia en data/diario/AAAA-MM-DD.md (append con hora, calendario Europe/Madrid). La voz llega transcrita por el flujo de audio existente, asi que es el mismo camino que el texto. La captura automatica de notas personales excluye las frases de diario para que lleguen al diario y no al Second Brain. Herramientas: escribir_diario, leer_diario.
 
-- **44. Seguimiento de hábitos** - Pendiente. Bloque por priorizar.
+- **44. Seguimiento de hábitos** - Implementada (bloque 9). Habitos con marcado diario y racha de dias seguidos (calendario Europe/Madrid; hoy o ayer sostienen la racha). Sin avisos proactivos: seguimiento bajo demanda de David. Herramientas: registrar_habito, marcar_habito, listar_habitos.
 
-- **45. Planificador de menús semanal** - Pendiente. Bloque por priorizar.
+- **45. Planificador de menús semanal** - Implementada (bloque 9). Comida y cena por dia (lunes a domingo, semana anclada al lunes). sugerir_menu solo PROPONE con el modelo: la propuesta nunca se persiste sola; se guarda lo que David confirme con poner_menu. Herramientas: poner_menu, ver_menu, sugerir_menu.
 
-- **46. Lista de la compra por voz** - Pendiente. Bloque por priorizar.
+- **46. Lista de la compra por voz o texto** - Implementada (bloque 9). Anadir (uno o varios, sin duplicados), listar, tachar y vaciar; vaciar solo con peticion textual de David. Herramientas: anadir_compra, listar_compra, tachar_compra, vaciar_compra.
 
-- **47. Recomendador de series y pelis** - Pendiente. Bloque por priorizar.
+- **47. Recomendador de series y pelis** - Implementada (bloque 9). Recomienda con el modelo usando los gustos guardados en memoria y sin repetir titulos ya recomendados (historial persistente). Sin el modelo no inventa recomendaciones. Herramienta: recomendar_serie_pelicula.
 
-- **48. Planificador de quedadas** - Pendiente. Bloque por priorizar.
+- **48. Planificador de quedadas** - Implementada (bloque 9). Registra quedadas (titulo, fecha, hora, lugar, participantes). redactar_invitacion devuelve SOLO un borrador para que David lo revise y lo envie el: el bot nunca lo manda a terceros. Herramientas: crear_quedada, listar_quedadas, redactar_invitacion.
 
-- **49. Resumen deportivo** - Pendiente. Bloque por priorizar.
+- **49. Resumen deportivo** - Implementada (bloque 9). Usa las fuentes RSS reales ya curadas en newsService (rama deportes: El Confidencial, El Periodico, Marca). Resume solo lo que traen los titulares; si los feeds no responden o no hay titulares, lo dice y no inventa marcadores. Herramienta: resumen_deportivo.
 
-- **50. Modo desconexión nocturno** - Pendiente. Bloque por priorizar.
+- **50. Modo desconexión nocturno** - Implementada (bloque 9). Activo y dentro de la franja (por defecto 23:00-08:00, Europe/Madrid, cruza medianoche), drenarColaAlertas retiene las alertas no urgentes en cola hasta que acabe la franja; nada se descarta. Los recordatorios puntuales que David programa suenan igual. No lleva guardia de opt-in porque la direccion segura es silenciar, y la activacion la pide el propio David por chat. Herramienta: configurar_modo_nocturno.
 
 ## Orden de trabajo propuesto
 
