@@ -349,3 +349,13 @@ test('[Unit] Bash: verificacion posterior es allowlist de solo lectura e inmune 
   assert.equal(bashSvc.buildVerificationCommand('pm2 status api'), null, 'una lectura no genera otra verificacion');
   assert.equal(bashSvc.buildVerificationCommand(''), null);
 });
+
+test('[Unit] Historial: redacta OTP y credenciales antes de persistir', () => {
+  historial.limpiarHistorial('chat-redact@test');
+  historial.registrarMensaje('chat-redact@test', 'user', 'confirmar otp 123456');
+  historial.registrarMensaje('chat-redact@test', 'assistant', 'Codigo de autorizacion 2FA para el comando: 999888');
+  const h = historial.obtenerHistorial('chat-redact@test');
+  const conjunto = h.map((m) => m.content).join('\n');
+  assert.ok(!conjunto.includes('123456'), 'el OTP no debe persistirse');
+  assert.ok(conjunto.includes('[redactado: dato sensible]'));
+});
