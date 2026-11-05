@@ -39,6 +39,8 @@ import { crearPlanEstudio, listarPlanes, registrarAvance, resumenPlan, programar
 import { agregarFlashcard, pendientesDeRepaso, registrarRespuesta, listarFlashcards, resumenFlashcards, configurarRepaso, iniciarMonitorFlashcards } from '../services/flashcardService.js';
 import { registrarGasto, eliminarGasto, listarGastos, resumenMensual, registrarSuscripcion, listarSuscripciones, configurarPresupuesto, estadoPresupuestos, configurarAvisosSuscripciones } from '../services/financeService.js';
 import { registrarProceso, dejarDeVigilar, listarProcesos, configurarVigilancia } from '../services/processWatchdogService.js';
+import { activarTraductor, desactivarTraductor } from '../services/translatorModeService.js';
+import { buscarEnHistorial } from '../services/historySearchService.js';
 import { escanearRadar, configurarRadar, leerConfigRadar, iniciarMonitorRadar } from '../services/jobRadarService.js';
 import {
   setVipMode,
@@ -183,6 +185,7 @@ export function analizarIntencion(mensaje) {
     estudio: /(ex[aá]men(es)?|\bestudiar\b|plan\s+de\s+estudio|temario|asignatura(s)?|flashcard(s)?|tarjeta(s)?\s+de\s+repaso|repaso\s+espaciado|\brepasar\b)/i,
     finanzas: /(\bgastos?\b|\bgast[eé]\b|\btickets?\b|recibo(s)?|suscripci[oó]n(es)?|presupuesto(s)?|\bfinanzas\b|cu[aá]nto\s+(he\s+|llevo\s+)?gastado|renovaci[oó]n\s+de)/i,
     procesos: /(\bvigil\w*\s+(el\s+|un\s+)?proceso|proceso\s+(caido|vivo|muerto|parado)|procesos\s+del\s+(vps|servidor)|vigilancia\s+de\s+procesos)/i,
+    comunicacion: /(\btraduc|\btraductor|qu[eé]\s+le\s+respondo|sugier\w*\s+respuesta|busca(r)?\s+en\s+(el\s+)?historial|qu[eé]\s+te\s+dije)/i,
 
     // Terminal, consola bash y codigos 2FA OTP (Sector 2)
     bash: /(consola|terminal|bash|comando|ejecuta|ejecutar|lanzar|shell|otp|2fa|autorizar|confirmar\s+otp|codigo\s+de\s+confirmacion|uptime|top|free|df|ps\s+aux|pm2\s+status|pm2\s+restart|systemctl)/i,
@@ -227,6 +230,7 @@ export function analizarIntencion(mensaje) {
   let matchEstudio = intents.estudio.test(sinNombre);
   let matchFinanzas = intents.finanzas.test(sinNombre);
   let matchProcesos = intents.procesos.test(sinNombre);
+  let matchComunicacion = intents.comunicacion.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
   if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio) {
@@ -323,6 +327,9 @@ export function analizarIntencion(mensaje) {
   if (matchProcesos) {
     tools.push(...herramientasJarvis.filter(h => ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'].includes(h.function.name)));
   }
+  if (matchComunicacion) {
+    tools.push(...herramientasJarvis.filter(h => ['activar_traductor', 'desactivar_traductor', 'sugerir_respuestas', 'buscar_en_historial'].includes(h.function.name)));
+  }
 
   // Safety Net: si no encajó en ninguna categoría pero tampoco es chit-chat, pasar todas las herramientas
   if (tools.length === 0) {
@@ -356,6 +363,7 @@ export function analizarIntencion(mensaje) {
   if (matchEstudio) intenciones.push('estudio');
   if (matchFinanzas) intenciones.push('finanzas');
   if (matchProcesos) intenciones.push('procesos');
+  if (matchComunicacion) intenciones.push('comunicacion');
 
   // Eliminar duplicados
   const unicas = [];
@@ -596,6 +604,33 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
         resultadoTool = res.ok
           ? `Presupuesto fijado, David: ${res.categoria}, ${res.limite.toFixed(2)} EUR al mes. Te avisare al superar el 80%.`
           : `No lo he podido fijar: ${res.error}`;
+      } else if (nombreFuncion === 'activar_traductor') {
+        const res = activarTraductor({ idioma: args.idioma }, { rutaArchivo: opciones.rutaArchivoTraductor, chatId: opciones.chatId });
+        resultadoTool = res.ok
+          ? `Modo traductor activado, David: traducire tus mensajes al ${res.idioma} en este chat. Dime "desactiva el traductor" cuando quieras apagarlo.`
+          : res.error;
+      } else if (nombreFuncion === 'desactivar_traductor') {
+        const res = desactivarTraductor({ rutaArchivo: opciones.rutaArchivoTraductor, chatId: opciones.chatId });
+        resultadoTool = res.ok ? 'Traductor desactivado, David.' : res.error;
+      } else if (nombreFuncion === 'sugerir_respuestas') {
+        if (typeof opciones.chatCompletion !== 'function') {
+          resultadoTool = 'Necesito el modelo de lenguaje para redactar sugerencias.';
+        } else {
+          const resp = await opciones.chatCompletion({
+            messages: [
+              { role: 'system', content: `Redacta 3 posibles respuestas${args.tono ? ` en tono ${String(args.tono).slice(0, 40)}` : ''} al mensaje que te pasa David. Numeralas (1, 2, 3), una por linea, sin explicaciones. Son propuestas para que el elija: no las envies a nadie.` },
+              { role: 'user', content: String(args.mensaje || '').slice(0, 2000) }
+            ]
+          });
+          resultadoTool = (resp?.message?.content || resp?.content || 'No se me ocurren sugerencias ahora mismo.').trim();
+        }
+      } else if (nombreFuncion === 'buscar_en_historial') {
+        const res = buscarEnHistorial({ chatId: opciones.chatId, termino: args.termino, limite: args.limite });
+        resultadoTool = !res.ok
+          ? res.error
+          : res.total === 0
+            ? `No encuentro "${args.termino}" en el historial de este chat.`
+            : `Coincidencias con "${args.termino}" (mas recientes primero):\n` + res.coincidencias.map((c, i) => `${i + 1}. [${c.role}] ${c.content}`).join('\n');
       } else if (nombreFuncion === 'vigilar_proceso') {
         const res = registrarProceso({ nombre: args.nombre, patron: args.patron, cpuLimite: args.cpuLimite, memLimite: args.memLimite }, { rutaArchivo: opciones.rutaArchivoProcesos });
         resultadoTool = res.ok
@@ -1070,6 +1105,7 @@ Directrices de selección:
 13b. ESTUDIO: Para crear planes de estudio, "planificar_estudio" (asignatura, fechaExamen AAAA-MM-DD, temas; la hora de estudio solo si David la indica, nunca inventada); si ya hay plan sin recordatorios, "programar_recordatorios_estudio" con la hora elegida. Consulta con "listar_planes_estudio" y avance con "registrar_avance_estudio". Para tarjetas: "crear_flashcard", "repasar_flashcards" y "responder_flashcard"; las rondas proactivas se configuran con "configurar_repaso_flashcards" y solo se activan si David lo pide textualmente.
 13c. FINANZAS: Los gastos se anotan con "registrar_gasto" (importe y comercio obligatorios; fecha por defecto hoy), se consultan con "listar_gastos" y "resumen_gastos_mes". Suscripciones con "registrar_suscripcion"/"listar_suscripciones" (el vigilante avisa 3 dias antes de renovar, solo si David las registro el). Presupuestos con "configurar_presupuesto"/"estado_presupuestos" (alerta al 80%). Los avisos de renovacion solo se activan si David lo pide textualmente ("configurar_avisos_suscripciones"). Nunca inventes importes, comercios ni fechas: si faltan, preguntalos.
 13d. PROCESOS: David registra procesos del VPS a vigilar con "vigilar_proceso" (nombre, patron opcional, limites de CPU/memoria opcionales) y los consulta con "listar_procesos_vigilados"/"dejar_vigilar_proceso". La vigilancia proactiva solo se activa si el la pide textualmente ("activa la vigilancia de procesos", herramienta "configurar_vigilante_procesos"). El vigilante solo mide y avisa; nunca reinicia ni mata procesos.
+13e. COMUNICACION: modo traductor por chat ("activar_traductor" con el idioma; David lo desactiva con "desactivar_traductor"), sugerencias de respuesta ("sugerir_respuestas": propon 3, nunca las envies) y buscador del historial del chat ("buscar_en_historial").
 14. EMPLEO Y PRACTICAS: Para registrar o actualizar candidaturas, "registrar_candidatura" y "actualizar_candidatura"; para consultarlas, "listar_candidaturas". Para lanzar el radar de ofertas, "escanear_ofertas_empleo"; para configurarlo (palabras clave, ubicacion, activacion), "configurar_radar_ofertas". Si una fuente requiere credenciales, informa a David de que configuracion falta en lugar de simular resultados.`;
   }
 
