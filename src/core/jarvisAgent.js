@@ -34,6 +34,8 @@ import {
 import { consultarClima } from '../services/weatherService.js';
 import { chatCompletion, esRespuestaTruncada } from './llmService.js';
 import { clasificarIntencionConModelo, UMBRAL_CONFIANZA } from './intentRouterService.js';
+import { registrarCandidatura, listarCandidaturas, actualizarCandidatura, resumenCandidaturas } from '../services/applicationTrackerService.js';
+import { escanearRadar, configurarRadar, leerConfigRadar, iniciarMonitorRadar } from '../services/jobRadarService.js';
 import {
   setVipMode,
   isVipModeActive,
@@ -172,6 +174,9 @@ export function analizarIntencion(mensaje) {
     // Encuestas
     encuestas: /(crea(r)?|lanza(r)?|haz(me)?|pon(er)?)\s+(una\s+)?encuesta/i,
 
+    // Empleo y practicas: radar de ofertas y CRM de candidaturas
+    empleo: /(pr[aá]cticas\s+(de\s+)?(empresa|curriculares)?|oferta(s)?\s+de\s+(empleo|trabajo|pr[aá]cticas)|busca(r)?\s+(empleo|trabajo|ofertas)|candidatura(s)?|curr[ií]culum|\bcv\b|entrevista\s+(de\s+)?(trabajo|empleo)|infojobs|linkedin|radar\s+de\s+ofertas|seguimiento\s+de\s+candidatura)/i,
+
     // Terminal, consola bash y codigos 2FA OTP (Sector 2)
     bash: /(consola|terminal|bash|comando|ejecuta|ejecutar|lanzar|shell|otp|2fa|autorizar|confirmar\s+otp|codigo\s+de\s+confirmacion|uptime|top|free|df|ps\s+aux|pm2\s+status|pm2\s+restart|systemctl)/i,
 
@@ -211,9 +216,10 @@ export function analizarIntencion(mensaje) {
   let matchInfra = intents.infraestructura.test(sinNombre);
   let matchTunel = intents.tuneles.test(sinNombre);
   let matchBackup = intents.backup.test(sinNombre);
+  let matchEmpleo = intents.empleo.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
-  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup) {
+  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo) {
     return { herramientas: [], intenciones: ['conversacion'], safetyNet: false, esChitChat: true };
   }
 
@@ -295,6 +301,10 @@ export function analizarIntencion(mensaje) {
     tools.push(...herramientasJarvis.filter(h => h.function.name === 'trigger_encrypted_backup'));
   }
 
+  if (matchEmpleo) {
+    tools.push(...herramientasJarvis.filter(h => ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura', 'escanear_ofertas_empleo', 'configurar_radar_ofertas'].includes(h.function.name)));
+  }
+
   // Safety Net: si no encajó en ninguna categoría pero tampoco es chit-chat, pasar todas las herramientas
   if (tools.length === 0) {
     console.log(`[Router Safety Net] El regex no reconoce la intención: "${norm}". Se consultara al clasificador por modelo.`);
@@ -323,6 +333,7 @@ export function analizarIntencion(mensaje) {
   if (matchInfra) intenciones.push('infraestructura');
   if (matchTunel) intenciones.push('tuneles');
   if (matchBackup) intenciones.push('backup');
+  if (matchEmpleo) intenciones.push('empleo');
 
   // Eliminar duplicados
   const unicas = [];
@@ -348,6 +359,7 @@ const HERRAMIENTAS_IDEMPOTENTES = new Set([
   'listar_memorias',
   'listar_mensajes_programados',
   'listar_recordatorios',
+  'listar_candidaturas',
   'listar_productos_vigilados',
   'obtener_noticias_actuales',
   'navegar_y_leer_noticia',
@@ -420,6 +432,80 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
           resultadoTool = res.mensaje || 'Mensaje programado cancelado con éxito, señor.';
         } else {
           resultadoTool = res.mensaje || res.error || 'No se encontró ningún mensaje programado que coincida con ese criterio, señor.';
+        }
+      } else if (nombreFuncion === 'registrar_candidatura') {
+        const res = registrarCandidatura({
+          empresa: args.empresa,
+          puesto: args.puesto,
+          url: args.url,
+          estado: args.estado || 'registrada',
+          notas: args.notas,
+          seguimientoDias: args.seguimientoDias
+        }, { rutaArchivo: opciones.rutaArchivoCandidaturas });
+        if (res.ok) {
+          const seg = res.recordatorio && res.recordatorio.ok !== false ? ' Recordatorio de seguimiento creado.' : '';
+          resultadoTool = `Candidatura registrada, David: ${res.candidatura.puesto} en ${res.candidatura.empresa} (estado: ${res.candidatura.estado}, ID: ${res.candidatura.id}).${seg}`;
+        } else {
+          resultadoTool = `No se pudo registrar la candidatura: ${res.error}`;
+        }
+      } else if (nombreFuncion === 'listar_candidaturas') {
+        const lista = listarCandidaturas({ estado: args.estado || null }, { rutaArchivo: opciones.rutaArchivoCandidaturas });
+        if (lista.length === 0) {
+          const resumen = resumenCandidaturas({ rutaArchivo: opciones.rutaArchivoCandidaturas });
+          resultadoTool = resumen.total === 0
+            ? 'Aun no hay candidaturas registradas.'
+            : `No hay candidaturas en ese estado. Resumen actual: ${Object.entries(resumen.porEstado).filter(([, n]) => n > 0).map(([e, n]) => `${e}: ${n}`).join(', ')}.`;
+        } else {
+          resultadoTool = 'Candidaturas:\n' + lista.map((c, i) => `${i + 1}. ${c.puesto} en ${c.empresa} [${c.estado}] (ID: ${c.id})${c.url ? ` - ${c.url}` : ''}`).join('\n');
+        }
+      } else if (nombreFuncion === 'actualizar_candidatura') {
+        const res = actualizarCandidatura(args.criterio, { estado: args.estado || null, notas: args.notas || null }, { rutaArchivo: opciones.rutaArchivoCandidaturas });
+        if (res.ok) {
+          resultadoTool = `Candidatura actualizada, David: ${res.candidatura.puesto} en ${res.candidatura.empresa} pasa a estado [${res.candidatura.estado}].`;
+        } else if (res.coincidencias) {
+          resultadoTool = `${res.error}\n` + res.coincidencias.map((c) => `- ${c.puesto} en ${c.empresa} [${c.estado}] (ID: ${c.id})`).join('\n');
+        } else {
+          resultadoTool = res.error;
+        }
+      } else if (nombreFuncion === 'escanear_ofertas_empleo') {
+        const res = await escanearRadar(opciones.radarDeps || {});
+        if (!res.escaneado) {
+          resultadoTool = `Radar no escaneado: ${res.motivo}`;
+        } else {
+          const estadoFuentes = res.fuentes.map((f) => `${f.fuente}: ${f.estado}${f.detalle ? ` (${f.detalle})` : ''}`).join('; ');
+          resultadoTool = res.nuevas.length === 0
+            ? `Escaneo completado sin ofertas nuevas. Fuentes: ${estadoFuentes}.`
+            : `Radar: ${res.nuevas.length} oferta(s) nueva(s):\n` + res.nuevas.map((o, i) => `${i + 1}. ${o.titulo} - ${o.empresa || 'Sin empresa'}${o.url ? ` (${o.url})` : ''}`).join('\n') + `\nFuentes: ${estadoFuentes}.`;
+        }
+      } else if (nombreFuncion === 'configurar_radar_ofertas') {
+        // Activar el radar exige intencion explicita en el mensaje original de
+        // David (canal confiable); no basta con que el modelo ponga activo:true
+        const quiereActivar = args.activo === true;
+        const mensajePideActivar = /(activa(r|s|do)?|enciend(e|er)|pon\s+en\s+marcha|arranca(r)?)\s+(el\s+)?radar|radar\s+(activo|activado|en\s+marcha)/i.test(opciones.mensajeUsuario || '');
+        const activoAplicar = quiereActivar ? (mensajePideActivar ? true : null) : (args.activo ?? null);
+        const res = configurarRadar({
+          palabrasClave: args.palabrasClave || null,
+          ubicacion: args.ubicacion || null,
+          remoto: args.remoto ?? null,
+          activo: activoAplicar
+        }, opciones.radarDeps || {});
+        if (res.ok && quiereActivar && !mensajePideActivar) {
+          const cfgPendiente = leerConfigRadar(opciones.radarDeps || {});
+          resultadoTool = `Configuracion guardada, pero NO he activado el radar porque tu mensaje no lo pedia explicitamente (estado actual: ${cfgPendiente.activo ? 'activo' : 'desactivado'}). Si quieres activarlo, dimelo claramente: "activa el radar".`;
+          return { texto: resultadoTool };
+        }
+        if (res.ok) {
+          const cfg = leerConfigRadar(opciones.radarDeps || {});
+          let estadoMonitor = '';
+          if (cfg.activo) {
+            const monitor = iniciarMonitorRadar(opciones.radarDeps || {});
+            estadoMonitor = monitor.iniciado
+              ? ' Monitor de rondas activo.'
+              : ` Monitor en espera: ${monitor.motivo}`;
+          }
+          resultadoTool = `Radar configurado, David: palabras clave [${cfg.palabrasClave.join(', ')}], ubicacion ${cfg.ubicacion || 'sin definir'}, estado ${cfg.activo ? 'ACTIVO' : 'desactivado'}.${estadoMonitor} La fuente InfoJobs requiere credenciales (INFOJOBS_CLIENT_ID/SECRET) para devolver ofertas reales; las fuentes HTML solo se editan en el fichero de configuracion.`;
+        } else {
+          resultadoTool = `No se pudo configurar el radar: ${res.error}`;
         }
       } else if (nombreFuncion === 'guardar_memoria') {
         const res = guardarMemoria({
@@ -703,6 +789,7 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
 
 export async function consultarJarvis(mensajeUsuario, historial = [], opciones = {}) {
   const tiempoInicio = Date.now();
+  opciones.mensajeUsuario = mensajeUsuario; // mensaje original de David para verificar intencion en acciones sensibles
 
   // Detección directa de URLs para resumen rápido
   const urlMatch = mensajeUsuario.match(/https?:\/\/[^\s]+/i);
@@ -798,7 +885,8 @@ Directrices de selección:
 9. GENERADOR CRIPTOGRAFICO: Para generar contraseñas seguras, PINs, tokens o claves criptograficas, invoca "generate_crypto_credential".
 10. INFRAESTRUCTURA Y SERVICIOS: Para consultar el estado de Docker, espacio en disco, red o certificados SSL, invoca "get_infrastructure_status".
 11. GESTION DE TUNELES: Para consultar estado o arrancar/detener tuneles Cloudflare o Tailscale, invoca "manage_tunnel".
-12. COPIAS DE SEGURIDAD: Para generar backups cifrados AES-256-GCM inmediatos, invoca "trigger_encrypted_backup".`;
+12. COPIAS DE SEGURIDAD: Para generar backups cifrados AES-256-GCM inmediatos, invoca "trigger_encrypted_backup".
+13. EMPLEO Y PRACTICAS: Para registrar o actualizar candidaturas, "registrar_candidatura" y "actualizar_candidatura"; para consultarlas, "listar_candidaturas". Para lanzar el radar de ofertas, "escanear_ofertas_empleo"; para configurarlo (palabras clave, ubicacion, activacion), "configurar_radar_ofertas". Si una fuente requiere credenciales, informa a David de que configuracion falta en lugar de simular resultados.`;
   }
 
   const mensajes = [

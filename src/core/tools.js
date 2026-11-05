@@ -2,6 +2,162 @@ export const herramientasJarvis = [
   {
     type: 'function',
     function: {
+      name: 'planificar_estudio',
+      description: 'Crea un plan de estudio para una asignatura: reparte los temas entre los dias que quedan hasta el examen (ultimo dia de repaso) y programa un recordatorio por sesion.',
+      parameters: {
+        type: 'object',
+        properties: {
+          asignatura: { type: 'string', description: 'Nombre de la asignatura o examen.' },
+          fechaExamen: { type: 'string', description: 'Fecha del examen en formato AAAA-MM-DD.' },
+          temas: { type: 'array', items: { type: 'string' }, description: 'Lista de temas a repartir.' },
+          horaEstudio: { type: 'string', description: 'Hora diaria del recordatorio, formato HH:MM. Por defecto 18:00.' }
+        },
+        required: ['asignatura', 'fechaExamen', 'temas']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_planes_estudio',
+      description: 'Lista los planes de estudio activos con su progreso (sesiones completadas y pendientes).',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'registrar_avance_estudio',
+      description: 'Marca como completada una sesion de estudio de un plan (la primera pendiente, o la de una fecha concreta).',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string', description: 'ID del plan o texto de la asignatura.' },
+          fecha: { type: 'string', description: 'Fecha de la sesion (AAAA-MM-DD). Sin fecha, la primera pendiente.' }
+        },
+        required: ['criterio']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'crear_flashcard',
+      description: 'Crea una tarjeta de repaso espaciado (pregunta y respuesta) para una asignatura. Entra en repaso inmediatamente.',
+      parameters: {
+        type: 'object',
+        properties: {
+          asignatura: { type: 'string', description: 'Asignatura o mazo. Por defecto "general".' },
+          pregunta: { type: 'string', description: 'Pregunta de la tarjeta.' },
+          respuesta: { type: 'string', description: 'Respuesta correcta.' }
+        },
+        required: ['pregunta', 'respuesta']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'repasar_flashcards',
+      description: 'Muestra las tarjetas que tocan repasar ahora (repaso espaciado), con su ID para responder.',
+      parameters: {
+        type: 'object',
+        properties: {
+          limite: { type: 'number', description: 'Maximo de tarjetas a mostrar. Por defecto 3.' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'responder_flashcard',
+      description: 'Registra como de bien recordaste una tarjeta (calidad 0-5). Acierto (>=3): el repaso se espacia; fallo: vuelve pronto.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'ID de la tarjeta.' },
+          calidad: { type: 'number', description: 'Nota del 0 al 5 sobre como de bien la recordaste.' }
+        },
+        required: ['id', 'calidad']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'registrar_candidatura',
+      description: 'Registra una candidatura de practicas o empleo en el CRM personal: empresa, puesto y estado, con recordatorio de seguimiento opcional para no dejar morir el proceso.',
+      parameters: {
+        type: 'object',
+        properties: {
+          empresa: { type: 'string', description: 'Nombre de la empresa.' },
+          puesto: { type: 'string', description: 'Puesto o rol al que se aplica.' },
+          url: { type: 'string', description: 'Enlace de la oferta, si existe.' },
+          estado: { type: 'string', enum: ['registrada', 'enviada', 'entrevista', 'oferta', 'descartada'], description: 'Estado actual del proceso. Por defecto "registrada".' },
+          notas: { type: 'string', description: 'Notas libres (contacto, salario, stack...).' },
+          seguimientoDias: { type: 'number', description: 'Dias hasta el recordatorio de seguimiento (ej: 5). Sin valor no se crea recordatorio.' }
+        },
+        required: ['empresa', 'puesto']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_candidaturas',
+      description: 'Lista las candidaturas registradas, con filtro opcional por estado, o el resumen del pipeline si no hay ninguna.',
+      parameters: {
+        type: 'object',
+        properties: {
+          estado: { type: 'string', enum: ['registrada', 'enviada', 'entrevista', 'oferta', 'descartada'], description: 'Filtro opcional por estado.' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'actualizar_candidatura',
+      description: 'Actualiza el estado o las notas de una candidatura existente, localizada por id o por texto de empresa/puesto.',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string', description: 'Id de la candidatura o texto de empresa/puesto que la identifique.' },
+          estado: { type: 'string', enum: ['registrada', 'enviada', 'entrevista', 'oferta', 'descartada'], description: 'Nuevo estado del proceso.' },
+          notas: { type: 'string', description: 'Nota a anadir al historial de notas.' }
+        },
+        required: ['criterio']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'escanear_ofertas_empleo',
+      description: 'Ejecuta ahora una ronda del radar de ofertas de practicas/empleo con la configuracion guardada. Informa del estado real de cada fuente; si falta configuracion o credenciales lo dice en lugar de inventar ofertas.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'configurar_radar_ofertas',
+      description: 'Configura el radar de ofertas: palabras clave, ubicacion, remoto y activacion. Necesario antes del primer escaneo util.',
+      parameters: {
+        type: 'object',
+        properties: {
+          palabrasClave: { type: 'array', items: { type: 'string' }, description: 'Terminos de busqueda (ej: ["full stack", "practicas"]).' },
+          ubicacion: { type: 'string', description: 'Provincia o ciudad objetivo (ej: Madrid).' },
+          remoto: { type: 'boolean', description: 'true para priorizar remoto.' },
+          activo: { type: 'boolean', description: 'true solo si David pidio activar el radar textualmente en su mensaje; la activacion sin peticion explicita se rechaza.' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'consultar_clima',
       description: 'OBLIGATORIA: Consulta el estado meteorológico actual y la previsión (temperatura, probabilidad de lluvia, viento, estado del cielo) para cualquier ciudad, pueblo o lugar del mundo tanto de hoy como de mañana, incluyendo horas específicas si se solicitan (ej: Madrid, Barcelona, Valencia, Londres).',
       parameters: {
@@ -688,6 +844,8 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   infraestructura: ['get_infrastructure_status'],
   tuneles: ['manage_tunnel'],
   backup: ['trigger_encrypted_backup'],
+  empleo: ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura', 'escanear_ofertas_empleo', 'configurar_radar_ofertas'],
+  estudio: ['planificar_estudio', 'listar_planes_estudio', 'registrar_avance_estudio', 'crear_flashcard', 'repasar_flashcards', 'responder_flashcard'],
   conversacion: []
 };
 

@@ -1,0 +1,144 @@
+# Roadmap: 50 funciones para F.R.I.D.A.Y.
+
+Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 funciones para tu F.R.I.D.A.Y.", version corregida). Este archivo es el registro durable del estado de cada una: lo implementado, lo que requiere configuracion del propietario y lo pendiente.
+
+## Leyenda de estados
+
+- **Implementada**: herramientas cableadas al agente, con pruebas unitarias y de entrada.
+- **Implementada, requiere config**: el codigo funciona, pero necesita credenciales o datos del propietario para dar resultados reales; sin ellos informa del estado, nunca simula.
+- **Pendiente**: sin implementar. El bloque asignado es una propuesta de orden, no un compromiso cerrado.
+
+## Resumen
+
+- Implementadas: 1 de 50 operativa (nº 2 CRM) + 1 con adaptadores listos pendientes de config del propietario (nº 1 radar).
+- Pendientes: 48 de 50.
+
+## Detalle por funcion
+
+### Carrera y prácticas
+
+- **1. Radar de ofertas de prácticas y empleo** - Adaptadores implementados, requiere config (bloque 1). Ninguna fuente real verificada todavia: el radar NO esta operativo hasta que David aporte credenciales o una fuente HTML. Dos adaptadores listos: InfoJobs (requiere credenciales INFOJOBS_CLIENT_ID e INFOJOBS_CLIENT_SECRET) y html-generico (requiere url y selectores CSS de la fuente). Sin configuracion lista informa del estado sin simular resultados. Monitor periodico cada 6 h (DAVIS_RADAR_INTERVALO_MS), alertas por la cola proactiva. Herramientas: escanear_ofertas_empleo, configurar_radar_ofertas.
+
+- **2. CRM de candidaturas** - Implementada (bloque 1). CRM completo: registrar_candidatura (con dedupe y recordatorio de seguimiento automatico), listar_candidaturas, actualizar_candidatura. Estados: registrada, enviada, entrevista, oferta, descartada.
+
+- **3. Simulador de entrevistas técnicas por voz** - Pendiente. Bloque por priorizar.
+
+- **4. Analizador de CV contra oferta** - Pendiente. Bloque por priorizar.
+
+- **5. Planificador de estudio** - Pendiente. Propuesta: Bloque 2 (estudio).
+
+- **6. Flashcards de repaso espaciado** - Pendiente. Propuesta: Bloque 2 (estudio).
+
+- **7. Resumidor de apuntes** - Pendiente. Bloque por priorizar.
+
+- **8. Calendario de entregas y exámenes** - Pendiente. Bloque por priorizar.
+
+### Desarrollo y DevOps
+
+- **9. Revisor de tus propias PRs** - Pendiente. Bloque por priorizar.
+
+- **10. Vigilante de dependencias** - Pendiente. Bloque por priorizar.
+
+- **11. Panel de métricas del bot** - Pendiente. Bloque por priorizar.
+
+- **12. Alertas de actividad en tus repos** - Pendiente. Bloque por priorizar.
+
+- **13. Generador de CHANGELOG** - Pendiente. Bloque por priorizar.
+
+- **14. Modo pair programming por voz** - Pendiente. Bloque por priorizar.
+
+- **15. Gestor de ideas y feature requests** - Pendiente. Bloque por priorizar.
+
+- **16. Backup externo de la sesión del bot** - Pendiente. Bloque por priorizar.
+
+### Servidor y hogar
+
+- **17. Vigilante de CPU y procesos del VPS** - Pendiente. Propuesta: Bloque 4 (servidor).
+
+- **18. Wake-on-LAN** - Pendiente. Bloque por priorizar.
+
+- **19. Monitor de red doméstica** - Pendiente. Bloque por priorizar.
+
+- **20. Control de domótica** - Pendiente. Bloque por priorizar.
+
+- **21. Panel de descargas** - Pendiente. Bloque por priorizar.
+
+- **22. Termómetro de la factura de Oracle** - Pendiente. Bloque por priorizar.
+
+- **23. Watchdog externo del bot** - Pendiente. Propuesta: Bloque 4 (servidor).
+
+### Finanzas personales
+
+- **24. Registro de gastos por foto** - Pendiente. Propuesta: Bloque 3 (finanzas).
+
+- **25. Resumen mensual de gasto** - Pendiente. Propuesta: Bloque 3 (finanzas).
+
+- **26. Vigilante de suscripciones** - Pendiente. Propuesta: Bloque 3 (finanzas).
+
+- **27. Presupuesto mensual con alertas** - Pendiente. Propuesta: Bloque 3 (finanzas).
+
+- **28. Seguimiento de vuelos y trenes** - Pendiente. Bloque por priorizar.
+
+### Comunicación y WhatsApp
+
+- **29. Traductor en modo conversación** - Pendiente. Bloque por priorizar.
+
+- **30. Respuestas sugeridas** - Pendiente. Bloque por priorizar.
+
+- **31. Buscador del historial** - Pendiente. Bloque por priorizar.
+
+- **32. Cumpleaños y fechas señaladas** - Pendiente. Bloque por priorizar.
+
+- **33. Resumen automático de enlaces** - Pendiente. Bloque por priorizar.
+
+- **34. Snooze de conversaciones** - Pendiente. Bloque por priorizar.
+
+- **35. Estadísticas de grupos** - Pendiente. Bloque por priorizar.
+
+- **36. Aviso de llegada** - Pendiente. Bloque por priorizar.
+
+### Segundo cerebro
+
+- **37. Memoria de contactos** - Pendiente. Bloque por priorizar.
+
+- **38. Búsqueda semántica en memorias** - Pendiente. Bloque por priorizar.
+
+- **39. Digest semanal del segundo cerebro** - Pendiente. Bloque por priorizar.
+
+- **40. Wiki personal navegable** - Pendiente. Bloque por priorizar.
+
+- **41. Captura desde el navegador** - Pendiente. Bloque por priorizar.
+
+- **42. Preguntas sobre tus documentos** - Pendiente. Bloque por priorizar.
+
+### Bienestar y ocio
+
+- **43. Diario personal por voz** - Pendiente. Bloque por priorizar.
+
+- **44. Seguimiento de hábitos** - Pendiente. Bloque por priorizar.
+
+- **45. Planificador de menús semanal** - Pendiente. Bloque por priorizar.
+
+- **46. Lista de la compra por voz** - Pendiente. Bloque por priorizar.
+
+- **47. Recomendador de series y pelis** - Pendiente. Bloque por priorizar.
+
+- **48. Planificador de quedadas** - Pendiente. Bloque por priorizar.
+
+- **49. Resumen deportivo** - Pendiente. Bloque por priorizar.
+
+- **50. Modo desconexión nocturno** - Pendiente. Bloque por priorizar.
+
+## Orden de trabajo propuesto
+
+1. **Bloque 1 - Empleo y practicas (nº 1 y 2)**: implementado en esta rama. Priorizado por la busqueda de practicas activa de David.
+2. **Bloque 2 - Estudio (nº 5 y 6)**: planificador de estudio y flashcards, apoyados en el sistema de recordatorios existente.
+3. **Bloque 3 - Finanzas (nº 24 a 27)**: registro de gastos, resumen mensual, suscripciones y presupuesto.
+4. **Bloque 4 - Servidor (nº 17 y 23)**: vigilante de CPU y watchdog externo del bot.
+5. **Resto**: se prioriza con David segun utilidad inmediata.
+
+## Configuracion que necesita David para el bloque 1
+
+- **Radar con InfoJobs**: variables INFOJOBS_CLIENT_ID e INFOJOBS_CLIENT_SECRET en el entorno del bot.
+- **Radar con fuente HTML propia**: url del portal y selectores CSS (item, titulo, enlace; empresa y ubicacion opcionales) en data/job_radar.json o via configurar_radar_ofertas.
+- Sin esa configuracion el radar responde con el estado config-required de cada fuente, sin inventar ofertas.
