@@ -136,15 +136,32 @@ CORTE=1
 # del restart perderia un CONECTADO o un QR inmediatos.
 JLIST_PRE=$($PM2 jlist || true)
 OUT_LOG_PRE=$(echo "$JLIST_PRE" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);const p=j.find(x=>x.name==='jarvis-whatsapp');console.log(p&&p.pm2_env?p.pm2_env.pm_out_log_path||'':'')}catch(e){console.log('')}})")
-OFFSET_PRE=0
-[ -n "$OUT_LOG_PRE" ] && [ -f "$OUT_LOG_PRE" ] && OFFSET_PRE=$(stat -c %s "$OUT_LOG_PRE")
+# Offset por RUTA para todos los logs de salida conocidos: tras delete+start,
+# PM2 puede REUSAR un fichero antiguo (p.ej. out-1.log) con lineas historicas
+# dentro; solo cuentan los bytes escritos tras el offset de ESA ruta. Un
+# fichero que no existia antes pertenece entero al proceso nuevo.
+DIR_LOGS=$(dirname "${OUT_LOG_PRE:-$BASE/.pm2/logs/jarvis-whatsapp-out.log}")
+declare -A OFFSETS_PRE=()
+for f in "$DIR_LOGS"/jarvis-whatsapp-out*.log; do
+  [ -f "$f" ] && OFFSETS_PRE["$f"]=$(stat -c %s "$f")
+done
 # Corte de procesos con arranque LIMPIO, no 'pm2 restart': restart disparo un
 # bucle de SIGINT en 2 de 2 despliegues (procesos muriendo 3-6s tras arrancar,
 # causa interna de PM2 no determinada); delete+start produjo procesos
 # estables en 2 de 2 recuperaciones. Es el mismo ecosystem y el mismo cwd:
 # solo cambia que el estado interno del proceso PM2 se crea de cero.
 # La verificacion de salud posterior es quien certifica el resultado.
-if ! ($PM2 delete jarvis-api jarvis-whatsapp >/dev/null 2>&1 || true) || ! $PM2 start "$DESTINO/ecosystem.config.cjs" || ! $PM2 save; then
+SALIDA_DEL=$($PM2 delete jarvis-api jarvis-whatsapp 2>&1) || {
+  if echo "$SALIDA_DEL" | grep -qiE "not found|does not exist|doesn't exist|no such process"; then
+    echo "pm2 delete: los procesos no existian (arranque desde cero)."
+  else
+    echo "ESTADO PARCIAL TRAS EL CORTE: pm2 delete fallo por causa desconocida y se PARA antes de seguir tocando procesos:" >&2
+    echo "$(echo "$SALIDA_DEL" | tail -3 | cut -c1-200)" >&2
+    echo "El symlink ya apunta a $DESTINO. NO se revierte automaticamente; restaurar es decision aprobada aparte." >&2
+    exit 1
+  fi
+}
+if ! $PM2 start "$DESTINO/ecosystem.config.cjs" >/dev/null || ! $PM2 save >/dev/null; then
   echo "ESTADO PARCIAL TRAS EL CORTE: el symlink ya apunta a $DESTINO pero el arranque limpio de PM2 FALLO." >&2
   echo "El bot puede estar caido. El codigo nuevo esta activo en disco; el anterior sigue en ${ANTERIOR:-la copia pre-cicd}." >&2
   echo "NO se revierte automaticamente. Restaurar el symlink anterior es una decision aprobada aparte (puede perder datos escritos tras el corte)." >&2
@@ -171,8 +188,7 @@ CONT_T0=$(echo "$JLIST0" | node -e "let d='';process.stdin.on('data',c=>d+=c).on
 # Rota si PM2 cambio la ruta del log al rearrancar: entonces TODO el fichero
 # nuevo pertenece al proceso nuevo. Si no rota, lo nuevo son los bytes tras
 # OFFSET_PRE (marcado antes del restart: incluye eventos inmediatos).
-ROTADO=0
-if [ -n "$OUT_LOG" ] && [ "$OUT_LOG" != "$OUT_LOG_PRE" ]; then ROTADO=1; fi
+# (la rotacion la resuelven los offsets por ruta; no hace falta flag)
 sleep "$VENTANA"
 if ! $PM2 jlist | node -e "
 let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
@@ -199,10 +215,10 @@ if [ -z "$OUT_LOG" ] || [ ! -f "$OUT_LOG" ]; then
   echo "ESTADO PARCIAL TRAS EL CORTE: no se pudo resolver el log de salida de jarvis-whatsapp; sin evidencia de conexion." >&2
   exit 1
 fi
-if [ "$ROTADO" = "1" ]; then
-  NUEVO=$(cat "$OUT_LOG" || true)
+if [ -n "${OFFSETS_PRE[$OUT_LOG]:-}" ]; then
+  NUEVO=$(tail -c +$(( ${OFFSETS_PRE[$OUT_LOG]} + 1 )) "$OUT_LOG" || true)
 else
-  NUEVO=$(tail -c +$((OFFSET_PRE+1)) "$OUT_LOG" || true)
+  NUEVO=$(cat "$OUT_LOG" || true)
 fi
 if echo "$NUEVO" | grep -qE "ESCANEA ESTE CODIGO QR|CODIGO DE VINCULACION"; then
   echo "ESTADO PARCIAL TRAS EL CORTE: WhatsApp pide vinculacion (QR/codigo): sesion invalidada con el estado actual." >&2
