@@ -10,8 +10,8 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ## Resumen
 
-- Implementadas: 15 de 50 operativas (nº 2, 5, 6, 17, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36) + 3 pendientes de config del propietario (nº 1 radar; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: via de texto operativa, lectura de imagen pendiente de configurar el adaptador). La nº 36 lleva una dependencia externa relevante, ver su entrada.
-- Pendientes: 32 de 50 (50 - 15 operativas - 3 config-required).
+- Implementadas: 21 de 50 operativas (nº 2, 5, 6, 17, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42) + 3 pendientes de config del propietario (nº 1 radar; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: via de texto operativa, lectura de imagen pendiente de configurar el adaptador). La nº 36 lleva una dependencia externa relevante, ver su entrada.
+- Pendientes: 26 de 50 (50 - 21 operativas - 3 config-required).
 
 ## Detalle por funcion
 
@@ -99,17 +99,17 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ### Segundo cerebro
 
-- **37. Memoria de contactos** - Pendiente. Bloque por priorizar.
+- **37. Memoria de contactos** - Operativa (Bloque 8): fichas de contacto (nombre, telefono, relacion, email, notas) con registro incremental, busqueda y listado. Datos introducidos por David.
 
-- **38. Búsqueda semántica en memorias** - Pendiente. Bloque por priorizar.
+- **38. Búsqueda semántica en memorias** - Operativa (Bloque 8): buscar_recuerdo_semantico junta candidatos por palabras clave en memorias y notas y el modelo elige por significado; sin modelo responde por palabras clave y lo declara.
 
-- **39. Digest semanal del segundo cerebro** - Pendiente. Bloque por priorizar.
+- **39. Digest semanal del segundo cerebro** - Operativa (Bloque 8): generar_digest_cerebro bajo demanda (resumen con modelo o lista plana declarada). El envio proactivo semanal solo con opt-in explicito (configurar_digest_semanal con guard), los lunes, una vez por semana y solo si hay novedades.
 
-- **40. Wiki personal navegable** - Pendiente. Bloque por priorizar.
+- **40. Wiki personal navegable** - Operativa (Bloque 8): generar_wiki regenera data/notes/INDICE.md agrupado por categoria con enlaces relativos a cada nota y sus tags.
 
-- **41. Captura desde el navegador** - Pendiente. Bloque por priorizar.
+- **41. Captura desde el navegador** - Operativa (Bloque 8): capturar_pagina extrae el articulo con el navegador existente y lo archiva como nota con su fuente. Solo http/https.
 
-- **42. Preguntas sobre tus documentos** - Pendiente. Bloque por priorizar.
+- **42. Preguntas sobre tus documentos** - Operativa (Bloque 8): preguntar_documentos localiza las notas relevantes y el modelo responde citando fuentes; sin modelo devuelve los fragmentos y declara la falta de sintesis.
 
 ### Bienestar y ocio
 
@@ -137,7 +137,8 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 4. **Bloque 4 - Servidor (nº 17 y 23)**: vigilante de CPU y watchdog externo del bot.
 5. **Bloque 5 - Comunicacion (nº 29 a 31, 33)**: traductor por chat, respuestas sugeridas, buscador de historial; resumen de enlaces ya existia.
 6. **Bloque 6 - Comunicacion (nº 32, 34, 35, 36)**: fechas senaladas, snooze de chats, estadisticas de grupos y aviso de llegada.
-7. **Resto**: se prioriza con David segun utilidad inmediata.
+7. **Bloque 8 - Segundo cerebro (nº 37 a 42)**: contactos, busqueda semantica, digest, wiki, captura web y preguntas a documentos.
+8. **Resto**: se prioriza con David segun utilidad inmediata.
 
 ## Bloques extra aprobados (fuera de las 50)
 
