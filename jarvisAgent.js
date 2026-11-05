@@ -25,6 +25,7 @@ import {
   normalizarTexto
 } from './memoryService.js';
 import { registrarBorradoMasivoPendiente } from './destructiveActionService.js';
+import { NUM_CTX_DEFECTO, NUM_PREDICT_DEFECTO } from './llmService.js';
 import {
   vigilarProducto,
   listarProductosVigilados,
@@ -814,7 +815,7 @@ Directrices de selección:
     tools: herramientasActivas.length > 0 ? herramientasActivas : undefined,
     options: {
       temperature: 0.1,
-      num_ctx: 8192,
+      num_ctx: NUM_CTX_DEFECTO,
       num_thread: 4
     }
   });
@@ -880,8 +881,8 @@ Directrices de selección:
       messages: mensajes,
       tools: herramientasActivas.length > 0 ? herramientasActivas : undefined,
       options: {
-        num_ctx: 8192,
-        num_predict: 1024,
+        num_ctx: NUM_CTX_DEFECTO,
+        num_predict: NUM_PREDICT_DEFECTO,
         num_thread: 4,
         temperature: 0.1
       }
@@ -901,7 +902,7 @@ Directrices de selección:
           { role: 'assistant', content: textoFinal },
           { role: 'user', content: 'Continua exactamente donde lo dejaste, sin repetir lo anterior.' }
         ],
-        options: { num_ctx: 8192, num_predict: 1024, num_thread: 4, temperature: 0.1 }
+        options: { num_ctx: NUM_CTX_DEFECTO, num_predict: NUM_PREDICT_DEFECTO, num_thread: 4, temperature: 0.1 }
       });
       const extra = (continuacion?.message?.content || '').trim();
       if (extra) textoFinal = `${textoFinal} ${extra}`.trim();
