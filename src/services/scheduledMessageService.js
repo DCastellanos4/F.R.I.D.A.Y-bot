@@ -86,12 +86,13 @@ export function normalizarNumeroTelefono(numeroRaw) {
 /**
  * Lee los mensajes programados desde disco.
  */
-export function leerMensajesProgramados() {
+export function leerMensajesProgramados(deps = {}) {
+  const ruta = deps.rutaArchivo || ARCHIVO_MENSAJES;
   try {
-    if (!fs.existsSync(ARCHIVO_MENSAJES)) {
+    if (!fs.existsSync(ruta)) {
       return [];
     }
-    const raw = fs.readFileSync(ARCHIVO_MENSAJES, 'utf-8');
+    const raw = fs.readFileSync(ruta, 'utf-8');
     return JSON.parse(raw);
   } catch (err) {
     console.error('Error leyendo mensajes programados:', err.message);
@@ -102,9 +103,10 @@ export function leerMensajesProgramados() {
 /**
  * Guarda la lista de mensajes programados en disco de forma duradera.
  */
-export function guardarMensajesProgramados(lista) {
+export function guardarMensajesProgramados(lista, deps = {}) {
+  const ruta = deps.rutaArchivo || ARCHIVO_MENSAJES;
   try {
-    fs.writeFileSync(ARCHIVO_MENSAJES, JSON.stringify(lista, null, 2), 'utf-8');
+    fs.writeFileSync(ruta, JSON.stringify(lista, null, 2), 'utf-8');
   } catch (err) {
     console.error('Error guardando mensajes programados:', err.message);
   }
@@ -318,8 +320,8 @@ export function programarMensaje({ numero, mensaje, minutosEnElFuturo = null, ho
 /**
  * Consulta la lista de mensajes programados.
  */
-export function listarMensajesProgramados(soloPendientes = true) {
-  const lista = leerMensajesProgramados();
+export function listarMensajesProgramados(soloPendientes = true, deps = {}) {
+  const lista = leerMensajesProgramados(deps);
   if (soloPendientes) {
     return lista.filter(m => !m.enviado);
   }
@@ -329,13 +331,13 @@ export function listarMensajesProgramados(soloPendientes = true) {
 /**
  * Cancela un mensaje programado según criterio (ID, teléfono, texto o '*' para todos).
  */
-export function cancelarMensajeProgramado(criterio) {
-  const lista = leerMensajesProgramados();
+export function cancelarMensajeProgramado(criterio, deps = {}) {
+  const lista = leerMensajesProgramados(deps);
   const crit = (criterio || '').toString().toLowerCase().trim();
 
   if (crit === '*' || crit === 'todos' || crit === 'todas' || crit.includes('todo') || crit.includes('toda')) {
     const pendientes = lista.filter(m => !m.enviado).length;
-    guardarMensajesProgramados([]);
+    guardarMensajesProgramados([], deps);
     return {
       ok: true,
       mensaje: `Se han cancelado todos los envíos programados del sistema (${pendientes} pendientes eliminados), señor.`
@@ -355,7 +357,7 @@ export function cancelarMensajeProgramado(criterio) {
   }
 
   const [eliminado] = lista.splice(index, 1);
-  guardarMensajesProgramados(lista);
+  guardarMensajesProgramados(lista, deps);
 
   return {
     ok: true,

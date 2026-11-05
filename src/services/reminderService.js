@@ -12,12 +12,13 @@ if (!fs.existsSync(CARPETA_DATA)) {
   fs.mkdirSync(CARPETA_DATA, { recursive: true });
 }
 
-function leerRecordatorios() {
+function leerRecordatorios(deps = {}) {
+  const ruta = deps.rutaArchivo || ARCHIVO_RECORDATORIOS;
   try {
-    if (!fs.existsSync(ARCHIVO_RECORDATORIOS)) {
+    if (!fs.existsSync(ruta)) {
       return [];
     }
-    const raw = fs.readFileSync(ARCHIVO_RECORDATORIOS, 'utf-8');
+    const raw = fs.readFileSync(ruta, 'utf-8');
     return JSON.parse(raw);
   } catch (err) {
     console.error('Error leyendo recordatorios:', err.message);
@@ -25,9 +26,10 @@ function leerRecordatorios() {
   }
 }
 
-function guardarRecordatorios(lista) {
+function guardarRecordatorios(lista, deps = {}) {
+  const ruta = deps.rutaArchivo || ARCHIVO_RECORDATORIOS;
   try {
-    fs.writeFileSync(ARCHIVO_RECORDATORIOS, JSON.stringify(lista, null, 2), 'utf-8');
+    fs.writeFileSync(ruta, JSON.stringify(lista, null, 2), 'utf-8');
   } catch (err) {
     console.error('Error guardando recordatorios:', err.message);
   }
@@ -153,21 +155,21 @@ export function crearRecordatorio({ mensaje, minutosEnElFuturo = null, hora = nu
   };
 }
 
-export function listarRecordatorios(soloPendientes = true) {
-  const lista = leerRecordatorios();
+export function listarRecordatorios(soloPendientes = true, deps = {}) {
+  const lista = leerRecordatorios(deps);
   if (soloPendientes) {
     return lista.filter(r => !r.completado);
   }
   return lista;
 }
 
-export function cancelarRecordatorio(criterio) {
-  const lista = leerRecordatorios();
+export function cancelarRecordatorio(criterio, deps = {}) {
+  const lista = leerRecordatorios(deps);
   const crit = (criterio || '').toString().toLowerCase().trim();
 
   if (crit === '*' || crit === 'todos' || crit === 'todas' || crit.includes('todo') || crit.includes('toda')) {
     const pendientes = lista.filter(r => !r.completado).length;
-    guardarRecordatorios([]);
+    guardarRecordatorios([], deps);
     return { ok: true, mensaje: `Se han cancelado todos los recordatorios del sistema (${pendientes} pendientes eliminados), señor.` };
   }
 
@@ -177,7 +179,7 @@ export function cancelarRecordatorio(criterio) {
   }
 
   const [eliminado] = lista.splice(index, 1);
-  guardarRecordatorios(lista);
+  guardarRecordatorios(lista, deps);
 
   return { ok: true, recordatorio: eliminado, mensaje: `Recordatorio cancelado con éxito: "${eliminado.mensaje}", señor.` };
 }

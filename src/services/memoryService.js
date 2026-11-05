@@ -74,12 +74,13 @@ export function esCifrada(m) {
 }
 
 
-function leerMemorias() {
+function leerMemorias(deps = {}) {
+  const ruta = deps.rutaArchivo || ARCHIVO_MEMORIA;
   try {
-    if (!fs.existsSync(ARCHIVO_MEMORIA)) {
+    if (!fs.existsSync(ruta)) {
       return [];
     }
-    const raw = fs.readFileSync(ARCHIVO_MEMORIA, 'utf-8');
+    const raw = fs.readFileSync(ruta, 'utf-8');
     return JSON.parse(raw);
   } catch (err) {
     console.error('Error leyendo memorias:', err.message);
@@ -307,8 +308,8 @@ export function buscarMemorias(consulta) {
 /**
  * Devuelve todas las memorias o las filtra por categoría
  */
-export function listarMemorias(categoria = null) {
-  const lista = leerMemorias();
+export function listarMemorias(categoria = null, deps = {}) {
+  const lista = leerMemorias(deps);
   if (!categoria) return lista.map(descifrarMemoria);
   return lista.filter(m => m.categoria.toLowerCase() === categoria.toLowerCase()).map(descifrarMemoria);
 }

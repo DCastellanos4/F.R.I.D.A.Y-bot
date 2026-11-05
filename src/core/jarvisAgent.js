@@ -558,14 +558,14 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
           resultadoTool = `No ha sido posible programar el mensaje, señor. Detalle: ${res.error}`;
         }
       } else if (nombreFuncion === 'listar_mensajes_programados') {
-        const lista = listarMensajesProgramados();
+        const lista = listarMensajesProgramados(true, { rutaArchivo: opciones.rutaArchivoProgramados });
         if (lista.length === 0) {
           resultadoTool = 'No hay ningún mensaje de WhatsApp programado pendiente de envío, señor.';
         } else {
           resultadoTool = 'Mensajes de WhatsApp programados pendientes:\n' + lista.map((m, i) => `${i + 1}. [${m.fechaHoraLocal}] Para +${m.numero}: "${m.mensaje}" (ID: ${m.id})`).join('\n');
         }
       } else if (nombreFuncion === 'cancelar_mensaje_programado') {
-        const res = cancelarMensajeProgramado(args.criterio);
+        const res = cancelarMensajeProgramado(args.criterio, { rutaArchivo: opciones.rutaArchivoProgramados });
         if (res.ok) {
           resultadoTool = res.mensaje || 'Mensaje programado cancelado con éxito, señor.';
         } else {
@@ -1245,7 +1245,7 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
           resultadoTool = `Recuerdos recuperados del Second Brain:\n` + memorias.map(m => `- [${m.sujeto.toUpperCase()}]: ${m.dato} (Registrado: ${m.fechaLocal})`).join('\n');
         }
       } else if (nombreFuncion === 'listar_memorias') {
-        const memorias = listarMemorias(args.categoria);
+        const memorias = listarMemorias(args.categoria, { rutaArchivo: opciones.rutaArchivoMemorias });
         if (memorias.length === 0) {
           resultadoTool = 'Actualmente no hay ningún dato guardado en el Second Brain, señor.';
         } else {
@@ -1326,14 +1326,14 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
         });
         resultadoTool = `Recordatorio guardado en el sistema, señor. ID: ${res.recordatorio.id}. Programado para: ${res.recordatorio.fechaHoraLocal}. Tarea: "${res.recordatorio.mensaje}".`;
       } else if (nombreFuncion === 'listar_recordatorios') {
-        const lista = listarRecordatorios();
+        const lista = listarRecordatorios(true, { rutaArchivo: opciones.rutaArchivoRecordatorios });
         if (lista.length === 0) {
           resultadoTool = 'No hay ningún recordatorio pendiente en el sistema, señor.';
         } else {
           resultadoTool = 'Recordatorios pendientes:\n' + lista.map((r, i) => `${i + 1}. [${r.fechaHoraLocal}] "${r.mensaje}" (ID: ${r.id})`).join('\n');
         }
       } else if (nombreFuncion === 'cancelar_recordatorio') {
-        const res = cancelarRecordatorio(args.criterio);
+        const res = cancelarRecordatorio(args.criterio, { rutaArchivo: opciones.rutaArchivoRecordatorios });
         if (res.ok) {
           resultadoTool = res.mensaje || (res.recordatorio ? `Recordatorio cancelado con éxito: "${res.recordatorio.mensaje}".` : 'Recordatorio cancelado con éxito, señor.');
         } else {
