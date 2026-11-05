@@ -35,6 +35,8 @@ import { consultarClima } from '../services/weatherService.js';
 import { chatCompletion, esRespuestaTruncada } from './llmService.js';
 import { clasificarIntencionConModelo, UMBRAL_CONFIANZA } from './intentRouterService.js';
 import { registrarCandidatura, listarCandidaturas, actualizarCandidatura, resumenCandidaturas } from '../services/applicationTrackerService.js';
+import { crearPlanEstudio, listarPlanes, registrarAvance, resumenPlan, programarRecordatoriosPlan } from '../services/studyPlannerService.js';
+import { agregarFlashcard, pendientesDeRepaso, registrarRespuesta, listarFlashcards, resumenFlashcards, configurarRepaso, iniciarMonitorFlashcards } from '../services/flashcardService.js';
 import { escanearRadar, configurarRadar, leerConfigRadar, iniciarMonitorRadar } from '../services/jobRadarService.js';
 import {
   setVipMode,
@@ -176,6 +178,7 @@ export function analizarIntencion(mensaje) {
 
     // Empleo y practicas: radar de ofertas y CRM de candidaturas
     empleo: /(pr[aá]cticas\s+(de\s+)?(empresa|curriculares)?|oferta(s)?\s+de\s+(empleo|trabajo|pr[aá]cticas)|busca(r)?\s+(empleo|trabajo|ofertas)|candidatura(s)?|curr[ií]culum|\bcv\b|entrevista\s+(de\s+)?(trabajo|empleo)|infojobs|linkedin|radar\s+de\s+ofertas|seguimiento\s+de\s+candidatura)/i,
+    estudio: /(ex[aá]men(es)?|\bestudiar\b|plan\s+de\s+estudio|temario|asignatura(s)?|flashcard(s)?|tarjeta(s)?\s+de\s+repaso|repaso\s+espaciado|\brepasar\b)/i,
 
     // Terminal, consola bash y codigos 2FA OTP (Sector 2)
     bash: /(consola|terminal|bash|comando|ejecuta|ejecutar|lanzar|shell|otp|2fa|autorizar|confirmar\s+otp|codigo\s+de\s+confirmacion|uptime|top|free|df|ps\s+aux|pm2\s+status|pm2\s+restart|systemctl)/i,
@@ -217,9 +220,10 @@ export function analizarIntencion(mensaje) {
   let matchTunel = intents.tuneles.test(sinNombre);
   let matchBackup = intents.backup.test(sinNombre);
   let matchEmpleo = intents.empleo.test(sinNombre);
+  let matchEstudio = intents.estudio.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
-  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo) {
+  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio) {
     return { herramientas: [], intenciones: ['conversacion'], safetyNet: false, esChitChat: true };
   }
 
@@ -304,6 +308,9 @@ export function analizarIntencion(mensaje) {
   if (matchEmpleo) {
     tools.push(...herramientasJarvis.filter(h => ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura', 'escanear_ofertas_empleo', 'configurar_radar_ofertas'].includes(h.function.name)));
   }
+  if (matchEstudio) {
+    tools.push(...herramientasJarvis.filter(h => ['planificar_estudio', 'listar_planes_estudio', 'registrar_avance_estudio', 'programar_recordatorios_estudio', 'crear_flashcard', 'repasar_flashcards', 'responder_flashcard', 'configurar_repaso_flashcards'].includes(h.function.name)));
+  }
 
   // Safety Net: si no encajó en ninguna categoría pero tampoco es chit-chat, pasar todas las herramientas
   if (tools.length === 0) {
@@ -334,6 +341,7 @@ export function analizarIntencion(mensaje) {
   if (matchTunel) intenciones.push('tuneles');
   if (matchBackup) intenciones.push('backup');
   if (matchEmpleo) intenciones.push('empleo');
+  if (matchEstudio) intenciones.push('estudio');
 
   // Eliminar duplicados
   const unicas = [];
@@ -360,6 +368,8 @@ const HERRAMIENTAS_IDEMPOTENTES = new Set([
   'listar_mensajes_programados',
   'listar_recordatorios',
   'listar_candidaturas',
+  'listar_planes_estudio',
+  'repasar_flashcards',
   'listar_productos_vigilados',
   'obtener_noticias_actuales',
   'navegar_y_leer_noticia',
@@ -506,6 +516,96 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
           resultadoTool = `Radar configurado, David: palabras clave [${cfg.palabrasClave.join(', ')}], ubicacion ${cfg.ubicacion || 'sin definir'}, estado ${cfg.activo ? 'ACTIVO' : 'desactivado'}.${estadoMonitor} La fuente InfoJobs requiere credenciales (INFOJOBS_CLIENT_ID/SECRET) para devolver ofertas reales; las fuentes HTML solo se editan en el fichero de configuracion.`;
         } else {
           resultadoTool = `No se pudo configurar el radar: ${res.error}`;
+        }
+      } else if (nombreFuncion === 'planificar_estudio') {
+        const res = crearPlanEstudio({
+          asignatura: args.asignatura,
+          fechaExamen: args.fechaExamen,
+          temas: args.temas,
+          horaEstudio: args.horaEstudio
+        }, { rutaArchivo: opciones.rutaPlanesEstudio, crearRecordatorio: opciones.crearRecordatorioEstudio });
+        if (res.ok) {
+          const sesiones = res.plan.entradas.map((e) => `- ${e.fecha} (${e.tipo}): ${e.temas.join(', ')}`).join('\n');
+          resultadoTool = `Plan de estudio creado, David: ${res.plan.asignatura}, examen el ${res.plan.fechaExamen}, ${res.plan.entradas.length} sesiones, ${res.recordatorios} recordatorios programados.\n${sesiones}${res.aviso ? `\n${res.aviso}` : ''}`;
+        } else {
+          resultadoTool = `No se pudo crear el plan: ${res.error}`;
+        }
+      } else if (nombreFuncion === 'listar_planes_estudio') {
+        const planes = listarPlanes({ rutaArchivo: opciones.rutaPlanesEstudio });
+        resultadoTool = planes.length === 0
+          ? 'No hay planes de estudio activos.'
+          : 'Planes de estudio:\n' + planes.map((p) => `- ${p.asignatura} (examen ${p.fechaExamen}, ID ${p.id}): ${p.pendientes} sesiones pendientes de ${p.entradas.length}`).join('\n');
+      } else if (nombreFuncion === 'registrar_avance_estudio') {
+        const res = registrarAvance(args.criterio, { fecha: args.fecha }, { rutaArchivo: opciones.rutaPlanesEstudio });
+        if (res.ok) {
+          resultadoTool = `Sesion completada, David: ${res.plan.asignatura} (${res.entrada.fecha}, ${res.entrada.tipo}).`;
+        } else if (res.coincidencias) {
+          resultadoTool = `${res.error}\n` + res.coincidencias.map((p) => `- ${p.asignatura} (ID: ${p.id})`).join('\n');
+        } else {
+          resultadoTool = res.error;
+        }
+      } else if (nombreFuncion === 'programar_recordatorios_estudio') {
+        const res = programarRecordatoriosPlan(args.criterio, args.hora, { rutaArchivo: opciones.rutaPlanesEstudio, crearRecordatorio: opciones.crearRecordatorioEstudio });
+        if (res.ok) {
+          resultadoTool = `Recordatorios programados, David: ${res.recordatorios} sesiones de ${res.plan.asignatura} a las ${res.plan.horaEstudio}.${res.aviso ? ` ${res.aviso}` : ''}`;
+        } else if (res.coincidencias) {
+          resultadoTool = `${res.error}\n` + res.coincidencias.map((p) => `- ${p.asignatura} (ID: ${p.id})`).join('\n');
+        } else {
+          resultadoTool = res.error;
+        }
+      } else if (nombreFuncion === 'crear_flashcard') {
+        const depsFlash = { rutaArchivo: opciones.rutaArchivoFlashcards };
+        const res = agregarFlashcard({ asignatura: args.asignatura, pregunta: args.pregunta, respuesta: args.respuesta }, depsFlash);
+        if (res.ok) {
+          const resumen = resumenFlashcards(depsFlash);
+          resultadoTool = `Tarjeta creada, David: [${res.tarjeta.asignatura}] "${res.tarjeta.pregunta}" (ID: ${res.tarjeta.id}). Llevas ${resumen.total} tarjetas, ${resumen.pendientes} pendientes de repaso. Las rondas proactivas estan desactivadas hasta que las actives tu ("activa el repaso de flashcards").`;
+        } else {
+          resultadoTool = `No se pudo crear la tarjeta: ${res.error}`;
+        }
+      } else if (nombreFuncion === 'configurar_repaso_flashcards') {
+        // activo:true exige peticion explicita en el mensaje original de David
+        const quiereActivarF = args.activo === true;
+        const mensajePideActivarF = /(activa(r|s|do)?|enciend(e|er)|pon\s+en\s+marcha)\s+.{0,30}(repaso|flashcard)/i.test(opciones.mensajeUsuario || '');
+        const activoAplicarF = quiereActivarF ? (mensajePideActivarF ? true : null) : (args.activo ?? null);
+        const depsFlash = { rutaArchivo: opciones.rutaArchivoFlashcards, rutaConfig: opciones.rutaConfigFlashcards };
+        const res = configurarRepaso({
+          activo: activoAplicarF,
+          cadenciaHoras: args.cadenciaHoras ?? null,
+          silencioDesde: args.silencioDesde ?? null,
+          silencioHasta: args.silencioHasta ?? null
+        }, depsFlash);
+        if (res.ok && quiereActivarF && !mensajePideActivarF) {
+          resultadoTool = 'Configuracion guardada, pero NO he activado las rondas de repaso porque tu mensaje no lo pedia explicitamente. Si las quieres, dime "activa el repaso de flashcards".';
+        } else if (res.ok) {
+          let estadoMonitor = '';
+          if (res.config.activo) {
+            const monitor = iniciarMonitorFlashcards(depsFlash);
+            estadoMonitor = monitor.iniciado ? ' Monitor de repaso activo.' : ` Monitor en espera: ${monitor.motivo}`;
+          }
+          resultadoTool = `Repaso de flashcards ${res.config.activo ? 'ACTIVO' : 'desactivado'}, David: cadencia ${res.config.cadenciaHoras} h, silencio ${res.config.silencioDesde}:00-${res.config.silencioHasta}:00, maximo 3 tarjetas por ronda.${estadoMonitor}`;
+        } else {
+          resultadoTool = `No se pudo configurar el repaso: ${res.error}`;
+        }
+      } else if (nombreFuncion === 'repasar_flashcards') {
+        const pendientes = pendientesDeRepaso({ limite: args.limite || 3 }, { rutaArchivo: opciones.rutaArchivoFlashcards });
+        if (pendientes.length === 0) {
+          const resumen = resumenFlashcards({ rutaArchivo: opciones.rutaArchivoFlashcards });
+          resultadoTool = resumen.total === 0
+            ? 'Aun no hay tarjetas creadas.'
+            : `Nada que repasar ahora. Llevas ${resumen.total} tarjetas; vuelve cuando toque revision.`;
+        } else {
+          resultadoTool = 'Tocan estas tarjetas (responde mentalmente y luego dame tu nota del 0 al 5 con responder_flashcard):\n' + pendientes.map((t, i) => `${i + 1}. [${t.asignatura}] ${t.pregunta} (ID: ${t.id})`).join('\n');
+        }
+      } else if (nombreFuncion === 'responder_flashcard') {
+        const res = registrarRespuesta(args.id, args.calidad, { rutaArchivo: opciones.rutaArchivoFlashcards });
+        if (res.ok) {
+          const dias = res.tarjeta.repaso.intervaloDias;
+          const cuando = dias < 1 ? 'en 12 horas' : `en ${dias} dia(s)`;
+          resultadoTool = res.acierto
+            ? `Anotado, David: acierto. "${res.tarjeta.pregunta}" vuelve ${cuando}.`
+            : `Anotado, David: fallo. "${res.tarjeta.pregunta}" vuelve ${cuando}; la respuesta era: ${res.tarjeta.respuesta}`;
+        } else {
+          resultadoTool = res.error;
         }
       } else if (nombreFuncion === 'guardar_memoria') {
         const res = guardarMemoria({
@@ -886,7 +986,8 @@ Directrices de selección:
 10. INFRAESTRUCTURA Y SERVICIOS: Para consultar el estado de Docker, espacio en disco, red o certificados SSL, invoca "get_infrastructure_status".
 11. GESTION DE TUNELES: Para consultar estado o arrancar/detener tuneles Cloudflare o Tailscale, invoca "manage_tunnel".
 12. COPIAS DE SEGURIDAD: Para generar backups cifrados AES-256-GCM inmediatos, invoca "trigger_encrypted_backup".
-13. EMPLEO Y PRACTICAS: Para registrar o actualizar candidaturas, "registrar_candidatura" y "actualizar_candidatura"; para consultarlas, "listar_candidaturas". Para lanzar el radar de ofertas, "escanear_ofertas_empleo"; para configurarlo (palabras clave, ubicacion, activacion), "configurar_radar_ofertas". Si una fuente requiere credenciales, informa a David de que configuracion falta en lugar de simular resultados.`;
+13b. ESTUDIO: Para crear planes de estudio, "planificar_estudio" (asignatura, fechaExamen AAAA-MM-DD, temas; la hora de estudio solo si David la indica, nunca inventada); si ya hay plan sin recordatorios, "programar_recordatorios_estudio" con la hora elegida. Consulta con "listar_planes_estudio" y avance con "registrar_avance_estudio". Para tarjetas: "crear_flashcard", "repasar_flashcards" y "responder_flashcard"; las rondas proactivas se configuran con "configurar_repaso_flashcards" y solo se activan si David lo pide textualmente.
+14. EMPLEO Y PRACTICAS: Para registrar o actualizar candidaturas, "registrar_candidatura" y "actualizar_candidatura"; para consultarlas, "listar_candidaturas". Para lanzar el radar de ofertas, "escanear_ofertas_empleo"; para configurarlo (palabras clave, ubicacion, activacion), "configurar_radar_ofertas". Si una fuente requiere credenciales, informa a David de que configuracion falta en lugar de simular resultados.`;
   }
 
   const mensajes = [
