@@ -10,7 +10,7 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ## Resumen
 
-- Implementadas: 7 de 50 operativas (nº 2 CRM, nº 5 planificador, nº 6 flashcards, nº 17 vigilante de procesos/recursos, nº 25 resumen mensual, nº 26 suscripciones, nº 27 presupuestos) + 3 pendientes de config del propietario (nº 1 radar; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: la via de texto es operativa, la lectura de imagen no es operativa hasta configurar el adaptador).
+- Implementadas: 11 de 50 operativas (nº 2 CRM, nº 5 planificador, nº 6 flashcards, nº 17 procesos, nº 25 resumen mensual, nº 26 suscripciones, nº 27 presupuestos, nº 29 traductor, nº 30 respuestas sugeridas, nº 31 buscador de historial, nº 33 resumen de enlaces) + 3 pendientes de config del propietario (nº 1 radar; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: via de texto operativa, lectura de imagen pendiente de configurar el adaptador).
 - Pendientes: 46 de 50.
 
 ## Detalle por funcion
@@ -81,15 +81,15 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ### Comunicación y WhatsApp
 
-- **29. Traductor en modo conversación** - Pendiente. Bloque por priorizar.
+- **29. Traductor en modo conversación** - Operativa (Bloque 5): modo traductor por chat ("activa el traductor a ingles"); cada mensaje de David se traduce al idioma elegido y "desactiva el traductor" lo apaga de forma determinista (la frase de apagado nunca se traduce). Usa el modelo de lenguaje ya configurado.
 
-- **30. Respuestas sugeridas** - Pendiente. Bloque por priorizar.
+- **30. Respuestas sugeridas** - Operativa (Bloque 5): herramienta sugerir_respuestas (mensaje recibido + tono opcional) propone 3 respuestas; nunca las envia, David elige.
 
-- **31. Buscador del historial** - Pendiente. Bloque por priorizar.
+- **31. Buscador del historial** - Operativa (Bloque 5): herramienta buscar_en_historial busca un termino en el historial del chat (solo lectura, coincidencias mas recientes primero).
 
 - **32. Cumpleaños y fechas señaladas** - Pendiente. Bloque por priorizar.
 
-- **33. Resumen automático de enlaces** - Pendiente. Bloque por priorizar.
+- **33. Resumen automático de enlaces** - Operativa (ya existia): herramienta resumir_enlace (y navegar_y_leer_noticia) resume enlaces con el modelo configurado.
 
 - **34. Snooze de conversaciones** - Pendiente. Bloque por priorizar.
 
