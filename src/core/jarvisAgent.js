@@ -45,6 +45,7 @@ import { registrarFechaSenalada, listarFechasSenaladas, eliminarFechaSenalada, p
 import { programarSnooze, listarSnoozes, cancelarSnooze } from '../services/snoozeService.js';
 import { estadisticasChat } from '../services/groupStatsService.js';
 import { registrarAvisoLlegada, listarAvisosLlegada, cancelarAvisoLlegada } from '../services/arrivalWatchService.js';
+import { registrarParadaFavorita, listarParadasFavoritas, eliminarParadaFavorita, proximasLlegadas } from '../services/transportService.js';
 import { escanearRadar, configurarRadar, leerConfigRadar, iniciarMonitorRadar } from '../services/jobRadarService.js';
 import {
   setVipMode,
@@ -189,6 +190,8 @@ export function analizarIntencion(mensaje) {
     estudio: /(ex[aá]men(es)?|\bestudiar\b|plan\s+de\s+estudio|temario|asignatura(s)?|flashcard(s)?|tarjeta(s)?\s+de\s+repaso|repaso\s+espaciado|\brepasar\b)/i,
     finanzas: /(\bgastos?\b|\bgast[eé]\b|\btickets?\b|recibo(s)?|suscripci[oó]n(es)?|presupuesto(s)?|\bfinanzas\b|cu[aá]nto\s+(he\s+|llevo\s+)?gastado|renovaci[oó]n\s+de)/i,
     procesos: /(\bvigil\w*\s+(el\s+|un\s+)?proceso|proceso\s+(caido|vivo|muerto|parado)|procesos\s+del\s+(vps|servidor)|vigilancia\s+de\s+procesos)/i,
+    // Transporte publico de Madrid (bloque extra aprobado por David, 5 nov 2026)
+    transporte: /(\bcercan[ií]as\b|\bEMT\b|parada\s+(de\s+)?(bus|autob[uú]s|emt)|pr[oó]xim[oa]\s+(bus|autob[uú]s|tren|cercan[ií]as)|cu[aá]ndo\s+(llega|viene|pasa)\s+(el\s+|mi\s+)?(bus|autob[uú]s|tren|cercan[ií]as)|cu[aá]nto\s+(falta|tarda)\s+(el\s+|mi\s+)?(bus|autob[uú]s|tren|cercan[ií]as))/i,
     comunicacion: /(\btraduc|\btraductor|qu[eé]\s+le\s+respondo|sugier\w*\s+respuesta|busca(r)?\s+en\s+(el\s+)?historial|qu[eé]\s+te\s+dije|cumplea[nñ]os|\bcumple\b|fecha\s+se[nñ]alada|aniversario|\bsnooze\b|recu[eé]rdame\s+(este|el|lo de este)\s+(chat|grupo)|estad[ií]sticas?\s+(del|de este|de este grupo|grupo)|cu[aá]ndo\s+(llegue|llego)|av[ií]sa(me)?\s+cuando\s+llegue|aviso\s+de\s+llegada)/i,
 
     // Terminal, consola bash y codigos 2FA OTP (Sector 2)
@@ -235,9 +238,10 @@ export function analizarIntencion(mensaje) {
   let matchFinanzas = intents.finanzas.test(sinNombre);
   let matchProcesos = intents.procesos.test(sinNombre);
   let matchComunicacion = intents.comunicacion.test(sinNombre);
+  let matchTransporte = intents.transporte.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
-  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio) {
+  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte) {
     return { herramientas: [], intenciones: ['conversacion'], safetyNet: false, esChitChat: true };
   }
 
@@ -334,6 +338,9 @@ export function analizarIntencion(mensaje) {
   if (matchComunicacion) {
     tools.push(...herramientasJarvis.filter(h => ['activar_traductor', 'desactivar_traductor', 'sugerir_respuestas', 'buscar_en_historial', 'registrar_fecha_senalada', 'listar_fechas_senaladas', 'eliminar_fecha_senalada', 'configurar_avisos_fechas', 'programar_snooze', 'listar_snoozes', 'cancelar_snooze', 'estadisticas_grupo', 'registrar_aviso_llegada', 'listar_avisos_llegada', 'cancelar_aviso_llegada'].includes(h.function.name)));
   }
+  if (matchTransporte) {
+    tools.push(...herramientasJarvis.filter(h => ['registrar_parada_favorita', 'listar_paradas_favoritas', 'eliminar_parada_favorita', 'proximas_llegadas_transporte'].includes(h.function.name)));
+  }
 
   // Safety Net: si no encajó en ninguna categoría pero tampoco es chit-chat, pasar todas las herramientas
   if (tools.length === 0) {
@@ -368,6 +375,7 @@ export function analizarIntencion(mensaje) {
   if (matchFinanzas) intenciones.push('finanzas');
   if (matchProcesos) intenciones.push('procesos');
   if (matchComunicacion) intenciones.push('comunicacion');
+  if (matchTransporte) intenciones.push('transporte');
 
   // Eliminar duplicados
   const unicas = [];
@@ -722,6 +730,33 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
       } else if (nombreFuncion === 'cancelar_aviso_llegada') {
         const res = cancelarAvisoLlegada(args.criterio, { rutaArchivo: opciones.rutaArchivoLlegada });
         resultadoTool = res.ok ? `Cancelado el aviso de llegada a ${res.aviso.nombre}, David.` : res.error;
+      } else if (nombreFuncion === 'registrar_parada_favorita') {
+        const res = registrarParadaFavorita({ nombre: args.nombre, tipo: args.tipo, codigo: args.codigo }, { rutaArchivo: opciones.rutaArchivoTransporte });
+        resultadoTool = res.ok
+          ? `Parada guardada, David: "${res.parada.nombre}" (${res.parada.tipo} ${res.parada.codigo}). Preguntame cuando quieras: "cuando llega el proximo bus de casa".`
+          : res.error;
+      } else if (nombreFuncion === 'listar_paradas_favoritas') {
+        const paradas = listarParadasFavoritas({ rutaArchivo: opciones.rutaArchivoTransporte });
+        resultadoTool = paradas.length === 0
+          ? 'No tienes paradas favoritas. Dime por ejemplo: "mi parada de casa es la EMT 1234".'
+          : 'Tus paradas favoritas:\n' + paradas.map((p) => `- ${p.nombre}: ${p.tipo} ${p.codigo}`).join('\n');
+      } else if (nombreFuncion === 'eliminar_parada_favorita') {
+        const res = eliminarParadaFavorita(args.criterio, { rutaArchivo: opciones.rutaArchivoTransporte });
+        resultadoTool = res.ok ? `Borrada la parada "${res.parada.nombre}", David.` : res.error;
+      } else if (nombreFuncion === 'proximas_llegadas_transporte') {
+        const res = await proximasLlegadas({ parada: args.parada, tipo: args.tipo, codigo: args.codigo }, { rutaArchivo: opciones.rutaArchivoTransporte, fetchFnEmt: opciones.fetchFnEmt, fetchFnCercanias: opciones.fetchFnCercanias, clientIdEmt: opciones.clientIdEmt, passKeyEmt: opciones.passKeyEmt });
+        if (!res.ok) {
+          resultadoTool = res.error;
+        } else if (res.llegadas.length === 0) {
+          resultadoTool = `No hay llegadas con informacion en vivo para ${res.parada} ahora mismo.${res.nota ? ' ' + res.nota : ''}`;
+        } else {
+          const lineas = res.llegadas.map((l) => {
+            const min = Math.max(0, Math.round(l.segundos / 60));
+            if (res.tipo === 'emt') return `- Linea ${l.linea}${l.destino ? ' a ' + l.destino : ''}: ${min === 0 ? 'llegando' : min + ' min'}`;
+            return `- Tren ${l.viaje}: ${min === 0 ? 'llegando' : min + ' min'}${l.retrasoSegundos ? ` (retraso ${Math.round(l.retrasoSegundos / 60)} min)` : ''}${l.cancelado ? ' CANCELADO' : ''}`;
+          });
+          resultadoTool = `Proximas llegadas a ${res.parada}:\n${lineas.join('\n')}${res.nota ? '\n' + res.nota : ''}`;
+        }
       } else if (nombreFuncion === 'estado_presupuestos') {
         const filas = estadoPresupuestos({ mes: args.mes }, { rutaArchivo: opciones.rutaArchivoFinanzas });
         resultadoTool = filas.length === 0
@@ -1163,6 +1198,7 @@ Directrices de selección:
 13b. ESTUDIO: Para crear planes de estudio, "planificar_estudio" (asignatura, fechaExamen AAAA-MM-DD, temas; la hora de estudio solo si David la indica, nunca inventada); si ya hay plan sin recordatorios, "programar_recordatorios_estudio" con la hora elegida. Consulta con "listar_planes_estudio" y avance con "registrar_avance_estudio". Para tarjetas: "crear_flashcard", "repasar_flashcards" y "responder_flashcard"; las rondas proactivas se configuran con "configurar_repaso_flashcards" y solo se activan si David lo pide textualmente.
 13c. FINANZAS: Los gastos se anotan con "registrar_gasto" (importe y comercio obligatorios; fecha por defecto hoy), se consultan con "listar_gastos" y "resumen_gastos_mes". Suscripciones con "registrar_suscripcion"/"listar_suscripciones" (el vigilante avisa 3 dias antes de renovar, solo si David las registro el). Presupuestos con "configurar_presupuesto"/"estado_presupuestos" (alerta al 80%). Los avisos de renovacion solo se activan si David lo pide textualmente ("configurar_avisos_suscripciones"). Nunca inventes importes, comercios ni fechas: si faltan, preguntalos.
 13d. PROCESOS: David registra procesos del VPS a vigilar con "vigilar_proceso" (nombre, patron opcional, limites de CPU/memoria opcionales) y los consulta con "listar_procesos_vigilados"/"dejar_vigilar_proceso". La vigilancia proactiva solo se activa si el la pide textualmente ("activa la vigilancia de procesos", herramienta "configurar_vigilante_procesos"). El vigilante solo mide y avisa; nunca reinicia ni mata procesos.
+13g. TRANSPORTE MADRID (extra): paradas favoritas con registrar_parada_favorita (emt o cercanias; el Metro no tiene fuente publica de llegadas en vivo, dilo si lo piden) y consulta bajo demanda con proximas_llegadas_transporte. NUNCA programes avisos automaticos de transporte. Si la EMT responde config-required, explica que falta el acceso gratuito de MobilityLabs, no inventes llegadas.
 13f. FECHAS Y CHATS: fechas senaladas (registrar_fecha_senalada con dia y mes; los avisos proactivos solo con configurar_avisos_fechas y peticion textual de David), snooze de chats (programar_snooze en este chat, un solo aviso), estadisticas del chat (estadisticas_grupo, solo lo que el bot ha visto) y aviso de llegada (registrar_aviso_llegada necesita latitud/longitud; si faltan, pide a David que comparta el pin del destino).
 13e. COMUNICACION: modo traductor por chat ("activar_traductor" con el idioma; David lo desactiva con "desactivar_traductor"), sugerencias de respuesta ("sugerir_respuestas": propon 3, nunca las envies) y buscador del historial del chat ("buscar_en_historial").
 14. EMPLEO Y PRACTICAS: Para registrar o actualizar candidaturas, "registrar_candidatura" y "actualizar_candidatura"; para consultarlas, "listar_candidaturas". Para lanzar el radar de ofertas, "escanear_ofertas_empleo"; para configurarlo (palabras clave, ubicacion, activacion), "configurar_radar_ofertas". Si una fuente requiere credenciales, informa a David de que configuracion falta en lugar de simular resultados.`;
