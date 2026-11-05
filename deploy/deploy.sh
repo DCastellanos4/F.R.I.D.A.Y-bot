@@ -138,8 +138,14 @@ JLIST_PRE=$($PM2 jlist || true)
 OUT_LOG_PRE=$(echo "$JLIST_PRE" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);const p=j.find(x=>x.name==='jarvis-whatsapp');console.log(p&&p.pm2_env?p.pm2_env.pm_out_log_path||'':'')}catch(e){console.log('')}})")
 OFFSET_PRE=0
 [ -n "$OUT_LOG_PRE" ] && [ -f "$OUT_LOG_PRE" ] && OFFSET_PRE=$(stat -c %s "$OUT_LOG_PRE")
-if ! $PM2 restart jarvis-whatsapp jarvis-api --update-env; then
-  echo "ESTADO PARCIAL TRAS EL CORTE: el symlink ya apunta a $DESTINO pero pm2 restart FALLO." >&2
+# Corte de procesos con arranque LIMPIO, no 'pm2 restart': restart disparo un
+# bucle de SIGINT en 2 de 2 despliegues (procesos muriendo 3-6s tras arrancar,
+# causa interna de PM2 no determinada); delete+start produjo procesos
+# estables en 2 de 2 recuperaciones. Es el mismo ecosystem y el mismo cwd:
+# solo cambia que el estado interno del proceso PM2 se crea de cero.
+# La verificacion de salud posterior es quien certifica el resultado.
+if ! ($PM2 delete jarvis-api jarvis-whatsapp >/dev/null 2>&1 || true) || ! $PM2 start "$DESTINO/ecosystem.config.cjs" || ! $PM2 save; then
+  echo "ESTADO PARCIAL TRAS EL CORTE: el symlink ya apunta a $DESTINO pero el arranque limpio de PM2 FALLO." >&2
   echo "El bot puede estar caido. El codigo nuevo esta activo en disco; el anterior sigue en ${ANTERIOR:-la copia pre-cicd}." >&2
   echo "NO se revierte automaticamente. Restaurar el symlink anterior es una decision aprobada aparte (puede perder datos escritos tras el corte)." >&2
   exit 1
