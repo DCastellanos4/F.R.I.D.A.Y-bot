@@ -198,7 +198,7 @@ export const casosDorados = [
       { clasifica: 'ERROR' },
       { texto: 'No termino de entenderlo, senor.' }
     ],
-    esperado: { sinHerramientas: true, clasificador: true, safetyNetTodas: true }
+    esperado: { sinHerramientas: true, clasificador: true, directivaDesambiguacion: true, ofrecidasCero: true }
   },
   {
     id: 'G28-cache-clasificador',

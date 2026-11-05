@@ -24,7 +24,6 @@ import { herramientasJarvis } from '../../src/core/tools.js';
 import { casosDorados } from './golden_dataset.js';
 
 const MARCA_CLASIFICADOR = 'Clasifica la intencion principal';
-const TOTAL_HERRAMIENTAS = herramientasJarvis.length;
 
 function construirLlmGuionizado(caso, observaciones) {
   let indicePaso = 0;
@@ -205,12 +204,12 @@ for (const caso of casosDorados) {
     if (esperado.directivaDesambiguacion) {
       assert.ok(obs.directivaVista, `${caso.id}: debia inyectarse la directiva de desambiguacion`);
     }
-    if (esperado.safetyNetTodas) {
+    if (esperado.ofrecidasCero) {
       const ofrecidasPrincipal = obs.herramientasOfrecidas[0];
       assert.equal(
         ofrecidasPrincipal,
-        TOTAL_HERRAMIENTAS,
-        `${caso.id}: con clasificador caido debia ofrecerse el safety net completo (${TOTAL_HERRAMIENTAS}); ofrecidas: ${ofrecidasPrincipal}`
+        0,
+        `${caso.id}: con clasificador caido no deben ofrecerse herramientas (politica de confianza baja); ofrecidas: ${ofrecidasPrincipal}`
       );
     }
     if (esperado.llamadasLlmTotal) {
