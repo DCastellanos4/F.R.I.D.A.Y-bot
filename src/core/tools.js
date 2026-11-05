@@ -1669,6 +1669,35 @@ export const herramientasJarvis = [
         required: ['criterio']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'buscar_producto',
+      description: 'Busca ofertas de un producto bajo demanda (sin compras ni vigilancia automatica). Si no hay fuente configurada, informa del estado config-required y ofrece verificar un enlace concreto.',
+      parameters: {
+        type: 'object',
+        properties: {
+          consulta: { type: 'string', description: 'Producto a buscar (modelo exacto si se sabe).' }
+        },
+        required: ['consulta']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'verificar_oferta',
+      description: 'Verifica AHORA una oferta concreta: abre la ficha y lee precio, stock y disponibilidad publicados (JSON-LD), declarando la hora de la comprobacion. Lo no legible es no-verificable, nunca inventado.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'URL http(s) de la ficha del producto.' },
+          producto: { type: 'string', description: 'Producto/variante que David dice estar comprando (para vincular la oferta leida con lo pedido; si la pagina es de otra cosa, el precio no se da por confirmado).' }
+        },
+        required: ['url']
+      }
+    }
   }
 ];
 
@@ -1705,6 +1734,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   transporte: ['registrar_parada_favorita', 'listar_paradas_favoritas', 'eliminar_parada_favorita', 'proximas_llegadas_transporte'],
   cerebro: ['registrar_contacto', 'buscar_contacto', 'listar_contactos', 'buscar_recuerdo_semantico', 'generar_digest_cerebro', 'configurar_digest_semanal', 'generar_wiki', 'capturar_pagina', 'preguntar_documentos'],
   bienestar: ['escribir_diario', 'leer_diario', 'registrar_habito', 'marcar_habito', 'listar_habitos', 'poner_menu', 'ver_menu', 'sugerir_menu', 'anadir_compra', 'listar_compra', 'tachar_compra', 'vaciar_compra', 'recomendar_serie_pelicula', 'crear_quedada', 'listar_quedadas', 'redactar_invitacion', 'resumen_deportivo', 'configurar_modo_nocturno'],
+  compras: ['buscar_producto', 'verificar_oferta'],
   carrera: ['iniciar_simulacro_entrevista', 'analizar_cv_oferta', 'resumir_apuntes', 'registrar_entrega', 'listar_entregas', 'eliminar_entrega'],
   procesos: ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'],
   finanzas: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'],
