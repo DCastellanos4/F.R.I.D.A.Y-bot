@@ -35,3 +35,6 @@ Thumbs.db
 *.swp
 *.swo
 data/temp_downloads/
+
+# Notas del segundo cerebro (datos locales)
+data/notes/

@@ -1240,6 +1240,124 @@ export const herramientasJarvis = [
         }
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'registrar_contacto',
+      description: 'Guarda o actualiza la ficha de un contacto (nombre obligatorio; telefono, relacion, email, notas opcionales).',
+      parameters: {
+        type: 'object',
+        properties: {
+          nombre: { type: 'string', description: 'Nombre del contacto.' },
+          telefono: { type: 'string', description: 'Telefono (opcional).' },
+          relacion: { type: 'string', description: 'Relacion (ej: "amigo de la uni").' },
+          email: { type: 'string', description: 'Email (opcional).' },
+          notas: { type: 'string', description: 'Notas libres (opcional).' }
+        },
+        required: ['nombre']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'buscar_contacto',
+      description: 'Busca contactos por nombre, relacion o notas.',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string', description: 'Texto a buscar.' }
+        },
+        required: ['criterio']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_contactos',
+      description: 'Lista todos los contactos guardados, por orden alfabetico.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'buscar_recuerdo_semantico',
+      description: 'Busca en memorias y notas por significado, no solo por palabras exactas ("que se yo de la tia Pili").',
+      parameters: {
+        type: 'object',
+        properties: {
+          consulta: { type: 'string', description: 'Lo que David quiere encontrar.' }
+        },
+        required: ['consulta']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'generar_digest_cerebro',
+      description: 'Genera el resumen de lo guardado en el segundo cerebro en los ultimos dias (por defecto 7).',
+      parameters: {
+        type: 'object',
+        properties: {
+          dias: { type: 'number', description: 'Dias a cubrir (1-31, por defecto 7).' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'configurar_digest_semanal',
+      description: 'Activa o desactiva el envio proactivo del digest semanal. Solo con peticion textual del propietario.',
+      parameters: {
+        type: 'object',
+        properties: {
+          activo: { type: 'boolean', description: 'true para activar, false para desactivar.' }
+        },
+        required: ['activo']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'generar_wiki',
+      description: 'Regenera el indice navegable (wiki) del segundo cerebro, agrupado por categoria con enlaces a las notas.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'capturar_pagina',
+      description: 'Captura una pagina web (http/https) y la archiva como nota del segundo cerebro con su fuente.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'URL de la pagina.' },
+          titulo: { type: 'string', description: 'Titulo opcional.' }
+        },
+        required: ['url']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'preguntar_documentos',
+      description: 'Responde preguntas usando las notas y documentos guardados, citando las fuentes. Nunca inventa contenido.',
+      parameters: {
+        type: 'object',
+        properties: {
+          pregunta: { type: 'string', description: 'La pregunta sobre los documentos.' }
+        },
+        required: ['pregunta']
+      }
+    }
   }
 ];
 
@@ -1274,6 +1392,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   estudio: ['planificar_estudio', 'listar_planes_estudio', 'registrar_avance_estudio', 'programar_recordatorios_estudio', 'crear_flashcard', 'repasar_flashcards', 'responder_flashcard', 'configurar_repaso_flashcards'],
   comunicacion: ['activar_traductor', 'desactivar_traductor', 'sugerir_respuestas', 'buscar_en_historial', 'registrar_fecha_senalada', 'listar_fechas_senaladas', 'eliminar_fecha_senalada', 'configurar_avisos_fechas', 'programar_snooze', 'listar_snoozes', 'cancelar_snooze', 'estadisticas_grupo', 'registrar_aviso_llegada', 'listar_avisos_llegada', 'cancelar_aviso_llegada'],
   transporte: ['registrar_parada_favorita', 'listar_paradas_favoritas', 'eliminar_parada_favorita', 'proximas_llegadas_transporte'],
+  cerebro: ['registrar_contacto', 'buscar_contacto', 'listar_contactos', 'buscar_recuerdo_semantico', 'generar_digest_cerebro', 'configurar_digest_semanal', 'generar_wiki', 'capturar_pagina', 'preguntar_documentos'],
   procesos: ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'],
   finanzas: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'],
   conversacion: []
