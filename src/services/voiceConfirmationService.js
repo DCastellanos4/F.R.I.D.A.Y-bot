@@ -41,7 +41,39 @@ export function guardarPendienteVoz(chatId, texto, deps = {}) {
   if (!chatId || !texto) return false;
   const ahora = typeof deps.now === 'function' ? deps.now() : Date.now();
   pendientes.set(chatId, { texto, creadoEn: ahora });
+  iniciarPurgaPendientes();
   return true;
+}
+
+/**
+ * Purga los pendientes ya caducados. No cambia la semantica: el TTL sigue
+ * siendo el mismo y cada confirmacion sigue siendo de un solo uso; esto solo
+ * libera la memoria de entradas que nunca se resolvieron (antes quedaban
+ * hasta reiniciar el bot).
+ */
+export function purgarPendientesExpirados(ahora = Date.now()) {
+  let purgados = 0;
+  for (const [chatId, registro] of pendientes) {
+    if (ahora - registro.creadoEn > TTL_CONFIRMACION_MS) {
+      pendientes.delete(chatId);
+      purgados++;
+    }
+  }
+  return purgados;
+}
+
+let intervaloPurga = null;
+export function iniciarPurgaPendientes(intervaloMs = TTL_CONFIRMACION_MS) {
+  if (intervaloPurga) return;
+  intervaloPurga = setInterval(() => purgarPendientesExpirados(), intervaloMs);
+  // unref: el barrido nunca mantiene vivo el proceso (tests, CLI, apagado).
+  if (typeof intervaloPurga.unref === 'function') intervaloPurga.unref();
+}
+export function detenerPurgaPendientes() {
+  if (intervaloPurga) {
+    clearInterval(intervaloPurga);
+    intervaloPurga = null;
+  }
 }
 
 /**

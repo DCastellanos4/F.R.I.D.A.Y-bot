@@ -38,7 +38,39 @@ export function registrarBorradoMasivoPendiente(chatId, criterio, total, deps = 
   const ahora = typeof deps.now === 'function' ? deps.now() : Date.now();
   const id = generarId();
   pendientes.set(id, { chatId, criterio, total, creadoEn: ahora });
+  iniciarPurgaPendientes();
   return id;
+}
+
+/**
+ * Purga los pendientes ya caducados. No cambia la semantica: el TTL sigue
+ * siendo el mismo y cada confirmacion sigue siendo de un solo uso; esto solo
+ * libera la memoria de entradas que nunca se resolvieron (antes quedaban
+ * hasta reiniciar el bot).
+ */
+export function purgarPendientesExpirados(ahora = Date.now()) {
+  let purgados = 0;
+  for (const [id, registro] of pendientes) {
+    if (ahora - registro.creadoEn > TTL_BORRADO_MS) {
+      pendientes.delete(id);
+      purgados++;
+    }
+  }
+  return purgados;
+}
+
+let intervaloPurga = null;
+export function iniciarPurgaPendientes(intervaloMs = TTL_BORRADO_MS) {
+  if (intervaloPurga) return;
+  intervaloPurga = setInterval(() => purgarPendientesExpirados(), intervaloMs);
+  // unref: el barrido nunca mantiene vivo el proceso (tests, CLI, apagado).
+  if (typeof intervaloPurga.unref === 'function') intervaloPurga.unref();
+}
+export function detenerPurgaPendientes() {
+  if (intervaloPurga) {
+    clearInterval(intervaloPurga);
+    intervaloPurga = null;
+  }
 }
 
 const REGEX_CONFIRMA_BORRADO = /^confirma(?:r|me)?\s+borrado\s+(borr_[a-f0-9]{6})\s*$/i;

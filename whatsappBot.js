@@ -15,7 +15,7 @@ import { consultarJarvis } from './src/core/jarvisAgent.js';
 import { confirmAndExecute } from './src/system/bashConsoleService.js';
 import { iniciarMonitorRecordatorios } from './src/services/reminderService.js';
 import { iniciarMonitorMensajesProgramados, registrarIdWhatsApp, procesarActualizacionEntrega } from './src/services/scheduledMessageService.js';
-import { obtenerHistorial, registrarIntercambio } from './src/services/conversationHistoryService.js';
+import { obtenerHistorial, registrarIntercambio, programarCondensacionSiNecesario } from './src/services/conversationHistoryService.js';
 import { esAccionCriticaPorVoz, guardarPendienteVoz, resolverConfirmacionVoz } from './src/services/voiceConfirmationService.js';
 import { resolverConfirmacionBorrado } from './src/services/destructiveActionService.js';
 import { olvidarMemoria } from './src/services/memoryService.js';
@@ -419,7 +419,16 @@ export async function iniciarWhatsApp() {
   });
 
   // Procesamiento de mensajes entrantes
-  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+  sock.ev.on('messages.upsert', (evento) => procesarMensajesEntrantes(sock, evento));
+}
+
+/**
+ * Procesamiento de mensajes entrantes. Extraido de iniciarWhatsApp como
+ * funcion exportada para probar el flujo completo de entrada con socket y
+ * LLM simulados, sin conexion real. deps.chatCompletion permite inyectar el
+ * LLM en pruebas; en produccion (sin deps) se usa el configurado.
+ */
+export async function procesarMensajesEntrantes(sock, { messages, type }, deps = {}) {
     if (type !== 'notify') return;
 
     for (const msg of messages) {
@@ -697,6 +706,7 @@ export async function iniciarWhatsApp() {
         const respuesta = await consultarJarvis(texto, historialPrevio, {
           chatId: remoteJid,
           urgencyDirective,
+          chatCompletion: deps.chatCompletion,
           otpDelivery: async ({ otpCode, ttlSeconds, reason, command }) => {
             await sock.sendMessage(remoteJid, {
               text: `Codigo de autorizacion 2FA para el comando critico "${command}" (${reason}):\n\n${otpCode}\n\nValidez: ${ttlSeconds} segundos. Responde "confirmar otp ${otpCode}" para autorizar la ejecucion. Este codigo solo lo ves tu.`
@@ -727,6 +737,9 @@ export async function iniciarWhatsApp() {
         // 8. Persistir el intercambio en el historial del chat
         try {
           registrarIntercambio(remoteJid, texto, respuesta);
+          // Condensacion en segundo plano cuando el chat supera el tope:
+          // fire-and-forget (errores capturados dentro), nunca bloquea la respuesta.
+          programarCondensacionSiNecesario(remoteJid, { chatCompletion: deps.chatCompletion });
         } catch (errHist) {
           console.error('[Historial] No se pudo registrar el intercambio:', errHist.message);
         }
@@ -739,7 +752,6 @@ export async function iniciarWhatsApp() {
         }, { quoted: msg });
       }
     }
-  });
 }
 
 // Iniciar automáticamente

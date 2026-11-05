@@ -7,7 +7,8 @@
     "whatsapp": "node whatsappBot.js",
     "chat": "node chat.js",
     "test": "node scripts/full_system_test.js",
-    "test:scheduled": "node scripts/test_scheduled_and_reminders.js"
+    "test:scheduled": "node scripts/test_scheduled_and_reminders.js",
+    "setup:browser": "playwright install chromium"
   },
   "keywords": [
     "ai",
@@ -34,5 +35,8 @@
     "qrcode-terminal": "^0.12.0",
     "rss-parser": "^3.13.0",
     "youtube-transcript": "^1.3.1"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

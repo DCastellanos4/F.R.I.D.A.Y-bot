@@ -8,6 +8,30 @@ const CARPETA_DATA = DATA_DIR;
 const ARCHIVO_MENSAJES = path.join(CARPETA_DATA, 'scheduled_messages.json');
 const ARCHIVO_LOG_ENVIOS = path.join(CARPETA_DATA, 'scheduled_messages.log');
 
+// Acuse de recibo: un mensaje 'enviado' cuyo acuse nunca llega se marca
+// 'incierto' pasado este plazo (configurable). NUNCA se reintenta solo:
+// reenviar podria duplicar un mensaje que si llego.
+export const TIMEOUT_ACUSE_MS = Number.parseInt(process.env.DAVIS_ACUSE_TIMEOUT_MS || '600000', 10) || 600000;
+
+// Rotacion del log de envios (append-only por diseno): al superar el tope,
+// el log actual pasa a .1 conservandose como copia (el contenido nunca se
+// pierde sin respaldo; el backup anterior se reemplaza) y se empieza uno
+// nuevo. Un solo backup: acotado y suficiente para el VPS.
+export const LOG_ENVIOS_MAX_BYTES = Number.parseInt(process.env.DAVIS_LOG_ENVIOS_MAX_BYTES || '1048576', 10) || 1048576;
+
+function rotarLogEnviosSiNecesario() {
+  try {
+    if (!fs.existsSync(ARCHIVO_LOG_ENVIOS)) return;
+    const tam = fs.statSync(ARCHIVO_LOG_ENVIOS).size;
+    if (tam < LOG_ENVIOS_MAX_BYTES) return;
+    const backup = `${ARCHIVO_LOG_ENVIOS}.1`;
+    fs.renameSync(ARCHIVO_LOG_ENVIOS, backup);
+    console.log(`[LOG] scheduled_messages.log rotado (${tam} bytes); copia conservada en ${path.basename(backup)}`);
+  } catch (err) {
+    console.error('Error rotando log de envios:', err.message);
+  }
+}
+
 if (!fs.existsSync(CARPETA_DATA)) {
   fs.mkdirSync(CARPETA_DATA, { recursive: true });
 }
@@ -407,6 +431,7 @@ export async function despacharMensajesPendientes() {
 
         const entradaLog = `[${new Date().toISOString()}] Para: +${m.numero} | Mensaje: "${m.mensaje}" | Programado: ${m.fechaHoraLocal}\n`;
         try {
+          rotarLogEnviosSiNecesario();
           fs.appendFileSync(ARCHIVO_LOG_ENVIOS, entradaLog, 'utf-8');
         } catch (err) {
           console.error('Error escribiendo log de envíos programados:', err.message);
@@ -425,6 +450,22 @@ export async function despacharMensajesPendientes() {
         } else {
           console.warn(`[REINTENTO PENDIENTE] Envío a +${m.numero} falló (intento ${m.intentos}/${MAX_INTENTOS_ENVIO}): ${m.ultimoError}`);
         }
+      }
+    }
+  }
+
+  // Acuse perdido: un 'enviado' cuyo acuse nunca llega no puede quedar
+  // 'enviado' para siempre ni reintentarse a ciegas (podria duplicar el
+  // mensaje). Se marca 'incierto' y se notifica para revision manual.
+  for (const m of lista) {
+    if (m.estado === 'enviado' && m.enviadoEn) {
+      const esperaMs = Date.now() - new Date(m.enviadoEn).getTime();
+      if (Number.isFinite(esperaMs) && esperaMs > TIMEOUT_ACUSE_MS) {
+        m.estado = 'incierto';
+        m.ultimoError = `Sin acuse de recibo tras ${Math.round(TIMEOUT_ACUSE_MS / 60000)} minutos; no se reintenta para evitar duplicados.`;
+        huboCambios = true;
+        fallidos.push(m);
+        console.error(`[ACUSE PERDIDO] Mensaje para +${m.numero} sin acuse tras ${Math.round(esperaMs / 60000)} min; marcado como incierto para revision manual.`);
       }
     }
   }
