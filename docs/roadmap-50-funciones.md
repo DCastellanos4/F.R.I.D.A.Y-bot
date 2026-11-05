@@ -10,7 +10,7 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ## Resumen
 
-- Implementadas: 6 de 50 operativas (nº 2 CRM, nº 5 planificador, nº 6 flashcards, nº 25 resumen mensual, nº 26 suscripciones, nº 27 presupuestos) + 2 con adaptadores listos pendientes de config del propietario (nº 1 radar; nº 24 gastos por foto: la via de texto es operativa, la lectura de imagen no es operativa hasta configurar el adaptador).
+- Implementadas: 7 de 50 operativas (nº 2 CRM, nº 5 planificador, nº 6 flashcards, nº 17 vigilante de procesos/recursos, nº 25 resumen mensual, nº 26 suscripciones, nº 27 presupuestos) + 3 pendientes de config del propietario (nº 1 radar; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: la via de texto es operativa, la lectura de imagen no es operativa hasta configurar el adaptador).
 - Pendientes: 46 de 50.
 
 ## Detalle por funcion
@@ -53,7 +53,7 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ### Servidor y hogar
 
-- **17. Vigilante de CPU y procesos del VPS** - Pendiente. Propuesta: Bloque 4 (servidor).
+- **17. Vigilante de CPU y procesos del VPS** - Operativa (Bloque 4): la saturacion global de CPU/RAM con diagnostico de procesos ya la cubria el vigilante proactivo; se suma el registro de procesos concretos con limites de CPU/memoria, aviso una vez por caida/recuperacion y enfriamiento de 30 minutos por limite. La vigilancia proactiva solo arranca con opt-in explicito del propietario; solo mide y avisa, nunca reinicia procesos.
 
 - **18. Wake-on-LAN** - Pendiente. Bloque por priorizar.
 
@@ -65,7 +65,7 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 - **22. Termómetro de la factura de Oracle** - Pendiente. Bloque por priorizar.
 
-- **23. Watchdog externo del bot** - Pendiente. Propuesta: Bloque 4 (servidor).
+- **23. Watchdog externo del bot** - Pendiente de configuracion (Bloque 4): scripts/watchdog.js comprueba la URL publica de salud del bot (/api/salud) y avisa por webhook si cae. Requiere que David lo ejecute en un host o servicio EXTERNO al VPS (un vigilante en el mismo host no cubre la caida del host) y defina DAVIS_HEALTHCHECK_URL (+ DAVIS_WATCHDOG_WEBHOOK opcional). Sin esa configuracion no es operativo.
 
 ### Finanzas personales
 

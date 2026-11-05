@@ -951,6 +951,55 @@ export const herramientasJarvis = [
         properties: { mes: { type: 'string', description: 'Mes a consultar, AAAA-MM; por defecto el actual.' } }
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'vigilar_proceso',
+      description: 'Registra un proceso del VPS para vigilarlo (caidas y consumo). El nombre sirve de patron por defecto; limites de CPU/memoria opcionales en porcentaje.',
+      parameters: {
+        type: 'object',
+        properties: {
+          nombre: { type: 'string', description: 'Nombre del proceso (node, java, minecraft...).' },
+          patron: { type: 'string', description: 'Patron de comando a buscar con pgrep -f; por defecto el nombre.' },
+          cpuLimite: { type: 'number', description: 'Avisar si supera este porcentaje de CPU (1-100).' },
+          memLimite: { type: 'number', description: 'Avisar si supera este porcentaje de memoria (1-100).' }
+        },
+        required: ['nombre']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_procesos_vigilados',
+      description: 'Lista los procesos vigilados con su estado y limites configurados.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'dejar_vigilar_proceso',
+      description: 'Deja de vigilar un proceso por nombre o patron.',
+      parameters: {
+        type: 'object',
+        properties: { criterio: { type: 'string', description: 'Nombre o patron del proceso a quitar.' } },
+        required: ['criterio']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'configurar_vigilante_procesos',
+      description: 'Activa o desactiva la vigilancia proactiva de procesos. Solo se activa si David lo pide textualmente.',
+      parameters: {
+        type: 'object',
+        properties: { activo: { type: 'boolean', description: 'true para activar, false para desactivar.' } },
+        required: ['activo']
+      }
+    }
   }
 ];
 
@@ -983,6 +1032,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   backup: ['trigger_encrypted_backup'],
   empleo: ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura', 'escanear_ofertas_empleo', 'configurar_radar_ofertas'],
   estudio: ['planificar_estudio', 'listar_planes_estudio', 'registrar_avance_estudio', 'programar_recordatorios_estudio', 'crear_flashcard', 'repasar_flashcards', 'responder_flashcard', 'configurar_repaso_flashcards'],
+  procesos: ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'],
   finanzas: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'],
   conversacion: []
 };
