@@ -1472,7 +1472,7 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
           resultadoTool = `Accion de tunel desconocida: ${accion}`;
         }
       } else if (nombreFuncion === 'trigger_encrypted_backup') {
-        const pass = args.passphrase || process.env.BACKUP_PASSPHRASE || process.env.DAVIS_BACKUP_KEY || '';
+        const pass = process.env.BACKUP_PASSPHRASE || process.env.DAVIS_BACKUP_KEY || ''; // nunca por chat: solo entorno del servidor
         if (!pass) {
           resultadoTool = 'No se puede generar la copia de seguridad: falta BACKUP_PASSPHRASE en el entorno. Sin passphrase configurada no se cifra nada con valores por defecto.';
         } else try {

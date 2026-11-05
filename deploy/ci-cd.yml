@@ -1,0 +1,107 @@
+name: CI-CD F.R.I.D.A.Y-bot
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# Conjunto CRITICO explicito (arranque, autenticacion, sesion, datos,
+# seguridad): foundations, challenge, integration, bash_console,
+# github_webhook, backup, memory_encryption, safefetch (SSRF), watchdog.
+# Criterio aprobado: criticos 100% ejecutados, 0 fallos, 0 omitidos;
+# suite completa >=95% de ejecutados. task1_ptt_audio NO es critico
+# (voz; sus 2 skips dependen de edge-tts instalado) y cuenta en la suite.
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: 'Puerta estructural: ficheros criticos presentes (falla cerrada)'
+        shell: bash
+        run: |
+          set -euo pipefail
+          archivos=(tests/run_all.js
+            tests/sector2/task0_foundations.test.js
+            tests/sector2/task0_challenge.test.js
+            tests/sector2/integration.test.js
+            tests/sector2/task12_bash_console.test.js
+            tests/sector2/task15_github_webhook.test.js
+            tests/sector2/task16_backup.test.js
+            tests/sector2/task21_memory_encryption.test.js
+            tests/sector3/safefetch_unit.test.js
+            tests/sector3/process_watchdog.test.js
+            api.js whatsappBot.js chat.js ecosystem.config.cjs package.json
+            src/core/jarvisAgent.js src/core/tools.js
+            src/core/intentRouterService.js src/core/llmService.js)
+          for a in "${archivos[@]}"; do
+            [ -f "$a" ] || { echo "BLOQUEADO: falta fichero critico $a" >&2; exit 1; }
+          done
+          echo "ficheros criticos OK"
+      - name: Tests criticos (obligatorios, 100% ejecutados)
+        shell: bash
+        run: |
+          node --test --test-reporter=tap \
+            tests/sector2/task0_foundations.test.js \
+            tests/sector2/task0_challenge.test.js \
+            tests/sector2/integration.test.js \
+            tests/sector2/task12_bash_console.test.js \
+            tests/sector2/task15_github_webhook.test.js \
+            tests/sector2/task16_backup.test.js \
+            tests/sector2/task21_memory_encryption.test.js \
+            tests/sector3/safefetch_unit.test.js \
+            tests/sector3/process_watchdog.test.js | tee criticos.tap
+      - name: Suite completa (TAP a fichero)
+        shell: bash
+        run: node tests/run_all.js | tee suite.tap
+      - name: 'Puerta de calidad aprobada (criticos 100% y suite >=95% de ejecutados)'
+        run: node deploy/quality-gate.mjs --critical criticos.tap --suite suite.tap --min-pct 95
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: tests
+    runs-on: ubuntu-latest
+    concurrency:
+      group: cicd-deploy
+      cancel-in-progress: false
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Despliegue del SHA probado en el VPS (SSH)
+        env:
+          ORACLE_SSH_PRIVATE_KEY: ${{ secrets.ORACLE_SSH_PRIVATE_KEY }}
+          ORACLE_SSH_HOST_KEY: ${{ secrets.ORACLE_SSH_HOST_KEY }}
+          ORACLE_SSH_DESTINO: ${{ vars.ORACLE_SSH_DESTINO }}
+          RELEASE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -n "$ORACLE_SSH_PRIVATE_KEY" ] || { echo "BLOQUEADO: falta secret ORACLE_SSH_PRIVATE_KEY" >&2; exit 1; }
+          [ -n "$ORACLE_SSH_HOST_KEY" ] || { echo "BLOQUEADO: falta secret ORACLE_SSH_HOST_KEY (verificacion de identidad del servidor pendiente)" >&2; exit 1; }
+          [ -n "$ORACLE_SSH_DESTINO" ] || { echo "BLOQUEADO: falta var ORACLE_SSH_DESTINO" >&2; exit 1; }
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$ORACLE_SSH_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          key=$(mktemp); chmod 600 "$key"
+          printf '%s\n' "$ORACLE_SSH_PRIVATE_KEY" > "$key"
+          # Clave legacy en una sola linea: reparar solo el formato, sin leer el valor.
+          if ! ssh-keygen -y -f "$key" >/dev/null 2>&1; then
+            awk 'NR==1{print;next} /^-----END/{print;next} {printf "%s",$0}' "$key" > "$key.fix" && mv "$key.fix" "$key"
+            ssh-keygen -y -f "$key" >/dev/null
+          fi
+          chmod 600 "$key"
+          scp -i "$key" -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            deploy/deploy.sh deploy/snapshot.js deploy/quality-gate.mjs \
+            "$ORACLE_SSH_DESTINO:/tmp/"
+          ssh -i "$key" -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes "$ORACLE_SSH_DESTINO" \
+            "RELEASE_SHA=$RELEASE_SHA bash /tmp/deploy.sh"
+          rm -f "$key"
