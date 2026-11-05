@@ -2,6 +2,90 @@ export const herramientasJarvis = [
   {
     type: 'function',
     function: {
+      name: 'planificar_estudio',
+      description: 'Crea un plan de estudio para una asignatura: reparte los temas entre los dias que quedan hasta el examen (ultimo dia de repaso) y programa un recordatorio por sesion.',
+      parameters: {
+        type: 'object',
+        properties: {
+          asignatura: { type: 'string', description: 'Nombre de la asignatura o examen.' },
+          fechaExamen: { type: 'string', description: 'Fecha del examen en formato AAAA-MM-DD.' },
+          temas: { type: 'array', items: { type: 'string' }, description: 'Lista de temas a repartir.' },
+          horaEstudio: { type: 'string', description: 'Hora diaria del recordatorio, formato HH:MM. Por defecto 18:00.' }
+        },
+        required: ['asignatura', 'fechaExamen', 'temas']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_planes_estudio',
+      description: 'Lista los planes de estudio activos con su progreso (sesiones completadas y pendientes).',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'registrar_avance_estudio',
+      description: 'Marca como completada una sesion de estudio de un plan (la primera pendiente, o la de una fecha concreta).',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string', description: 'ID del plan o texto de la asignatura.' },
+          fecha: { type: 'string', description: 'Fecha de la sesion (AAAA-MM-DD). Sin fecha, la primera pendiente.' }
+        },
+        required: ['criterio']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'crear_flashcard',
+      description: 'Crea una tarjeta de repaso espaciado (pregunta y respuesta) para una asignatura. Entra en repaso inmediatamente.',
+      parameters: {
+        type: 'object',
+        properties: {
+          asignatura: { type: 'string', description: 'Asignatura o mazo. Por defecto "general".' },
+          pregunta: { type: 'string', description: 'Pregunta de la tarjeta.' },
+          respuesta: { type: 'string', description: 'Respuesta correcta.' }
+        },
+        required: ['pregunta', 'respuesta']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'repasar_flashcards',
+      description: 'Muestra las tarjetas que tocan repasar ahora (repaso espaciado), con su ID para responder.',
+      parameters: {
+        type: 'object',
+        properties: {
+          limite: { type: 'number', description: 'Maximo de tarjetas a mostrar. Por defecto 3.' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'responder_flashcard',
+      description: 'Registra como de bien recordaste una tarjeta (calidad 0-5). Acierto (>=3): el repaso se espacia; fallo: vuelve pronto.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'ID de la tarjeta.' },
+          calidad: { type: 'number', description: 'Nota del 0 al 5 sobre como de bien la recordaste.' }
+        },
+        required: ['id', 'calidad']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'registrar_candidatura',
       description: 'Registra una candidatura de practicas o empleo en el CRM personal: empresa, puesto y estado, con recordatorio de seguimiento opcional para no dejar morir el proceso.',
       parameters: {
@@ -66,7 +150,7 @@ export const herramientasJarvis = [
           palabrasClave: { type: 'array', items: { type: 'string' }, description: 'Terminos de busqueda (ej: ["full stack", "practicas"]).' },
           ubicacion: { type: 'string', description: 'Provincia o ciudad objetivo (ej: Madrid).' },
           remoto: { type: 'boolean', description: 'true para priorizar remoto.' },
-          activo: { type: 'boolean', description: 'true para activar el radar periodico.' }
+          activo: { type: 'boolean', description: 'true solo si David pidio activar el radar textualmente en su mensaje; la activacion sin peticion explicita se rechaza.' }
         }
       }
     }
@@ -761,6 +845,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   tuneles: ['manage_tunnel'],
   backup: ['trigger_encrypted_backup'],
   empleo: ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura', 'escanear_ofertas_empleo', 'configurar_radar_ofertas'],
+  estudio: ['planificar_estudio', 'listar_planes_estudio', 'registrar_avance_estudio', 'crear_flashcard', 'repasar_flashcards', 'responder_flashcard'],
   conversacion: []
 };
 

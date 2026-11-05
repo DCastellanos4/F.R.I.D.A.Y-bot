@@ -478,12 +478,22 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
             : `Radar: ${res.nuevas.length} oferta(s) nueva(s):\n` + res.nuevas.map((o, i) => `${i + 1}. ${o.titulo} - ${o.empresa || 'Sin empresa'}${o.url ? ` (${o.url})` : ''}`).join('\n') + `\nFuentes: ${estadoFuentes}.`;
         }
       } else if (nombreFuncion === 'configurar_radar_ofertas') {
+        // Activar el radar exige intencion explicita en el mensaje original de
+        // David (canal confiable); no basta con que el modelo ponga activo:true
+        const quiereActivar = args.activo === true;
+        const mensajePideActivar = /(activa(r|s|do)?|enciend(e|er)|pon\s+en\s+marcha|arranca(r)?)\s+(el\s+)?radar|radar\s+(activo|activado|en\s+marcha)/i.test(opciones.mensajeUsuario || '');
+        const activoAplicar = quiereActivar ? (mensajePideActivar ? true : null) : (args.activo ?? null);
         const res = configurarRadar({
           palabrasClave: args.palabrasClave || null,
           ubicacion: args.ubicacion || null,
           remoto: args.remoto ?? null,
-          activo: args.activo ?? null
+          activo: activoAplicar
         }, opciones.radarDeps || {});
+        if (res.ok && quiereActivar && !mensajePideActivar) {
+          const cfgPendiente = leerConfigRadar(opciones.radarDeps || {});
+          resultadoTool = `Configuracion guardada, pero NO he activado el radar porque tu mensaje no lo pedia explicitamente (estado actual: ${cfgPendiente.activo ? 'activo' : 'desactivado'}). Si quieres activarlo, dimelo claramente: "activa el radar".`;
+          return { texto: resultadoTool };
+        }
         if (res.ok) {
           const cfg = leerConfigRadar(opciones.radarDeps || {});
           let estadoMonitor = '';
@@ -779,6 +789,7 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
 
 export async function consultarJarvis(mensajeUsuario, historial = [], opciones = {}) {
   const tiempoInicio = Date.now();
+  opciones.mensajeUsuario = mensajeUsuario; // mensaje original de David para verificar intencion en acciones sensibles
 
   // Detección directa de URLs para resumen rápido
   const urlMatch = mensajeUsuario.match(/https?:\/\/[^\s]+/i);

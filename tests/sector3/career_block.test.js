@@ -251,51 +251,91 @@ test('SSRF: validarUrlFuente rechaza esquemas, credenciales y destinos internos'
     'no-es-una-url'
   ];
   for (const url of rechazadas) {
-    const res = await validarUrlFuente(url, { dnsLookup: DNS_PUBLICO_FALSO });
+    const res = await validarUrlFuente(url);
     assert.equal(res.ok, false, `debia rechazar: ${url}`);
   }
-  const valida = await validarUrlFuente('https://portal.example/jobs?q=node', { dnsLookup: DNS_PUBLICO_FALSO });
+  const valida = await validarUrlFuente('https://portal.example/jobs?q=node');
   assert.equal(valida.ok, true);
 });
 
-test('SSRF: el nombre de host que resuelve a IP privada se rechaza (anti-rebinding)', async () => {
-  const res = await validarUrlFuente('https://portal.example/jobs', { dnsLookup: async () => [{ address: '10.1.2.3' }] });
-  assert.equal(res.ok, false);
-  assert.match(res.motivo, /privada|reservada/);
+// Transporte falso estilo node:http para probar fetchHtmlSeguro sin red
+import { EventEmitter } from 'node:events';
+function peticionFalsa(respuestas, espia = {}) {
+  let llamada = 0;
+  return (url, opciones) => {
+    espia.urls = espia.urls || [];
+    espia.urls.push(url);
+    espia.opciones = opciones;
+    const req = new EventEmitter();
+    req.destroy = (err) => { if (err) req.emit('error', err); };
+    req.end = () => {
+      const spec = respuestas[Math.min(llamada++, respuestas.length - 1)];
+      setImmediate(() => {
+        if (spec.error) { req.emit('error', new Error(spec.error)); return; }
+        const res = new EventEmitter();
+        res.statusCode = spec.statusCode;
+        res.headers = spec.headers || {};
+        res.resume = () => {};
+        req.emit('response', res);
+        for (const chunk of spec.chunks || []) res.emit('data', Buffer.from(chunk));
+        res.emit('end');
+      });
+    };
+    return req;
+  };
+}
+
+test('SSRF: el DNS se valida en el propio socket (anti-rebinding sin TOCTOU)', async () => {
+  // Con el transporte real, un lookup que devuelve IP privada impide la conexion
+  await assert.rejects(
+    () => fetchHtmlSeguro('https://portal.example/jobs', { dnsLookup: async () => [{ address: '10.1.2.3', family: 4 }] }),
+    /privada|reservada/
+  );
+  // Y la peticion falsa recibe un lookup de socket, no una resolucion previa separada
+  const espia = {};
+  const req = peticionFalsa([{ statusCode: 200, headers: {}, chunks: ['<html></html>'] }], espia);
+  await fetchHtmlSeguro('https://portal.example/jobs', { requestImpl: req, dnsLookup: DNS_PUBLICO_FALSO });
+  assert.equal(typeof espia.opciones.lookup, 'function', 'el socket usa lookup validador');
 });
 
 test('SSRF: fetchHtmlSeguro bloquea redireccion a metadatos cloud y limita tamano', async () => {
-  // Redireccion a 169.254.169.254
-  const fetchRedir = async () => ({ status: 302, headers: { get: (k) => k === 'location' ? 'http://169.254.169.254/latest/meta-data' : null } });
-  await assert.rejects(() => fetchHtmlSeguro('https://portal.example/jobs', { fetchImpl: fetchRedir, dnsLookup: DNS_PUBLICO_FALSO }), /seguridad/);
+  const espia = {};
+  const reqRedir = peticionFalsa([{ statusCode: 302, headers: { location: 'http://169.254.169.254/latest/meta-data' } }], espia);
+  await assert.rejects(
+    () => fetchHtmlSeguro('https://portal.example/jobs', { requestImpl: reqRedir, dnsLookup: DNS_PUBLICO_FALSO }),
+    /seguridad/
+  );
+  assert.equal(espia.urls.length, 1, 'la redireccion rechazada nunca se pidio');
 
-  // Cuerpo que supera el limite
-  const chunkGrande = new Uint8Array(600 * 1024);
-  const fetchGrande = async () => ({
-    status: 200,
-    headers: { get: () => null },
-    body: {
-      getReader: () => {
-        let enviado = false;
-        return {
-          read: async () => enviado ? { done: true } : (enviado = true, { done: false, value: chunkGrande }),
-          cancel: async () => {}
-        };
-      }
-    }
-  });
-  await assert.rejects(() => fetchHtmlSeguro('https://portal.example/jobs', { fetchImpl: fetchGrande, dnsLookup: DNS_PUBLICO_FALSO }), /grande/);
+  const reqGrande = peticionFalsa([{ statusCode: 200, headers: {}, chunks: [new Array(600 * 1024).join('a')] }]);
+  await assert.rejects(
+    () => fetchHtmlSeguro('https://portal.example/jobs', { requestImpl: reqGrande, dnsLookup: DNS_PUBLICO_FALSO }),
+    /grande/
+  );
 });
 
-test('SSRF: fetchHtmlSeguro pasa signal y redirect manual al fetch real', async () => {
-  let opcionesVistas = null;
-  const fetchEspia = async (url, opciones) => {
-    opcionesVistas = opciones;
-    return { status: 200, headers: { get: () => '10' }, body: null, text: async () => '<html></html>' };
+test('SSRF: fetchHtmlSeguro aplica timeout y sigue una redireccion valida', async () => {
+  // Timeout: la peticion que nunca responde se destruye
+  const reqMuda = () => {
+    const req = new EventEmitter();
+    req.destroy = (err) => { if (err) req.emit('error', err); };
+    req.end = () => {};
+    return req;
   };
-  await fetchHtmlSeguro('https://portal.example/jobs', { fetchImpl: fetchEspia, dnsLookup: DNS_PUBLICO_FALSO });
-  assert.equal(opcionesVistas.redirect, 'manual');
-  assert.ok(opcionesVistas.signal, 'debe pasar AbortSignal para el timeout');
+  await assert.rejects(
+    () => fetchHtmlSeguro('https://portal.example/jobs', { requestImpl: reqMuda, dnsLookup: DNS_PUBLICO_FALSO, timeoutMs: 50 }),
+    /Tiempo de espera/
+  );
+
+  // Redireccion valida: se sigue y se revalida
+  const espia = {};
+  const reqOk = peticionFalsa([
+    { statusCode: 301, headers: { location: '/jobs2' } },
+    { statusCode: 200, headers: {}, chunks: ['<html>ok</html>'] }
+  ], espia);
+  const html = await fetchHtmlSeguro('https://portal.example/jobs', { requestImpl: reqOk, dnsLookup: DNS_PUBLICO_FALSO });
+  assert.equal(html, '<html>ok</html>');
+  assert.deepEqual(espia.urls, ['https://portal.example/jobs', 'https://portal.example/jobs2']);
 });
 
 test('SSRF: escanearRadar no llama a la red si la URL de la fuente es interna', async () => {

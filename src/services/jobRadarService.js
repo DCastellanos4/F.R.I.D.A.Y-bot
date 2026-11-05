@@ -15,7 +15,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import dns from 'node:dns/promises';
+import http from 'node:http';
+import https from 'node:https';
+import dnsCallbacks from 'node:dns';
 import * as cheerio from 'cheerio';
 import { DATA_DIR } from '../config/paths.js';
 import { enqueueAlert } from './alertQueueService.js';
@@ -142,43 +144,91 @@ export async function validarUrlFuente(urlStr, deps = {}) {
   if (esIpBloqueada(hostSinCorchetes)) {
     return { ok: false, motivo: 'IP privada, loopback o reservada no permitida.' };
   }
-  // Anti-rebinding: resolver el nombre y rechazar si alguna IP es privada
-  const lookup = deps.dnsLookup || ((h) => dns.lookup(h, { all: true }));
-  try {
-    const ips = await lookup(host);
-    if (!Array.isArray(ips) || ips.length === 0 || ips.some((r) => esIpBloqueada(String(r.address || r)))) {
-      return { ok: false, motivo: 'El nombre de host resuelve a una IP privada o reservada.' };
-    }
-  } catch {
-    return { ok: false, motivo: 'No se pudo resolver el nombre de host.' };
-  }
+  // La validacion DNS anti-rebinding ocurre en el lookup del propio socket
+  // (crearLookupSeguro): validar antes de resolver por separado seria TOCTOU.
   return { ok: true, url };
 }
 
-async function leerTextoLimitado(res, maxBytes) {
-  const len = Number(res.headers && res.headers.get ? res.headers.get('content-length') : null);
-  if (len && len > maxBytes) {
-    throw new Error(`Respuesta demasiado grande (${len} bytes).`);
-  }
-  if (!res.body || typeof res.body.getReader !== 'function') {
-    const texto = await res.text();
-    if (texto.length > maxBytes) throw new Error('Respuesta demasiado grande.');
-    return texto;
-  }
-  const reader = res.body.getReader();
-  const chunks = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      await reader.cancel();
-      throw new Error(`Respuesta demasiado grande (mas de ${maxBytes} bytes).`);
+/**
+ * Lookup para el socket: valida las IPs EN la resolucion que la conexion
+ * realmente usa. Si alguna es privada/reservada, la conexion ni se abre.
+ * Asi no hay ventana TOCTOU entre validar y conectar.
+ */
+function crearLookupSeguro(deps = {}) {
+  const resolver = deps.dnsLookup || ((h, cb) => dnsCallbacks.lookup(h, { all: true }, cb));
+  return (hostname, options, callback) => {
+    const terminar = (err, addresses) => {
+      if (err) { callback(err); return; }
+      const lista = (Array.isArray(addresses) ? addresses : [addresses]).filter(Boolean);
+      if (lista.length === 0 || lista.some((r) => esIpBloqueada(String(r.address || r)))) {
+        callback(new Error('El nombre de host resuelve a una IP privada o reservada.'));
+        return;
+      }
+      callback(null, lista[0].address || lista[0], lista[0].family || 4);
+    };
+    try {
+      const ret = resolver(hostname, terminar);
+      if (ret && typeof ret.then === 'function') {
+        ret.then((addrs) => terminar(null, addrs), terminar);
+      }
+    } catch (err) {
+      terminar(err);
     }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks.map((c) => Buffer.from(c))).toString('utf-8');
+  };
+}
+
+/**
+ * Peticion HTTP(S) acotada: lookup validado en el socket, timeout con
+ * destruccion de la conexion y cuerpo limitado en streaming.
+ */
+function peticionSegura(url, deps = {}) {
+  return new Promise((resolve, reject) => {
+    const maxBytes = deps.maxBytes || MAX_HTML_BYTES;
+    const modulo = url.protocol === 'http:' ? http : https;
+    const hacerPeticion = deps.requestImpl || ((u, o) => modulo.request(u, o));
+    const req = hacerPeticion(url.href, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; DAVIS-job-radar)' },
+      lookup: crearLookupSeguro(deps)
+    });
+    const limpiar = () => clearTimeout(temporizador);
+    const temporizador = setTimeout(() => {
+      req.destroy(new Error(`Tiempo de espera agotado (${deps.timeoutMs || TIMEOUT_HTTP_MS} ms).`));
+    }, deps.timeoutMs || TIMEOUT_HTTP_MS);
+    req.on('response', (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400) {
+        limpiar();
+        res.resume();
+        resolve({ statusCode: res.statusCode, headers: res.headers, cuerpo: null });
+        return;
+      }
+      const len = Number(res.headers['content-length']);
+      if (len && len > maxBytes) {
+        limpiar();
+        req.destroy();
+        reject(new Error(`Respuesta demasiado grande (${len} bytes).`));
+        return;
+      }
+      const chunks = [];
+      let total = 0;
+      res.on('data', (c) => {
+        total += c.length;
+        if (total > maxBytes) {
+          limpiar();
+          req.destroy();
+          reject(new Error(`Respuesta demasiado grande (mas de ${maxBytes} bytes).`));
+          return;
+        }
+        chunks.push(c);
+      });
+      res.on('end', () => {
+        limpiar();
+        resolve({ statusCode: res.statusCode, headers: res.headers, cuerpo: Buffer.concat(chunks).toString('utf-8') });
+      });
+      res.on('error', (err) => { limpiar(); reject(err); });
+    });
+    req.on('error', (err) => { limpiar(); reject(err); });
+    req.end();
+  });
 }
 
 /**
@@ -187,35 +237,23 @@ async function leerTextoLimitado(res, maxBytes) {
  * trata siempre como contenido hostil: solo se extraen texto y hrefs.
  */
 export async function fetchHtmlSeguro(urlInicial, deps = {}) {
-  const fetchImpl = deps.fetchImpl || fetch;
   let urlActual = urlInicial;
   for (let salto = 0; salto <= MAX_REDIRECTS; salto++) {
     const validacion = await validarUrlFuente(urlActual, deps);
     if (!validacion.ok) {
       throw new Error(`URL rechazada por seguridad: ${validacion.motivo}`);
     }
-    const controlador = new AbortController();
-    const temporizador = setTimeout(() => controlador.abort(), deps.timeoutMs || TIMEOUT_HTTP_MS);
-    let res;
-    try {
-      res = await fetchImpl(validacion.url.href, {
-        redirect: 'manual',
-        signal: controlador.signal,
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; DAVIS-job-radar)' }
-      });
-    } finally {
-      clearTimeout(temporizador);
-    }
-    if (res.status >= 300 && res.status < 400) {
-      const destino = res.headers && res.headers.get ? res.headers.get('location') : null;
-      if (!destino) throw new Error(`Redireccion ${res.status} sin destino.`);
+    const res = await peticionSegura(validacion.url, deps);
+    if (res.statusCode >= 300 && res.statusCode < 400) {
+      const destino = res.headers && res.headers.location;
+      if (!destino) throw new Error(`Redireccion ${res.statusCode} sin destino.`);
       urlActual = new URL(destino, validacion.url.href).href;
       continue;
     }
-    if (res.status >= 400) {
-      throw new Error(`HTTP ${res.status}`);
+    if (res.statusCode >= 400) {
+      throw new Error(`HTTP ${res.statusCode}`);
     }
-    return leerTextoLimitado(res, deps.maxBytes || MAX_HTML_BYTES);
+    return res.cuerpo;
   }
   throw new Error(`Demasiadas redirecciones (mas de ${MAX_REDIRECTS}).`);
 }

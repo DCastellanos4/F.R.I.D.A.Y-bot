@@ -139,3 +139,39 @@ test('Seleccion de herramientas: un mensaje de empleo ofrece el catalogo del blo
     assert.ok(toolsOfrecidas.includes(nombre), `falta ${nombre} en el catalogo ofrecido`);
   }
 });
+
+test('Activacion del radar exige peticion explicita de David, no solo activo:true del modelo', async () => {
+  const { consultarJarvis } = await import('../../src/core/jarvisAgent.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'davis-activacion-'));
+  const radarDeps = {
+    rutaConfig: path.join(dir, 'radar.json'),
+    rutaVistos: path.join(dir, 'radar_seen.json'),
+    dnsLookup: async () => [{ address: '93.184.216.34' }]
+  };
+  const leerActivo = () => {
+    try { return JSON.parse(fs.readFileSync(radarDeps.rutaConfig, 'utf-8')).activo; }
+    catch { return undefined; }
+  };
+
+  // El modelo pide activo:true pero David no lo pidio: no se activa
+  let resultadoHerramienta = '';
+  const chatSinOrden = async ({ messages }) => {
+    const ultimo = messages[messages.length - 1];
+    if (ultimo.role === 'tool') { resultadoHerramienta = ultimo.content; return { message: { content: 'Cerrado.' } }; }
+    return { message: { content: '', tool_calls: [{ id: 'a1', function: { name: 'configurar_radar_ofertas', arguments: { palabrasClave: ['node'], activo: true } } }] } };
+  };
+  await consultarJarvis('configura el radar con palabras clave node', [], { chatCompletion: chatSinOrden, radarDeps });
+  assert.notEqual(leerActivo(), true, 'sin peticion explicita no se activa');
+  assert.match(resultadoHerramienta, /NO he activado el radar/);
+  // Pero la configuracion no sensible si se guardo
+  assert.deepEqual(JSON.parse(fs.readFileSync(radarDeps.rutaConfig, 'utf-8')).palabrasClave, ['node']);
+
+  // David lo pide claramente: se activa
+  const chatConOrden = async ({ messages }) => {
+    const ultimo = messages[messages.length - 1];
+    if (ultimo.role === 'tool') return { message: { content: 'Cerrado.' } };
+    return { message: { content: '', tool_calls: [{ id: 'a2', function: { name: 'configurar_radar_ofertas', arguments: { activo: true } } }] } };
+  };
+  await consultarJarvis('activa el radar', [], { chatCompletion: chatConOrden, radarDeps });
+  assert.equal(leerActivo(), true, 'con peticion explicita si se activa');
+});
