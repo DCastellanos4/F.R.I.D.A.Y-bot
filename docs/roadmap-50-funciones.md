@@ -25,9 +25,9 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 - **4. Analizador de CV contra oferta** - Pendiente. Bloque por priorizar.
 
-- **5. Planificador de estudio** - Implementada (bloque 2). Reparte el temario entre los dias hasta el examen (ultimo dia de repaso) y programa un recordatorio por sesion en el sistema de recordatorios existente. Herramientas: planificar_estudio, listar_planes_estudio, registrar_avance_estudio.
+- **5. Planificador de estudio** - Implementada (bloque 2). Reparte el temario entre los dias hasta el examen (ultimo dia de repaso, calendario Europe/Madrid). Los recordatorios solo se programan con la hora elegida por David, nunca inventada; sin hora el plan se crea sin ellos y se piden despues. Herramientas: planificar_estudio, listar_planes_estudio, registrar_avance_estudio, programar_recordatorios_estudio.
 
-- **6. Flashcards de repaso espaciado** - Implementada (bloque 2). Repeticion espaciada ligera (acierto espacia, fallo vuelve en 12h) con rondas que llegan por la cola de alertas proactiva; el monitor solo arranca si hay tarjetas creadas. Herramientas: crear_flashcard, repasar_flashcards, responder_flashcard.
+- **6. Flashcards de repaso espaciado** - Implementada (bloque 2). Repeticion espaciada ligera (acierto espacia, fallo vuelve en 12h; la misma revision no se califica dos veces). Rondas proactivas DESACTIVADAS por defecto: solo con opt-in explicito de David, con cadencia minima, maximo 3 tarjetas por ronda y horario de silencio (22:00-8:00 por defecto). Herramientas: crear_flashcard, repasar_flashcards, responder_flashcard, configurar_repaso_flashcards.
 
 - **7. Resumidor de apuntes** - Pendiente. Bloque por priorizar.
 

@@ -2,9 +2,10 @@
  * studyPlannerService.js - Planificador de estudio (funcion nº 5 del roadmap)
  *
  * Dada una asignatura, una fecha de examen y una lista de temas, genera un
- * plan diario (reparto de temas + ultimo dia de repaso) y lo conecta con el
- * sistema de recordatorios existente. Persistencia en JSON con escritura
- * atomica. Todas las rutas y efectos son inyectables para pruebas.
+ * plan diario (reparto de temas + ultimo dia de repaso) y, SOLO si David
+ * indica la hora, conecta cada sesion con el sistema de recordatorios.
+ * Fechas en calendario Europe/Madrid (convencion del repo), examen como
+ * fecha sin hora. Persistencia atomica; rutas y efectos inyectables.
  *
  * Strict Policy: Zero Emojis.
  */
@@ -15,7 +16,7 @@ import { DATA_DIR } from '../config/paths.js';
 import { crearRecordatorio as crearRecordatorioReal } from './reminderService.js';
 
 export const ARCHIVO_DEFECTO = path.join(DATA_DIR, 'study_plans.json');
-export const HORA_ESTUDIO_DEFECTO = '18:00';
+export const ZONA_DEFECTO = 'Europe/Madrid';
 
 function ruta(deps = {}) {
   return deps.rutaArchivo || ARCHIVO_DEFECTO;
@@ -45,13 +46,38 @@ function fechaADate(fechaExamen) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function hoyUTC(deps = {}) {
-  const base = deps.hoy ? new Date(deps.hoy) : new Date();
-  return new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate()));
+function ahoraMs(deps = {}) {
+  return deps.hoy ? new Date(deps.hoy).getTime() : Date.now();
 }
 
-function aFechaISO(d) {
-  return d.toISOString().slice(0, 10);
+/** Fecha de calendario (AAAA-MM-DD) en la zona configurada. */
+export function hoyEnZona(deps = {}) {
+  const zona = deps.zonaHoraria || ZONA_DEFECTO;
+  const partes = new Intl.DateTimeFormat('en-CA', { timeZone: zona, year: 'numeric', month: '2-digit', day: '2-digit' })
+    .formatToParts(new Date(ahoraMs(deps)));
+  const get = (t) => partes.find((p) => p.type === t).value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+/** Milisegundos UTC de una hora de pared (fecha + HH:MM) en la zona. */
+export function msParedAZulu(fecha, hora, zona = ZONA_DEFECTO) {
+  const objetivo = Date.parse(`${fecha}T${hora}:00Z`);
+  let guess = objetivo;
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: zona, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+  });
+  for (let i = 0; i < 3; i++) {
+    const partes = fmt.formatToParts(new Date(guess));
+    const get = (t) => partes.find((p) => p.type === t).value;
+    const pared = Date.UTC(+get('year'), +get('month') - 1, +get('day'), +get('hour'), +get('minute'), +get('second'));
+    guess += objetivo - pared;
+  }
+  return guess;
+}
+
+function validarHora(hora) {
+  return typeof hora === 'string' && /^([01]?\d|2[0-3]):[0-5]\d$/.test(hora.trim());
 }
 
 /**
@@ -68,14 +94,36 @@ export function repartirTemario(temas, dias) {
     cursor += porDia;
   }
   if (dias >= 2) {
-    entradas.push({ offsetDia: dias - 1, tipo: 'repaso', temas: ['Repaso general de ' + 'todos los temas'] });
+    entradas.push({ offsetDia: dias - 1, tipo: 'repaso', temas: ['Repaso general de todos los temas'] });
   }
   return entradas;
 }
 
+function programarSesiones(plan, hora, deps, crear) {
+  const zona = deps.zonaHoraria || ZONA_DEFECTO;
+  const ahora = ahoraMs(deps);
+  let recordatorios = 0;
+  const errores = [];
+  for (const entrada of plan.entradas) {
+    if (entrada.completada) continue;
+    const objetivoMs = msParedAZulu(entrada.fecha, hora, zona);
+    const minutos = Math.round((objetivoMs - ahora) / 60000);
+    if (minutos <= 0) continue;
+    const res = crear({
+      mensaje: `Estudio de ${plan.asignatura} (${entrada.tipo}): ${entrada.temas.join(', ')}. Examen: ${plan.fechaExamen}.`,
+      minutosEnElFuturo: minutos
+    });
+    if (res && res.ok === false) errores.push(res.error || 'error desconocido');
+    else recordatorios++;
+  }
+  return { recordatorios, errores };
+}
+
 /**
- * Crea un plan de estudio y programa un recordatorio por sesion.
- * deps: { rutaArchivo, crearRecordatorio, hoy, horaEstudio }
+ * Crea un plan de estudio. Sin horaEstudio NO se programan recordatorios:
+ * la hora la elige el propietario, no se inventa. Plan duplicado (misma
+ * asignatura y fecha de examen) devuelve error con el existente, sin
+ * crear recordatorios duplicados.
  */
 export function crearPlanEstudio({ asignatura, fechaExamen, temas, horaEstudio }, deps = {}) {
   if (typeof asignatura !== 'string' || !asignatura.trim()) {
@@ -88,54 +136,80 @@ export function crearPlanEstudio({ asignatura, fechaExamen, temas, horaEstudio }
   if (!examen) {
     return { ok: false, error: 'Fecha de examen invalida. Usa formato AAAA-MM-DD.' };
   }
-  const hoy = hoyUTC(deps);
+  const hoyISO = hoyEnZona(deps);
+  const hoy = fechaADate(hoyISO);
   const dias = Math.round((examen - hoy) / 86400000);
   if (dias < 0) {
     return { ok: false, error: 'La fecha del examen ya paso.' };
   }
+  if (horaEstudio !== undefined && horaEstudio !== null && !validarHora(horaEstudio)) {
+    return { ok: false, error: 'Hora invalida. Usa formato HH:MM, por ejemplo 17:30.' };
+  }
+
+  const planes = leerPlanes(deps);
+  const existente = planes.find((p) =>
+    p.asignatura.toLowerCase() === asignatura.trim().toLowerCase() && p.fechaExamen === fechaExamen);
+  if (existente) {
+    return { ok: false, error: `Ya existe un plan de ${existente.asignatura} para el ${existente.fechaExamen} (ID: ${existente.id}). No se duplica.`, existente };
+  }
+
   const diasPlan = Math.max(dias, 1);
   const temasLimpios = temas.map((t) => t.trim());
   const esquema = repartirTemario(temasLimpios, diasPlan);
-
-  const ahora = deps.hoy ? new Date(deps.hoy) : new Date();
-  const [hh, mm] = (horaEstudio || HORA_ESTUDIO_DEFECTO).split(':').map(Number);
   const entradas = esquema.map((e) => {
     const fecha = new Date(hoy.getTime() + e.offsetDia * 86400000);
-    return { fecha: aFechaISO(fecha), tipo: e.tipo, temas: e.temas, completada: false };
+    return { fecha: fecha.toISOString().slice(0, 10), tipo: e.tipo, temas: e.temas, completada: false };
   });
-
-  const crear = typeof deps.crearRecordatorio === 'function' ? deps.crearRecordatorio : crearRecordatorioReal;
-  let recordatorios = 0;
-  const erroresRecordatorio = [];
-  for (const entrada of entradas) {
-    const objetivo = new Date(`${entrada.fecha}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`);
-    const minutos = Math.round((objetivo - ahora) / 60000);
-    if (minutos <= 0) continue;
-    const res = crear({
-      mensaje: `Estudio de ${asignatura.trim()} (${entrada.tipo}): ${entrada.temas.join(', ')}. Examen: ${aFechaISO(examen)}.`,
-      minutosEnElFuturo: minutos
-    });
-    if (res && res.ok === false) erroresRecordatorio.push(res.error || 'error desconocido');
-    else recordatorios++;
-  }
 
   const plan = {
     id: crypto.randomUUID().slice(0, 8),
     asignatura: asignatura.trim(),
-    fechaExamen: aFechaISO(examen),
-    horaEstudio: `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`,
+    fechaExamen,
+    horaEstudio: horaEstudio ? horaEstudio.trim() : null,
     entradas,
-    creadoEn: ahora.toISOString()
+    recordatoriosProgramados: false,
+    creadoEn: new Date(ahoraMs(deps)).toISOString()
   };
-  const planes = leerPlanes(deps);
+
+  let recordatorios = 0;
+  let aviso = 'Sin hora no programo recordatorios: dime a que hora quieres estudiar (por ejemplo, 17:30) y los creo.';
+  if (plan.horaEstudio) {
+    const crear = typeof deps.crearRecordatorio === 'function' ? deps.crearRecordatorio : crearRecordatorioReal;
+    const resultado = programarSesiones(plan, plan.horaEstudio, deps, crear);
+    recordatorios = resultado.recordatorios;
+    plan.recordatoriosProgramados = true;
+    aviso = resultado.errores.length ? `Fallaron ${resultado.errores.length} recordatorios.` : null;
+  }
+
   planes.push(plan);
   guardarPlanes(planes, deps);
+  return { ok: true, plan, recordatorios, aviso };
+}
 
+/**
+ * Programa (una sola vez) los recordatorios de un plan ya creado, a la hora
+ * elegida por el propietario.
+ */
+export function programarRecordatoriosPlan(criterio, hora, deps = {}) {
+  if (!validarHora(hora)) {
+    return { ok: false, error: 'Hora invalida. Usa formato HH:MM, por ejemplo 17:30.' };
+  }
+  const planes = leerPlanes(deps);
+  const { plan, error, coincidencias } = buscarPlan(planes, criterio);
+  if (error) return { ok: false, error, coincidencias };
+  if (plan.recordatoriosProgramados) {
+    return { ok: false, error: `El plan de ${plan.asignatura} ya tiene recordatorios programados (hora ${plan.horaEstudio}). No se duplican.` };
+  }
+  const crear = typeof deps.crearRecordatorio === 'function' ? deps.crearRecordatorio : crearRecordatorioReal;
+  const resultado = programarSesiones(plan, hora.trim(), deps, crear);
+  plan.horaEstudio = hora.trim();
+  plan.recordatoriosProgramados = true;
+  guardarPlanes(planes, deps);
   return {
     ok: true,
     plan,
-    recordatorios,
-    avisoRecordatorios: erroresRecordatorio.length ? `Fallaron ${erroresRecordatorio.length} recordatorios.` : null
+    recordatorios: resultado.recordatorios,
+    aviso: resultado.errores.length ? `Fallaron ${resultado.errores.length} recordatorios.` : null
   };
 }
 
@@ -181,7 +255,7 @@ export function registrarAvance(criterio, { fecha } = {}, deps = {}) {
     entrada = pendientes.sort((a, b) => a.fecha.localeCompare(b.fecha))[0];
   }
   entrada.completada = true;
-  entrada.completadaEn = (deps.hoy ? new Date(deps.hoy) : new Date()).toISOString();
+  entrada.completadaEn = new Date(ahoraMs(deps)).toISOString();
   guardarPlanes(planes, deps);
   return { ok: true, plan, entrada };
 }

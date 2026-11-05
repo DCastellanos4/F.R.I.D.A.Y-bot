@@ -42,6 +42,21 @@ export const herramientasJarvis = [
   {
     type: 'function',
     function: {
+      name: 'programar_recordatorios_estudio',
+      description: 'Programa los recordatorios de un plan de estudio ya creado, a la hora elegida por David. Solo una vez por plan.',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string', description: 'ID del plan o texto de la asignatura.' },
+          hora: { type: 'string', description: 'Hora diaria elegida por David, formato HH:MM (ej: 17:30).' }
+        },
+        required: ['criterio', 'hora']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'crear_flashcard',
       description: 'Crea una tarjeta de repaso espaciado (pregunta y respuesta) para una asignatura. Entra en repaso inmediatamente.',
       parameters: {
@@ -64,6 +79,22 @@ export const herramientasJarvis = [
         type: 'object',
         properties: {
           limite: { type: 'number', description: 'Maximo de tarjetas a mostrar. Por defecto 3.' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'configurar_repaso_flashcards',
+      description: 'Configura las rondas proactivas de repaso de flashcards: cadencia, horario de silencio y activacion. activo=true solo si David lo pidio textualmente en su mensaje.',
+      parameters: {
+        type: 'object',
+        properties: {
+          activo: { type: 'boolean', description: 'true solo si David pidio activar las rondas textualmente.' },
+          cadenciaHoras: { type: 'number', description: 'Horas minimas entre rondas (1-24). Por defecto 4.' },
+          silencioDesde: { type: 'number', description: 'Hora (0-23) desde la que no se envian repasos. Por defecto 22.' },
+          silencioHasta: { type: 'number', description: 'Hora (0-23) hasta la que no se envian repasos. Por defecto 8.' }
         }
       }
     }
@@ -845,7 +876,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   tuneles: ['manage_tunnel'],
   backup: ['trigger_encrypted_backup'],
   empleo: ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura', 'escanear_ofertas_empleo', 'configurar_radar_ofertas'],
-  estudio: ['planificar_estudio', 'listar_planes_estudio', 'registrar_avance_estudio', 'crear_flashcard', 'repasar_flashcards', 'responder_flashcard'],
+  estudio: ['planificar_estudio', 'listar_planes_estudio', 'registrar_avance_estudio', 'programar_recordatorios_estudio', 'crear_flashcard', 'repasar_flashcards', 'responder_flashcard', 'configurar_repaso_flashcards'],
   conversacion: []
 };
 

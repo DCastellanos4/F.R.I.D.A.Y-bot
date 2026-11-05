@@ -15,8 +15,75 @@ import { DATA_DIR } from '../config/paths.js';
 import { enqueueAlert } from './alertQueueService.js';
 
 export const ARCHIVO_DEFECTO = path.join(DATA_DIR, 'flashcards.json');
+export const ARCHIVO_CONFIG_DEFECTO = path.join(DATA_DIR, 'flashcards_config.json');
 export const INTERVALO_DEFECTO_MS = Number(process.env.DAVIS_FLASHCARDS_INTERVALO_MS) || 4 * 60 * 60 * 1000;
 export const MAX_POR_RONDA = 3;
+export const ZONA_DEFECTO = 'Europe/Madrid';
+
+function configDefecto() {
+  // Repaso proactivo DESACTIVADO hasta opt-in explicito del propietario
+  return { activo: false, cadenciaHoras: 4, silencioDesde: 22, silencioHasta: 8, ultimaRondaEn: null };
+}
+
+function rutaConfig(deps = {}) {
+  return deps.rutaConfig || ARCHIVO_CONFIG_DEFECTO;
+}
+
+export function leerConfigFlashcards(deps = {}) {
+  try {
+    return { ...configDefecto(), ...JSON.parse(fs.readFileSync(rutaConfig(deps), 'utf-8')) };
+  } catch {
+    return configDefecto();
+  }
+}
+
+function guardarConfig(config, deps = {}) {
+  const destino = rutaConfig(deps);
+  fs.mkdirSync(path.dirname(destino), { recursive: true });
+  fs.writeFileSync(destino, JSON.stringify(config, null, 2), 'utf-8');
+}
+
+/**
+ * Configura el repaso proactivo. activo=true solo debe llegar con opt-in
+ * explicito del propietario (el ejecutor lo verifica en su mensaje).
+ */
+export function configurarRepaso({ activo = null, cadenciaHoras = null, silencioDesde = null, silencioHasta = null } = {}, deps = {}) {
+  const config = leerConfigFlashcards(deps);
+  if (cadenciaHoras !== null) {
+    const c = Number(cadenciaHoras);
+    if (!Number.isFinite(c) || c < 1 || c > 24) {
+      return { ok: false, error: 'cadenciaHoras debe ser un numero entre 1 y 24.' };
+    }
+    config.cadenciaHoras = c;
+  }
+  for (const [campo, valor] of [['silencioDesde', silencioDesde], ['silencioHasta', silencioHasta]]) {
+    if (valor !== null) {
+      const h = Number(valor);
+      if (!Number.isInteger(h) || h < 0 || h > 23) {
+        return { ok: false, error: `${campo} debe ser una hora entera entre 0 y 23.` };
+      }
+      config[campo] = h;
+    }
+  }
+  if (activo !== null) config.activo = Boolean(activo);
+  guardarConfig(config, deps);
+  return { ok: true, config };
+}
+
+/** Hora local actual (0-23) en la zona configurada. */
+function horaEnZona(deps) {
+  const zona = deps.zonaHoraria || ZONA_DEFECTO;
+  return Number(new Intl.DateTimeFormat('en-US', { timeZone: zona, hour: '2-digit', hourCycle: 'h23' }).format(ahora(deps)));
+}
+
+function enHorarioDeSilencio(config, deps) {
+  if (config.silencioDesde === config.silencioHasta) return false;
+  const hora = horaEnZona(deps);
+  if (config.silencioDesde < config.silencioHasta) {
+    return hora >= config.silencioDesde && hora < config.silencioHasta;
+  }
+  return hora >= config.silencioDesde || hora < config.silencioHasta;
+}
 const FACILIDAD_INICIAL = 2.5;
 const FACILIDAD_MINIMA = 1.3;
 
@@ -100,6 +167,9 @@ export function registrarRespuesta(id, calidad, deps = {}) {
   }
   const ahoraDate = ahora(deps);
   const r = tarjeta.repaso;
+  if (new Date(r.proximaRevision).getTime() > ahoraDate.getTime()) {
+    return { ok: false, error: `Esa tarjeta no toca ahora; su proxima revision es ${r.proximaRevision.slice(0, 16).replace('T', ' ')}. No se califica dos veces la misma revision.` };
+  }
   if (q >= 3) {
     r.aciertos++;
     r.intervaloDias = r.intervaloDias < 1 ? 1 : Math.round(r.intervaloDias * r.facilidad);
@@ -143,8 +213,18 @@ export function resumenFlashcards(deps = {}) {
  * revision ya alertada). Devuelve cuantas se encolaron.
  */
 export function lanzarRondaRepaso(deps = {}) {
-  const tarjetas = leerTarjetas(deps);
+  const config = leerConfigFlashcards(deps);
+  if (!config.activo) {
+    return { ok: true, encoladas: 0, motivo: 'Repaso proactivo desactivado: falta opt-in del propietario.' };
+  }
+  if (enHorarioDeSilencio(config, deps)) {
+    return { ok: true, encoladas: 0, motivo: `Horario de silencio (${config.silencioDesde}:00-${config.silencioHasta}:00).` };
+  }
   const ahoraMs = ahora(deps).getTime();
+  if (config.ultimaRondaEn && (ahoraMs - new Date(config.ultimaRondaEn).getTime()) < config.cadenciaHoras * 3600000) {
+    return { ok: true, encoladas: 0, motivo: `Cadencia: ultima ronda hace menos de ${config.cadenciaHoras} h.` };
+  }
+  const tarjetas = leerTarjetas(deps);
   const candidatas = tarjetas
     .filter((t) => new Date(t.repaso.proximaRevision).getTime() <= ahoraMs)
     .filter((t) => !t.repaso.ultimaAlertaEn || new Date(t.repaso.ultimaAlertaEn) < new Date(t.repaso.proximaRevision))
@@ -165,6 +245,10 @@ export function lanzarRondaRepaso(deps = {}) {
     t.repaso.ultimaAlertaEn = new Date(ahoraMs).toISOString();
   }
   guardarTarjetas(tarjetas, deps);
+  if (candidatas.length > 0) {
+    config.ultimaRondaEn = new Date(ahoraMs).toISOString();
+    guardarConfig(config, deps);
+  }
   return { ok: true, encoladas: candidatas.length };
 }
 
@@ -172,8 +256,8 @@ let temporizador = null;
 
 export function iniciarMonitorFlashcards(deps = {}) {
   if (temporizador) return { iniciado: true, mensaje: 'El monitor de flashcards ya estaba activo.' };
-  if (leerTarjetas(deps).length === 0) {
-    return { iniciado: false, motivo: 'Sin tarjetas creadas: el monitor no arranca hasta que el propietario cree la primera.' };
+  if (!leerConfigFlashcards(deps).activo) {
+    return { iniciado: false, motivo: 'Repaso proactivo desactivado: el propietario no ha activado las rondas (opt-in).' };
   }
   temporizador = setInterval(() => {
     try {

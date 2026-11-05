@@ -67,7 +67,8 @@ test('Entrada real: planificar_estudio persiste el plan y crea recordatorios via
     chatCompletion: crearChatFalso('planificar_estudio', {
       asignatura: 'Redes',
       fechaExamen: '2026-11-20',
-      temas: ['TCP', 'UDP', 'DNS']
+      temas: ['TCP', 'UDP', 'DNS'],
+      horaEstudio: '17:30'
     }, captura),
     rutaPlanesEstudio: rutaPlanes,
     crearRecordatorioEstudio: (r) => { recordatorios.push(r); return { ok: true }; }
@@ -119,13 +120,40 @@ test('Entrada real: crear_flashcard persiste y responder_flashcard actualiza el 
   assert.ok(captura2.resultadoHerramienta.includes('Anotado'), 'confirmacion del ejecutor');
 });
 
+test('Rondas de repaso: activacion solo por peticion explicita de David', async () => {
+  const { consultarJarvis } = await import('../../src/core/jarvisAgent.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'davis-repaso-'));
+  const depsFlash = {
+    rutaArchivoFlashcards: path.join(dir, 'flash.json'),
+    rutaConfigFlashcards: path.join(dir, 'flash_config.json')
+  };
+  const leerActivo = () => {
+    try { return JSON.parse(fs.readFileSync(depsFlash.rutaConfigFlashcards, 'utf-8')).activo; }
+    catch { return undefined; }
+  };
+  const chatCon = (id) => async ({ messages }) => {
+    const ultimo = messages[messages.length - 1];
+    if (ultimo.role === 'tool') return { message: { content: 'Cerrado.' } };
+    return { message: { content: '', tool_calls: [{ id, function: { name: 'configurar_repaso_flashcards', arguments: { activo: true, cadenciaHoras: 6 } } }] } };
+  };
+
+  // El modelo pide activo:true sin que David lo pidiera: no se activa
+  await consultarJarvis('configura el repaso con cadencia de 6 horas', [], { chatCompletion: chatCon('r1'), ...depsFlash });
+  assert.notEqual(leerActivo(), true, 'sin peticion explicita no se activa el repaso proactivo');
+  assert.equal(JSON.parse(fs.readFileSync(depsFlash.rutaConfigFlashcards, 'utf-8')).cadenciaHoras, 6, 'el resto de la config si se guarda');
+
+  // David lo pide claramente: se activa
+  await consultarJarvis('activa el repaso de flashcards', [], { chatCompletion: chatCon('r2'), ...depsFlash });
+  assert.equal(leerActivo(), true);
+});
+
 test('Router: un mensaje de estudio selecciona el catalogo del bloque sin safety net', async () => {
   const { analizarIntencion } = await import('../../src/core/jarvisAgent.js');
   const ruta = analizarIntencion('hazme un plan de estudio para el examen');
   assert.equal(ruta.safetyNet, false, 'la intencion estudio existe, no cae en safety net');
   assert.ok(ruta.intenciones.includes('estudio'));
   const nombres = ruta.herramientas.map((t) => t.function.name);
-  for (const nombre of ['planificar_estudio', 'listar_planes_estudio', 'registrar_avance_estudio', 'crear_flashcard', 'repasar_flashcards', 'responder_flashcard']) {
+  for (const nombre of ['planificar_estudio', 'listar_planes_estudio', 'registrar_avance_estudio', 'programar_recordatorios_estudio', 'crear_flashcard', 'repasar_flashcards', 'responder_flashcard', 'configurar_repaso_flashcards']) {
     assert.ok(nombres.includes(nombre), `falta ${nombre} en el catalogo del router`);
   }
 });
