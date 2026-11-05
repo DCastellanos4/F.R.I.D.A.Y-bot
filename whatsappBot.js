@@ -32,6 +32,7 @@ import { iniciarMonitorSnoozes } from './src/services/snoozeService.js';
 import { procesarUbicacionEntrante } from './src/services/arrivalWatchService.js';
 import { iniciarMonitorDigest } from './src/services/brainDigestService.js';
 import { enHorarioSilencio } from './src/services/quietHoursService.js';
+import { estadoEntrevista, responderEntrevista, terminarEntrevista } from './src/services/interviewService.js';
 import { programarEnvioMatutino } from './src/services/dailyBriefing.js';
 import { normalizarTexto } from './src/services/memoryService.js';
 import { transcribirAudioBuffer } from './src/services/voiceService.js';
@@ -698,12 +699,32 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         continue;
       }
 
+      // 4f. Simulacro de entrevista activo en este chat (nº 3): cada mensaje
+      // se evalua como respuesta. La salida es determinista y anterior al modo.
+      const sesionEntrevista = estadoEntrevista({ rutaArchivo: deps.rutaArchivoEntrevistas, chatId: remoteJid });
+      if (sesionEntrevista && /termina(r)?\s+(la\s+|el\s+|este\s+)?(entrevista|simulacro)/i.test(texto)) {
+        terminarEntrevista({ rutaArchivo: deps.rutaArchivoEntrevistas, chatId: remoteJid });
+        await sock.sendMessage(remoteJid, { text: 'Simulacro cerrado, David. Cuando quieras, abrimos otro.' }, { quoted: msg });
+        continue;
+      }
+      if (sesionEntrevista) {
+        const rEnt = await responderEntrevista(texto, { rutaArchivo: deps.rutaArchivoEntrevistas, chatId: remoteJid, chatCompletion: deps.chatCompletion });
+        await sock.sendMessage(remoteJid, {
+          text: rEnt.ok
+            ? (rEnt.fin ? `${rEnt.evaluacion}\n\nSimulacro terminado: ${rEnt.resultado.aciertos}/${rEnt.resultado.total} respuestas acertadas.` : rEnt.evaluacion)
+            : rEnt.error
+        }, { quoted: msg });
+        continue;
+      }
+
       // 5. Captura y persistencia automatica de Notas Personales
       // Las entradas de diario (nº 43) van al diario via JARVIS, no a las
       // notas del Second Brain.
       const esSelfChat = remoteJid.includes(NUMERO_DAVID_AUTORIZADO);
       const esEntradaDiario = /\bdiario\b/i.test(texto);
-      if (!esEntradaDiario && isPersonalNote(texto, esSelfChat)) {
+      // Igual para el registro de entregas/examenes (nº 8): va a JARVIS.
+      const esRegistroEntrega = /^(apunta|anota|registra)\s+(un|una|el|la|este|esta)?\s*(examen|ex[aá]men|entrega)\b/i.test(texto);
+      if (!esEntradaDiario && !esRegistroEntrega && isPersonalNote(texto, esSelfChat)) {
         console.log(`[WhatsApp Nota Personal] Detectada: "${texto}"`);
         const resNota = await savePersonalNote(texto, {
           source: esAudio ? 'audio' : 'text',
@@ -904,6 +925,8 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
           rutaArchivoNocturno: deps.rutaArchivoNocturno,
           obtenerNoticiasDeportes: deps.obtenerNoticiasDeportes,
           obtenerMemorias: deps.obtenerMemorias,
+          rutaArchivoEntrevistas: deps.rutaArchivoEntrevistas,
+          rutaArchivoEntregas: deps.rutaArchivoEntregas,
           otpDelivery: async ({ otpCode, ttlSeconds, reason, command }) => {
             await sock.sendMessage(remoteJid, {
               text: `Codigo de autorizacion 2FA para el comando critico "${command}" (${reason}):\n\n${otpCode}\n\nValidez: ${ttlSeconds} segundos. Responde "confirmar otp ${otpCode}" para autorizar la ejecucion. Este codigo solo lo ves tu.`
