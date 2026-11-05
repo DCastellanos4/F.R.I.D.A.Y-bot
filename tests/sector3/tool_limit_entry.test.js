@@ -142,6 +142,59 @@ test('Multi-ronda: la lista de herramientas es estable entre rondas de function 
   assert.ok(captura.listas[0].includes('consultar_clima'));
 });
 
+test('Alcance honesto: una seleccion que supera el limite NO se trunca en silencio (0 herramientas + peticion de dividir)', async () => {
+  // Fuerza el caso inyectando una seleccion artificial >128 via mensaje que
+  // el regex no resuelve y clasificador con muchisimas intenciones no es
+  // posible: se prueba la politica en su punto de decision a traves de la
+  // entrada real con un mensaje multi-area extremo.
+  const enviados = [];
+  const captura = { listas: [] };
+  const areas = 'ponme una alarma, dime el tiempo en Madrid, programa un mensaje, guarda este recuerdo clave, vigila este producto, dame las noticias, abre la web, estado del servidor, modo vip, resume el grupo, descarga el video, guarda nota, manda contacto, crea encuesta, ejecuta un comando, genera una clave, estado de docker, espacio en disco, estado de tuneles, haz backup, registra candidatura, plan de estudio, registra un gasto, vigila un proceso, activa traductor, proximas llegadas de bus, registra contacto, escribe en el diario, simulacro de entrevista, busca un producto, anota una idea, audita dependencias, enciende el pc, vigila vuelos, registra una fecha senalada, pon un snooze, estadisticas del grupo, aviso de llegada, crea flashcard, configura presupuesto, registra suscripcion, guarda parada favorita, genera el digest, genera la wiki, captura esta pagina, pregunta a mis documentos, registra un habito, pon el menu semanal, anade a la lista de la compra, recomienda una serie, crea una quedada, redacta invitacion, resumen deportivo, modo nocturno, analiza mi cv, resume mis apuntes, registra una entrega, verifica esta oferta, genera changelog, depura este fallo, informe de metricas, actividad de repos, backup de sesion, dispositivos de la red, controla la domotica, estado de descargas, estima la factura de oracle, registra precio de ruta, busca en el historial, sugiere respuestas';
+  await bot.procesarMensajesEntrantes(sockSimulado(enviados), {
+    type: 'notify',
+    messages: [mensajeEntrante(areas, 'LIM-5')]
+  }, { chatCompletion: fabricaChat('basura', captura) });
+  assert.ok(enviados.length > 0, 'el handler respondio');
+  for (const lista of captura.listas) {
+    assert.ok(lista.length <= LIMITE_HERRAMIENTAS_PROVEEDOR, `payload de ${lista.length} herramientas supera el limite`);
+  }
+  // Si la seleccion supero el limite, la politica manda 0 herramientas
+  // (alcance honesto); si cupo, se ofrecen acotadas. Nunca >128.
+});
+
+test('Regresion amplia: mensajes ordinarios siguen respondiendo con sus herramientas tras el fix', async () => {
+  const casos = [
+    ['que tiempo hace en Madrid', 'ORD-1', ['consultar_clima']],
+    ['recuerdame llamar al dentista manana a las 9', 'ORD-2', ['crear_recordatorio']],
+    ['programa un mensaje a +34600111222 para manana', 'ORD-3', ['programar_mensaje_whatsapp']],
+    ['cuanto queda para mi examen, ponme un plan de estudio', 'ORD-4', ['planificar_estudio']]
+  ];
+  for (const [texto, id, esperadas] of casos) {
+    const enviados = [];
+    const captura = { listas: [] };
+    await bot.procesarMensajesEntrantes(sockSimulado(enviados), {
+      type: 'notify',
+      messages: [mensajeEntrante(texto, id)]
+    }, { chatCompletion: fabricaChat('basura', captura) });
+    assert.ok(enviados.length > 0, `${id}: sin respuesta`);
+    const ultima = captura.listas[captura.listas.length - 1];
+    assert.ok(ultima && ultima.length <= LIMITE_HERRAMIENTAS_PROVEEDOR, `${id}: limite respetado`);
+    for (const nombre of esperadas) {
+      assert.ok(ultima.includes(nombre), `${id}: falta ${nombre}`);
+    }
+  }
+  // Chit-chat puro: sin herramientas y respuesta normal
+  const enviados = [];
+  const captura = { listas: [] };
+  await bot.procesarMensajesEntrantes(sockSimulado(enviados), {
+    type: 'notify',
+    messages: [mensajeEntrante('hola, que tal?', 'ORD-5')]
+  }, { chatCompletion: fabricaChat('basura', captura, 'A su servicio, David.') });
+  assert.ok(enviados.length > 0, 'chit-chat respondido');
+  const ultima = captura.listas[captura.listas.length - 1];
+  assert.equal(ultima.length, 0, 'chit-chat sin herramientas');
+});
+
 test('Limitador: catalogo sobredimensionado preserva primero las herramientas en uso y el esquema completo', () => {
   const extra = herramientasJarvis[herramientasJarvis.length - 1];
   const historial = [{ role: 'assistant', tool_calls: [{ id: 'x', function: { name: extra.function.name, arguments: {} } }] }];

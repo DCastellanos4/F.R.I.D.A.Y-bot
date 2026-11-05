@@ -1,5 +1,5 @@
 import { config } from '../config/config.js';
-import { herramientasJarvis, limitarHerramientasParaProveedor } from './tools.js';
+import { herramientasJarvis, limitarHerramientasParaProveedor, LIMITE_HERRAMIENTAS_PROVEEDOR } from './tools.js';
 import { obtenerNoticiasEstructuradas } from '../services/newsService.js';
 import {
   crearRecordatorio,
@@ -1541,6 +1541,16 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
       directivaDesambiguacion = '\n\n[DIRECTIVA DE DESAMBIGUACION: No esta claro que necesita David. NO inventes acciones, datos ni confirmaciones: pidele una aclaracion breve y concreta, ofreciendo como mucho dos opciones, antes de actuar.]';
       console.log('[RouterModelo] Clasificador no disponible; desambiguacion sin herramientas (el catalogo completo supera el limite 128 del proveedor).');
     }
+  }
+
+  // Politica de alcance honesto: si la SELECCION de la intencion supera el
+  // limite del proveedor (mensaje que toca demasiadas areas a la vez), no se
+  // trunca en silencio fingiendo cubrir toda la intencion: se responde sin
+  // herramientas pidiendo dividir la peticion.
+  if (herramientasActivas.length > LIMITE_HERRAMIENTAS_PROVEEDOR) {
+    console.log(`[LimiteHerramientas] La seleccion de intencion (${herramientasActivas.length}) supera el limite ${LIMITE_HERRAMIENTAS_PROVEEDOR}: se pide dividir la peticion en lugar de truncar en silencio.`);
+    herramientasActivas = [];
+    directivaDesambiguacion = '\n\n[DIRECTIVA DE ALCANCE: El mensaje de David pide demasiadas cosas distintas a la vez para atenderlas bien en una sola pasada. NO finjas haberlas cubierto todas ni inventes acciones: pidele que la divida en dos o tres mensajes concretos, y ofrece como mucho dos ejemplos de como trocearla.]';
   }
 
   herramientasActivas = limitarHerramientasParaProveedor(herramientasActivas);
