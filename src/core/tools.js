@@ -1698,6 +1698,81 @@ export const herramientasJarvis = [
         required: ['url']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'anotar_idea',
+      description: 'Anota una idea o propuesta de mejora (feature request) para revisarla luego.',
+      parameters: {
+        type: 'object',
+        properties: {
+          titulo: { type: 'string', description: 'La idea en una frase corta.' },
+          detalle: { type: 'string', description: 'Detalle opcional: para que, contexto, enlaces.' }
+        },
+        required: ['titulo']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_ideas',
+      description: 'Lista las ideas/propuestas anotadas.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'priorizar_ideas',
+      description: 'Propone (sin cambiar nada) un orden de prioridad para las ideas pendientes, con motivos.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'generar_changelog',
+      description: 'Redacta una propuesta de entrada de CHANGELOG desde el historial git (no toca archivos ni hace commit).',
+      parameters: {
+        type: 'object',
+        properties: {
+          desde: { type: 'string', description: 'Tag o commit desde el que contar (por ejemplo v1.2.0). Si falta, ultimos N commits.' },
+          limite: { type: 'number', description: 'Numero de commits si no hay "desde" (por defecto 15).' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'guiar_depuracion',
+      description: 'Modo pair programming: guia la depuracion de un fallo paso a paso, una hipotesis cada vez.',
+      parameters: {
+        type: 'object',
+        properties: {
+          fallo: { type: 'string', description: 'Descripcion del fallo: que esperabas, que pasa, mensaje de error.' },
+          contexto: { type: 'string', description: 'Contexto opcional: trozo de codigo, log, comando usado.' }
+        },
+        required: ['fallo']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'revisar_pr',
+      description: 'Revisa una pull request (seguridad y estilo) y trae la resena aqui por WhatsApp. NUNCA publica comentarios en GitHub.',
+      parameters: {
+        type: 'object',
+        properties: {
+          numero: { type: 'number', description: 'Numero de la PR.' },
+          repo: { type: 'string', description: 'Repo owner/nombre; por defecto el del bot.' }
+        },
+        required: ['numero']
+      }
+    }
   }
 ];
 
@@ -1735,6 +1810,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   cerebro: ['registrar_contacto', 'buscar_contacto', 'listar_contactos', 'buscar_recuerdo_semantico', 'generar_digest_cerebro', 'configurar_digest_semanal', 'generar_wiki', 'capturar_pagina', 'preguntar_documentos'],
   bienestar: ['escribir_diario', 'leer_diario', 'registrar_habito', 'marcar_habito', 'listar_habitos', 'poner_menu', 'ver_menu', 'sugerir_menu', 'anadir_compra', 'listar_compra', 'tachar_compra', 'vaciar_compra', 'recomendar_serie_pelicula', 'crear_quedada', 'listar_quedadas', 'redactar_invitacion', 'resumen_deportivo', 'configurar_modo_nocturno'],
   compras: ['buscar_producto', 'verificar_oferta'],
+  devtools: ['anotar_idea', 'listar_ideas', 'priorizar_ideas', 'generar_changelog', 'guiar_depuracion', 'revisar_pr'],
   carrera: ['iniciar_simulacro_entrevista', 'analizar_cv_oferta', 'resumir_apuntes', 'registrar_entrega', 'listar_entregas', 'eliminar_entrega'],
   procesos: ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'],
   finanzas: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'],

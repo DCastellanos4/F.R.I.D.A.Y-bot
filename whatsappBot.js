@@ -724,7 +724,9 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
       const esEntradaDiario = /\bdiario\b/i.test(texto);
       // Igual para el registro de entregas/examenes (nº 8): va a JARVIS.
       const esRegistroEntrega = /^(apunta|anota|registra)\s+(un|una|el|la|este|esta)?\s*(examen|ex[aá]men|entrega)\b/i.test(texto);
-      if (!esEntradaDiario && !esRegistroEntrega && isPersonalNote(texto, esSelfChat)) {
+      // Igual para las ideas/propuestas (nº 15): van a JARVIS, no a notas.
+      const esRegistroIdea = /^(apunta|anota|registra)\s+(un|una|el|la|este|esta)?\s*idea\b/i.test(texto);
+      if (!esEntradaDiario && !esRegistroEntrega && !esRegistroIdea && isPersonalNote(texto, esSelfChat)) {
         console.log(`[WhatsApp Nota Personal] Detectada: "${texto}"`);
         const resNota = await savePersonalNote(texto, {
           source: esAudio ? 'audio' : 'text',
@@ -929,6 +931,8 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
           rutaArchivoEntregas: deps.rutaArchivoEntregas,
           buscarEnFuenteCompras: deps.buscarEnFuenteCompras,
           fetchFnCompras: deps.fetchFnCompras,
+          rutaArchivoIdeas: deps.rutaArchivoIdeas,
+          fetchFnGitHub: deps.fetchFnGitHub,
           otpDelivery: async ({ otpCode, ttlSeconds, reason, command }) => {
             await sock.sendMessage(remoteJid, {
               text: `Codigo de autorizacion 2FA para el comando critico "${command}" (${reason}):\n\n${otpCode}\n\nValidez: ${ttlSeconds} segundos. Responde "confirmar otp ${otpCode}" para autorizar la ejecucion. Este codigo solo lo ves tu.`

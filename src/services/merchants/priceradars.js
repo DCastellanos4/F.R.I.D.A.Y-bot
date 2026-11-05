@@ -12,8 +12,8 @@
  *     aparta (accesoriosOmitidos) y NO se presenta como el producto.
  *   - Variantes: si la ficha es otra variante (pro/max/plus/mini/ultra/air/
  *     se/lite) distinta de la pedida, se marca variante:'distinta'.
- *   - Vinculacion: candidatos sin coincidencia razonable con la consulta se
-     *     descartan (descartadosSinVinculo), nunca se presentan como el
+ *   - Vinculacion: candidatos sin coincidencia razonable con la consulta
+ *     se descartan (descartadosSinVinculo), nunca se presentan como el
  *     producto.
  *   - Frescura: la busqueda NO trae fecha de refresco por oferta y el stock
  *     es el del feed del comparador (no el del comercio ahora mismo): cada
