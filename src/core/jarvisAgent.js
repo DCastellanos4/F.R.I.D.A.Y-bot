@@ -38,6 +38,7 @@ import { registrarCandidatura, listarCandidaturas, actualizarCandidatura, resume
 import { crearPlanEstudio, listarPlanes, registrarAvance, resumenPlan, programarRecordatoriosPlan } from '../services/studyPlannerService.js';
 import { agregarFlashcard, pendientesDeRepaso, registrarRespuesta, listarFlashcards, resumenFlashcards, configurarRepaso, iniciarMonitorFlashcards } from '../services/flashcardService.js';
 import { registrarGasto, eliminarGasto, listarGastos, resumenMensual, registrarSuscripcion, listarSuscripciones, configurarPresupuesto, estadoPresupuestos, configurarAvisosSuscripciones } from '../services/financeService.js';
+import { registrarProceso, dejarDeVigilar, listarProcesos, configurarVigilancia } from '../services/processWatchdogService.js';
 import { escanearRadar, configurarRadar, leerConfigRadar, iniciarMonitorRadar } from '../services/jobRadarService.js';
 import {
   setVipMode,
@@ -181,6 +182,7 @@ export function analizarIntencion(mensaje) {
     empleo: /(pr[aá]cticas\s+(de\s+)?(empresa|curriculares)?|oferta(s)?\s+de\s+(empleo|trabajo|pr[aá]cticas)|busca(r)?\s+(empleo|trabajo|ofertas)|candidatura(s)?|curr[ií]culum|\bcv\b|entrevista\s+(de\s+)?(trabajo|empleo)|infojobs|linkedin|radar\s+de\s+ofertas|seguimiento\s+de\s+candidatura)/i,
     estudio: /(ex[aá]men(es)?|\bestudiar\b|plan\s+de\s+estudio|temario|asignatura(s)?|flashcard(s)?|tarjeta(s)?\s+de\s+repaso|repaso\s+espaciado|\brepasar\b)/i,
     finanzas: /(\bgastos?\b|\bgast[eé]\b|\btickets?\b|recibo(s)?|suscripci[oó]n(es)?|presupuesto(s)?|\bfinanzas\b|cu[aá]nto\s+(he\s+|llevo\s+)?gastado|renovaci[oó]n\s+de)/i,
+    procesos: /(\bvigil\w*\s+(el\s+|un\s+)?proceso|proceso\s+(caido|vivo|muerto|parado)|procesos\s+del\s+(vps|servidor)|vigilancia\s+de\s+procesos)/i,
 
     // Terminal, consola bash y codigos 2FA OTP (Sector 2)
     bash: /(consola|terminal|bash|comando|ejecuta|ejecutar|lanzar|shell|otp|2fa|autorizar|confirmar\s+otp|codigo\s+de\s+confirmacion|uptime|top|free|df|ps\s+aux|pm2\s+status|pm2\s+restart|systemctl)/i,
@@ -224,6 +226,7 @@ export function analizarIntencion(mensaje) {
   let matchEmpleo = intents.empleo.test(sinNombre);
   let matchEstudio = intents.estudio.test(sinNombre);
   let matchFinanzas = intents.finanzas.test(sinNombre);
+  let matchProcesos = intents.procesos.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
   if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio) {
@@ -317,6 +320,9 @@ export function analizarIntencion(mensaje) {
   if (matchFinanzas) {
     tools.push(...herramientasJarvis.filter(h => ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'].includes(h.function.name)));
   }
+  if (matchProcesos) {
+    tools.push(...herramientasJarvis.filter(h => ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'].includes(h.function.name)));
+  }
 
   // Safety Net: si no encajó en ninguna categoría pero tampoco es chit-chat, pasar todas las herramientas
   if (tools.length === 0) {
@@ -349,6 +355,7 @@ export function analizarIntencion(mensaje) {
   if (matchEmpleo) intenciones.push('empleo');
   if (matchEstudio) intenciones.push('estudio');
   if (matchFinanzas) intenciones.push('finanzas');
+  if (matchProcesos) intenciones.push('procesos');
 
   // Eliminar duplicados
   const unicas = [];
@@ -589,6 +596,29 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
         resultadoTool = res.ok
           ? `Presupuesto fijado, David: ${res.categoria}, ${res.limite.toFixed(2)} EUR al mes. Te avisare al superar el 80%.`
           : `No lo he podido fijar: ${res.error}`;
+      } else if (nombreFuncion === 'vigilar_proceso') {
+        const res = registrarProceso({ nombre: args.nombre, patron: args.patron, cpuLimite: args.cpuLimite, memLimite: args.memLimite }, { rutaArchivo: opciones.rutaArchivoProcesos });
+        resultadoTool = res.ok
+          ? `Proceso vigilado, David: ${res.proceso.nombre} (patron "${res.proceso.patron}"${res.proceso.cpuLimite ? `, CPU max ${res.proceso.cpuLimite}%` : ''}${res.proceso.memLimite ? `, memoria max ${res.proceso.memLimite}%` : ''}). Recuerda que la vigilancia proactiva se activa aparte, si tu quieres: "activa la vigilancia de procesos".`
+          : `No lo he podido registrar: ${res.error}`;
+      } else if (nombreFuncion === 'listar_procesos_vigilados') {
+        const lista = listarProcesos({ rutaArchivo: opciones.rutaArchivoProcesos });
+        resultadoTool = lista.length === 0
+          ? 'No hay procesos vigilados. Registra uno con "vigila el proceso X".'
+          : 'Procesos vigilados:\n' + lista.map((x) => `- ${x.nombre} (patron "${x.patron}", estado ${x.estadoActual}${x.cpuLimite ? `, CPU max ${x.cpuLimite}%` : ''}${x.memLimite ? `, mem max ${x.memLimite}%` : ''})`).join('\n');
+      } else if (nombreFuncion === 'dejar_vigilar_proceso') {
+        const res = dejarDeVigilar(args.criterio, { rutaArchivo: opciones.rutaArchivoProcesos });
+        resultadoTool = res.ok ? `Dejo de vigilar "${res.proceso.nombre}", David.` : res.error;
+      } else if (nombreFuncion === 'configurar_vigilante_procesos') {
+        const pideActivarProc = /(activa(r|s|do)?|enciend(e|er)|pon\s+en\s+marcha)\s+.{0,30}(vigilancia|proceso)/i.test(opciones.mensajeUsuario || '');
+        if (args.activo === true && !pideActivarProc) {
+          resultadoTool = 'Para activar la vigilancia de procesos necesito que me lo pidas tu directamente (por ejemplo: "activa la vigilancia de procesos").';
+        } else {
+          const res = configurarVigilancia({ activo: args.activo === true }, { rutaArchivo: opciones.rutaArchivoProcesos });
+          resultadoTool = res.ok
+            ? (res.activo ? 'Vigilancia de procesos activada, David: avisare si alguno cae o se pasa de los limites.' : 'Vigilancia de procesos desactivada, David.')
+            : `No he podido cambiar la vigilancia: ${res.error}`;
+        }
       } else if (nombreFuncion === 'configurar_avisos_suscripciones') {
         const pideActivarSus = /(activa(r|s|do)?|enciend(e|er)|pon\s+en\s+marcha)\s+.{0,30}(aviso|suscripci)/i.test(opciones.mensajeUsuario || '');
         if (args.activo === true && !pideActivarSus) {
@@ -1039,6 +1069,7 @@ Directrices de selección:
 12. COPIAS DE SEGURIDAD: Para generar backups cifrados AES-256-GCM inmediatos, invoca "trigger_encrypted_backup".
 13b. ESTUDIO: Para crear planes de estudio, "planificar_estudio" (asignatura, fechaExamen AAAA-MM-DD, temas; la hora de estudio solo si David la indica, nunca inventada); si ya hay plan sin recordatorios, "programar_recordatorios_estudio" con la hora elegida. Consulta con "listar_planes_estudio" y avance con "registrar_avance_estudio". Para tarjetas: "crear_flashcard", "repasar_flashcards" y "responder_flashcard"; las rondas proactivas se configuran con "configurar_repaso_flashcards" y solo se activan si David lo pide textualmente.
 13c. FINANZAS: Los gastos se anotan con "registrar_gasto" (importe y comercio obligatorios; fecha por defecto hoy), se consultan con "listar_gastos" y "resumen_gastos_mes". Suscripciones con "registrar_suscripcion"/"listar_suscripciones" (el vigilante avisa 3 dias antes de renovar, solo si David las registro el). Presupuestos con "configurar_presupuesto"/"estado_presupuestos" (alerta al 80%). Los avisos de renovacion solo se activan si David lo pide textualmente ("configurar_avisos_suscripciones"). Nunca inventes importes, comercios ni fechas: si faltan, preguntalos.
+13d. PROCESOS: David registra procesos del VPS a vigilar con "vigilar_proceso" (nombre, patron opcional, limites de CPU/memoria opcionales) y los consulta con "listar_procesos_vigilados"/"dejar_vigilar_proceso". La vigilancia proactiva solo se activa si el la pide textualmente ("activa la vigilancia de procesos", herramienta "configurar_vigilante_procesos"). El vigilante solo mide y avisa; nunca reinicia ni mata procesos.
 14. EMPLEO Y PRACTICAS: Para registrar o actualizar candidaturas, "registrar_candidatura" y "actualizar_candidatura"; para consultarlas, "listar_candidaturas". Para lanzar el radar de ofertas, "escanear_ofertas_empleo"; para configurarlo (palabras clave, ubicacion, activacion), "configurar_radar_ofertas". Si una fuente requiere credenciales, informa a David de que configuracion falta en lugar de simular resultados.`;
   }
 
