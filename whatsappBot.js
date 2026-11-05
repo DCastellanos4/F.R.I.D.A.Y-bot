@@ -26,6 +26,7 @@ import { iniciarMonitorFlashcards } from './src/services/flashcardService.js';
 import { iniciarMonitorFinanzas, crearBorradorDesdeTicket, borradorPendiente, confirmarBorrador, descartarBorrador, interpretarRespuestaBorrador } from './src/services/financeService.js';
 import { crearAnalizadorTicket } from './src/services/ticketVisionAdapter.js';
 import { iniciarMonitorProcesos } from './src/services/processWatchdogService.js';
+import { estadoTraductor, desactivarTraductor, traducir } from './src/services/translatorModeService.js';
 import { programarEnvioMatutino } from './src/services/dailyBriefing.js';
 import { normalizarTexto } from './src/services/memoryService.js';
 import { transcribirAudioBuffer } from './src/services/voiceService.js';
@@ -626,6 +627,23 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
 
       console.log(`\n[WhatsApp de David${esAudio ? ' (Audio)' : ''}]: "${texto}"`);
 
+      // 4d. Modo traductor: si esta activo en este chat, traduce el mensaje y
+      // no sigue el flujo normal. La activacion es siempre peticion textual de
+      // David (herramienta activar_traductor).
+      const estadoTrad = estadoTraductor({ rutaArchivo: deps.rutaArchivoTraductor, chatId: remoteJid });
+      if (estadoTrad && /desactiva(r)?\s+(el\s+)?traductor/i.test(texto)) {
+        const rOff = desactivarTraductor({ rutaArchivo: deps.rutaArchivoTraductor, chatId: remoteJid });
+        await sock.sendMessage(remoteJid, { text: rOff.ok ? 'Traductor desactivado, David.' : rOff.error }, { quoted: msg });
+        continue;
+      }
+      if (estadoTrad) {
+        const rTrad = await traducir(texto, estadoTrad.idioma, { chatCompletion: deps.chatCompletion });
+        await sock.sendMessage(remoteJid, {
+          text: rTrad.ok ? rTrad.traduccion : `No he podido traducirlo, David: ${rTrad.error}`
+        }, { quoted: msg });
+        continue;
+      }
+
       // 5. Captura y persistencia automatica de Notas Personales
       const esSelfChat = remoteJid.includes(NUMERO_DAVID_AUTORIZADO);
       if (isPersonalNote(texto, esSelfChat)) {
@@ -807,6 +825,7 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
           rutaArchivoFlashcards: deps.rutaArchivoFlashcards,
           rutaArchivoFinanzas: deps.rutaArchivoFinanzas,
           rutaArchivoProcesos: deps.rutaArchivoProcesos,
+          rutaArchivoTraductor: deps.rutaArchivoTraductor,
           otpDelivery: async ({ otpCode, ttlSeconds, reason, command }) => {
             await sock.sendMessage(remoteJid, {
               text: `Codigo de autorizacion 2FA para el comando critico "${command}" (${reason}):\n\n${otpCode}\n\nValidez: ${ttlSeconds} segundos. Responde "confirmar otp ${otpCode}" para autorizar la ejecucion. Este codigo solo lo ves tu.`

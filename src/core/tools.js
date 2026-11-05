@@ -1000,6 +1000,56 @@ export const herramientasJarvis = [
         required: ['activo']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'activar_traductor',
+      description: 'Activa el modo traductor en este chat: cada mensaje de David se traduce al idioma indicado hasta que lo desactive.',
+      parameters: {
+        type: 'object',
+        properties: { idioma: { type: 'string', description: 'Idioma de destino (ingles, frances, aleman...).' } },
+        required: ['idioma']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'desactivar_traductor',
+      description: 'Desactiva el modo traductor de este chat.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'sugerir_respuestas',
+      description: 'Propone 3 posibles respuestas a un mensaje que le han enviado a David, con el tono indicado.',
+      parameters: {
+        type: 'object',
+        properties: {
+          mensaje: { type: 'string', description: 'El mensaje recibido al que hay que responder.' },
+          tono: { type: 'string', description: 'Tono deseado (cercano, formal, breve...). Opcional.' }
+        },
+        required: ['mensaje']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'buscar_en_historial',
+      description: 'Busca un termino en el historial de mensajes de este chat y devuelve las coincidencias mas recientes.',
+      parameters: {
+        type: 'object',
+        properties: {
+          termino: { type: 'string', description: 'Texto a buscar.' },
+          limite: { type: 'number', description: 'Maximo de coincidencias (1-10, por defecto 5).' }
+        },
+        required: ['termino']
+      }
+    }
   }
 ];
 
@@ -1032,6 +1082,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   backup: ['trigger_encrypted_backup'],
   empleo: ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura', 'escanear_ofertas_empleo', 'configurar_radar_ofertas'],
   estudio: ['planificar_estudio', 'listar_planes_estudio', 'registrar_avance_estudio', 'programar_recordatorios_estudio', 'crear_flashcard', 'repasar_flashcards', 'responder_flashcard', 'configurar_repaso_flashcards'],
+  comunicacion: ['activar_traductor', 'desactivar_traductor', 'sugerir_respuestas', 'buscar_en_historial'],
   procesos: ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'],
   finanzas: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'],
   conversacion: []
