@@ -10,8 +10,8 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ## Resumen
 
-- Implementadas: 1 de 50 operativa (nº 2 CRM) + 1 con adaptadores listos pendientes de config del propietario (nº 1 radar).
-- Pendientes: 48 de 50.
+- Implementadas: 6 de 50 operativas (nº 2 CRM, nº 5 planificador, nº 6 flashcards, nº 25 resumen mensual, nº 26 suscripciones, nº 27 presupuestos) + 2 con adaptadores listos pendientes de config del propietario (nº 1 radar; nº 24 gastos por foto: la via de texto es operativa, la lectura de imagen no es operativa hasta configurar el adaptador).
+- Pendientes: 46 de 50.
 
 ## Detalle por funcion
 
@@ -25,9 +25,9 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 - **4. Analizador de CV contra oferta** - Pendiente. Bloque por priorizar.
 
-- **5. Planificador de estudio** - Pendiente. Propuesta: Bloque 2 (estudio).
+- **5. Planificador de estudio** - Implementada (bloque 2). Reparte el temario entre los dias hasta el examen (ultimo dia de repaso, calendario Europe/Madrid). Los recordatorios solo se programan con la hora elegida por David, nunca inventada; sin hora el plan se crea sin ellos y se piden despues. Herramientas: planificar_estudio, listar_planes_estudio, registrar_avance_estudio, programar_recordatorios_estudio.
 
-- **6. Flashcards de repaso espaciado** - Pendiente. Propuesta: Bloque 2 (estudio).
+- **6. Flashcards de repaso espaciado** - Implementada (bloque 2). Repeticion espaciada ligera (acierto espacia, fallo vuelve en 12h; la misma revision no se califica dos veces). Rondas proactivas DESACTIVADAS por defecto: solo con opt-in explicito de David, con cadencia minima, maximo 3 tarjetas por ronda y horario de silencio (22:00-8:00 por defecto). Herramientas: crear_flashcard, repasar_flashcards, responder_flashcard, configurar_repaso_flashcards.
 
 - **7. Resumidor de apuntes** - Pendiente. Bloque por priorizar.
 
@@ -69,13 +69,13 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ### Finanzas personales
 
-- **24. Registro de gastos por foto** - Pendiente. Propuesta: Bloque 3 (finanzas).
+- **24. Registro de gastos por foto** - Adaptador pendiente de configuracion (Bloque 3): pipeline foto -> borrador -> confirmacion implementado y cableado en la entrada de WhatsApp (aislado por chat, caduca a los 30 min, un solo uso; nada se registra sin el "si" de David). La lectura de la imagen la hace un adaptador real (src/services/ticketVisionAdapter.js): se activa configurando DAVIS_TICKET_VISION_MODEL con un modelo con vision del proveedor ya configurado (por ejemplo gpt-4o-mini); el adaptador envia la foto a ese modelo con un prompt estricto y devuelve solo datos estructurados, y David confirma antes de que se registre nada. Sin esa variable NO es operativo y el bot lo dice claramente. La via de texto ("registra un gasto de 12,50 en Mercadona") es operativa desde ya.
 
-- **25. Resumen mensual de gasto** - Pendiente. Propuesta: Bloque 3 (finanzas).
+- **25. Resumen mensual de gasto** - Operativa (Bloque 3): herramienta resumen_gastos_mes con comparativa por categoria frente al mes anterior.
 
-- **26. Vigilante de suscripciones** - Pendiente. Propuesta: Bloque 3 (finanzas).
+- **26. Vigilante de suscripciones** - Operativa (Bloque 3): suscripciones registradas por el propietario con aviso 3 dias antes de cada renovacion, una sola vez por renovacion. Los avisos proactivos solo se activan si el propietario lo pide textualmente ("activa los avisos de suscripciones", herramienta configurar_avisos_suscripciones con guard de intencion); registrar una suscripcion no implica opt-in.
 
-- **27. Presupuesto mensual con alertas** - Pendiente. Propuesta: Bloque 3 (finanzas).
+- **27. Presupuesto mensual con alertas** - Operativa (Bloque 3): presupuesto por categoria con alerta al superar el 80% del limite (configurar_presupuesto / estado_presupuestos).
 
 - **28. Seguimiento de vuelos y trenes** - Pendiente. Bloque por priorizar.
 
@@ -132,7 +132,7 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 ## Orden de trabajo propuesto
 
 1. **Bloque 1 - Empleo y practicas (nº 1 y 2)**: implementado en esta rama. Priorizado por la busqueda de practicas activa de David.
-2. **Bloque 2 - Estudio (nº 5 y 6)**: planificador de estudio y flashcards, apoyados en el sistema de recordatorios existente.
+2. **Bloque 2 - Estudio (nº 5 y 6)**: implementado en esta rama (planificador + flashcards sobre el sistema de recordatorios existente).
 3. **Bloque 3 - Finanzas (nº 24 a 27)**: registro de gastos, resumen mensual, suscripciones y presupuesto.
 4. **Bloque 4 - Servidor (nº 17 y 23)**: vigilante de CPU y watchdog externo del bot.
 5. **Resto**: se prioriza con David segun utilidad inmediata.

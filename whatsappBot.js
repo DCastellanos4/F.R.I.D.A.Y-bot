@@ -22,6 +22,9 @@ import { olvidarMemoria } from './src/services/memoryService.js';
 import { iniciarVigilanteProactivo } from './src/monitors/proactiveAlerts.js';
 import { iniciarSniperWatchdog } from './src/monitors/sniperService.js';
 import { iniciarMonitorRadar } from './src/services/jobRadarService.js';
+import { iniciarMonitorFlashcards } from './src/services/flashcardService.js';
+import { iniciarMonitorFinanzas, crearBorradorDesdeTicket, borradorPendiente, confirmarBorrador, descartarBorrador, interpretarRespuestaBorrador } from './src/services/financeService.js';
+import { crearAnalizadorTicket } from './src/services/ticketVisionAdapter.js';
 import { programarEnvioMatutino } from './src/services/dailyBriefing.js';
 import { normalizarTexto } from './src/services/memoryService.js';
 import { transcribirAudioBuffer } from './src/services/voiceService.js';
@@ -299,6 +302,22 @@ function inicializarServiciosProactivos() {
     console.error('Error iniciando radar de ofertas:', errRadar.message);
   }
 
+  // 6c. Flashcards: rondas de repaso que encolan preguntas pendientes en la
+  // misma cola. Solo arranca si el propietario ya creo tarjetas.
+  try {
+    iniciarMonitorFlashcards();
+  } catch (errFlash) {
+    console.error('Error iniciando monitor de flashcards:', errFlash.message);
+  }
+
+  // 6d. Finanzas: vigilante de suscripciones. Solo arranca si el propietario
+  // registro alguna suscripcion (dato introducido por el, nunca por el modelo).
+  try {
+    iniciarMonitorFinanzas();
+  } catch (errFin) {
+    console.error('Error iniciando monitor de finanzas:', errFin.message);
+  }
+
   // 7. Watchdog de Docker y Auto-Healing (cada 60 segundos)
   setInterval(async () => {
     try {
@@ -539,7 +558,62 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         texto = extraerTextoMensaje(msg);
       }
 
+      // 4b. Foto de ticket: borrador de gasto pendiente de confirmacion (nº 24).
+      // La lectura de la imagen la hace un adaptador inyectado (deps.analizarTicket);
+      // sin adaptador configurado la funcion esta desactivada y se dice claramente.
+      if (msg.message.imageMessage) {
+        const captionFoto = (msg.message.imageMessage.caption || '').trim();
+        if (/ticket|recibo|factura|compra|gasto/i.test(captionFoto)) {
+          const analizarTicket = typeof deps.analizarTicket === 'function' ? deps.analizarTicket : crearAnalizadorTicket();
+          if (typeof analizarTicket !== 'function') {
+            await sock.sendMessage(remoteJid, {
+              text: 'Veo que me mandas un ticket, David, pero el lector de fotos aun no esta configurado, asi que no puedo leerlo. Mientras tanto, dimelo tu: "gaste 12,50 en Mercadona".'
+            }, { quoted: msg });
+            continue;
+          }
+          try {
+            const descargarFoto = typeof deps.descargarMedia === 'function'
+              ? deps.descargarMedia
+              : (m) => downloadMediaMessage(m, 'buffer', {}, { logger: pino({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage });
+            const fotoBuffer = await descargarFoto(msg);
+            const lectura = await analizarTicket(fotoBuffer, { chatId: remoteJid, caption: captionFoto });
+            const resBorrador = crearBorradorDesdeTicket(lectura || {}, { rutaArchivo: deps.rutaArchivoFinanzas, chatId: remoteJid });
+            await sock.sendMessage(remoteJid, {
+              text: resBorrador.ok ? resBorrador.resumen : resBorrador.error
+            }, { quoted: msg });
+          } catch (errTicket) {
+            console.error('Error procesando foto de ticket:', errTicket.message);
+            await sock.sendMessage(remoteJid, {
+              text: 'No he podido procesar la foto del ticket, David. Prueba de nuevo o dimelo en texto y lo anoto.'
+            }, { quoted: msg });
+          }
+          continue;
+        }
+      }
+
       if (!texto) continue;
+
+      // 4c. Confirmacion de borrador de ticket: respuesta determinista, sin LLM,
+      // aislada por chat y de un solo uso (la gestiona financeService).
+      const respuestaBorrador = interpretarRespuestaBorrador(texto);
+      if (respuestaBorrador) {
+        const depsFin = { rutaArchivo: deps.rutaArchivoFinanzas, chatId: remoteJid };
+        if (borradorPendiente(depsFin)) {
+          let textoConfirmacion;
+          if (respuestaBorrador.accion === 'descartar') {
+            const r = descartarBorrador({}, depsFin);
+            textoConfirmacion = r.ok ? 'Descartado, David: no he registrado nada de ese ticket.' : r.error;
+          } else {
+            const r = confirmarBorrador({ correcciones: respuestaBorrador.correcciones }, depsFin);
+            textoConfirmacion = r.ok
+              ? `Registrado, David: ${r.gasto.importe.toFixed(2)} EUR en ${r.gasto.comercio} (${r.gasto.fecha}).${r.aviso ? ' ' + r.aviso : ''}`
+              : r.error;
+          }
+          await sock.sendMessage(remoteJid, { text: textoConfirmacion }, { quoted: msg });
+          continue;
+        }
+      }
+
 
       console.log(`\n[WhatsApp de David${esAudio ? ' (Audio)' : ''}]: "${texto}"`);
 
@@ -719,6 +793,10 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
           chatCompletion: deps.chatCompletion,
           rutaArchivoCandidaturas: deps.rutaArchivoCandidaturas,
           radarDeps: deps.radarDeps,
+          rutaPlanesEstudio: deps.rutaPlanesEstudio,
+          crearRecordatorioEstudio: deps.crearRecordatorioEstudio,
+          rutaArchivoFlashcards: deps.rutaArchivoFlashcards,
+          rutaArchivoFinanzas: deps.rutaArchivoFinanzas,
           otpDelivery: async ({ otpCode, ttlSeconds, reason, command }) => {
             await sock.sendMessage(remoteJid, {
               text: `Codigo de autorizacion 2FA para el comando critico "${command}" (${reason}):\n\n${otpCode}\n\nValidez: ${ttlSeconds} segundos. Responde "confirmar otp ${otpCode}" para autorizar la ejecucion. Este codigo solo lo ves tu.`

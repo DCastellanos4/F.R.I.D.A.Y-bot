@@ -127,16 +127,14 @@ test('Entrada real: escanear_ofertas_empleo usa deps del radar inyectados (sin r
   assert.match(alertas[0].details, /Initech/);
 });
 
-test('Seleccion de herramientas: un mensaje de empleo ofrece el catalogo del bloque al LLM', async () => {
-  const { consultarJarvis } = await import('../../src/core/jarvisAgent.js');
-  let toolsOfrecidas = [];
-  const chatFalso = async ({ tools }) => {
-    if (tools && tools.length > 0) toolsOfrecidas = tools.map((t) => t.function.name);
-    return { message: { content: 'Sin herramientas necesarias.' } };
-  };
-  await consultarJarvis('busca ofertas de empleo nuevas', [], { chatCompletion: chatFalso });
+test('Router: un mensaje de empleo selecciona el catalogo del bloque sin safety net', async () => {
+  const { analizarIntencion } = await import('../../src/core/jarvisAgent.js');
+  const ruta = analizarIntencion('busca ofertas de empleo nuevas');
+  assert.equal(ruta.safetyNet, false, 'la intencion empleo existe, no cae en safety net');
+  assert.ok(ruta.intenciones.includes('empleo'));
+  const nombres = ruta.herramientas.map((t) => t.function.name);
   for (const nombre of ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura', 'escanear_ofertas_empleo', 'configurar_radar_ofertas']) {
-    assert.ok(toolsOfrecidas.includes(nombre), `falta ${nombre} en el catalogo ofrecido`);
+    assert.ok(nombres.includes(nombre), `falta ${nombre} en el catalogo del router`);
   }
 });
 

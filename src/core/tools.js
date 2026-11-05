@@ -10,7 +10,7 @@ export const herramientasJarvis = [
           asignatura: { type: 'string', description: 'Nombre de la asignatura o examen.' },
           fechaExamen: { type: 'string', description: 'Fecha del examen en formato AAAA-MM-DD.' },
           temas: { type: 'array', items: { type: 'string' }, description: 'Lista de temas a repartir.' },
-          horaEstudio: { type: 'string', description: 'Hora diaria del recordatorio, formato HH:MM. Por defecto 18:00.' }
+          horaEstudio: { type: 'string', description: 'Hora diaria del recordatorio, formato HH:MM. Sin hora no se programan recordatorios; el bot la pide despues.' }
         },
         required: ['asignatura', 'fechaExamen', 'temas']
       }
@@ -42,6 +42,21 @@ export const herramientasJarvis = [
   {
     type: 'function',
     function: {
+      name: 'programar_recordatorios_estudio',
+      description: 'Programa los recordatorios de un plan de estudio ya creado, a la hora elegida por David. Solo una vez por plan.',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string', description: 'ID del plan o texto de la asignatura.' },
+          hora: { type: 'string', description: 'Hora diaria elegida por David, formato HH:MM (ej: 17:30).' }
+        },
+        required: ['criterio', 'hora']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'crear_flashcard',
       description: 'Crea una tarjeta de repaso espaciado (pregunta y respuesta) para una asignatura. Entra en repaso inmediatamente.',
       parameters: {
@@ -64,6 +79,22 @@ export const herramientasJarvis = [
         type: 'object',
         properties: {
           limite: { type: 'number', description: 'Maximo de tarjetas a mostrar. Por defecto 3.' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'configurar_repaso_flashcards',
+      description: 'Configura las rondas proactivas de repaso de flashcards: cadencia, horario de silencio y activacion. activo=true solo si David lo pidio textualmente en su mensaje.',
+      parameters: {
+        type: 'object',
+        properties: {
+          activo: { type: 'boolean', description: 'true solo si David pidio activar las rondas textualmente.' },
+          cadenciaHoras: { type: 'number', description: 'Horas minimas entre rondas (1-24). Por defecto 4.' },
+          silencioDesde: { type: 'number', description: 'Hora (0-23) desde la que no se envian repasos. Por defecto 22.' },
+          silencioHasta: { type: 'number', description: 'Hora (0-23) hasta la que no se envian repasos. Por defecto 8.' }
         }
       }
     }
@@ -814,6 +845,112 @@ export const herramientasJarvis = [
         }
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'registrar_gasto',
+      description: 'Anota un gasto que David dicta por chat (importe, comercio, categoria opcional, fecha opcional AAAA-MM-DD). Avisa si parece duplicado del mismo dia.',
+      parameters: {
+        type: 'object',
+        properties: {
+          importe: { type: 'number', description: 'Importe del gasto en euros.' },
+          comercio: { type: 'string', description: 'Comercio o concepto del gasto.' },
+          categoria: { type: 'string', description: 'Categoria opcional (comida, transporte, ocio...).' },
+          fecha: { type: 'string', description: 'Fecha del gasto AAAA-MM-DD; por defecto hoy.' },
+          notas: { type: 'string', description: 'Notas opcionales.' }
+        },
+        required: ['importe', 'comercio']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_gastos',
+      description: 'Lista los gastos registrados, con filtro opcional por mes (AAAA-MM) o categoria.',
+      parameters: {
+        type: 'object',
+        properties: {
+          mes: { type: 'string', description: 'Mes a listar, AAAA-MM.' },
+          categoria: { type: 'string', description: 'Categoria a filtrar.' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'resumen_gastos_mes',
+      description: 'Resumen del gasto de un mes con comparativa frente al mes anterior por categoria.',
+      parameters: {
+        type: 'object',
+        properties: { mes: { type: 'string', description: 'Mes a resumir, AAAA-MM; por defecto el actual.' } }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'registrar_suscripcion',
+      description: 'Registra una suscripcion (nombre, importe, dia de renovacion del mes) para que el vigilante avise 3 dias antes de cada renovacion.',
+      parameters: {
+        type: 'object',
+        properties: {
+          nombre: { type: 'string', description: 'Nombre del servicio (Netflix, gimnasio...).' },
+          importe: { type: 'number', description: 'Importe de cada renovacion en euros.' },
+          diaRenovacion: { type: 'number', description: 'Dia del mes en que renueva (1-31).' },
+          categoria: { type: 'string', description: 'Categoria opcional.' }
+        },
+        required: ['nombre', 'importe', 'diaRenovacion']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_suscripciones',
+      description: 'Lista las suscripciones registradas con su importe y dia de renovacion.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'configurar_presupuesto',
+      description: 'Fija el presupuesto mensual de una categoria; el estado de presupuestos alerta al superar el 80%.',
+      parameters: {
+        type: 'object',
+        properties: {
+          categoria: { type: 'string', description: 'Categoria a presupuestar.' },
+          limite: { type: 'number', description: 'Limite mensual en euros.' }
+        },
+        required: ['categoria', 'limite']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'configurar_avisos_suscripciones',
+      description: 'Activa o desactiva los avisos proactivos de renovacion de suscripciones. Solo se activan si David lo pide textualmente en su mensaje.',
+      parameters: {
+        type: 'object',
+        properties: { activo: { type: 'boolean', description: 'true para activar los avisos, false para desactivarlos.' } },
+        required: ['activo']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'estado_presupuestos',
+      description: 'Muestra como va cada presupuesto del mes (gastado frente a limite y porcentaje).',
+      parameters: {
+        type: 'object',
+        properties: { mes: { type: 'string', description: 'Mes a consultar, AAAA-MM; por defecto el actual.' } }
+      }
+    }
   }
 ];
 
@@ -845,7 +982,8 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   tuneles: ['manage_tunnel'],
   backup: ['trigger_encrypted_backup'],
   empleo: ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura', 'escanear_ofertas_empleo', 'configurar_radar_ofertas'],
-  estudio: ['planificar_estudio', 'listar_planes_estudio', 'registrar_avance_estudio', 'crear_flashcard', 'repasar_flashcards', 'responder_flashcard'],
+  estudio: ['planificar_estudio', 'listar_planes_estudio', 'registrar_avance_estudio', 'programar_recordatorios_estudio', 'crear_flashcard', 'repasar_flashcards', 'responder_flashcard', 'configurar_repaso_flashcards'],
+  finanzas: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'],
   conversacion: []
 };
 
