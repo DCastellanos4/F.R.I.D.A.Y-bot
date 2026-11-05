@@ -30,6 +30,7 @@ import { estadoTraductor, desactivarTraductor, traducir } from './src/services/t
 import { iniciarMonitorFechas } from './src/services/specialDatesService.js';
 import { iniciarMonitorSnoozes } from './src/services/snoozeService.js';
 import { procesarUbicacionEntrante } from './src/services/arrivalWatchService.js';
+import { iniciarMonitorDigest } from './src/services/brainDigestService.js';
 import { programarEnvioMatutino } from './src/services/dailyBriefing.js';
 import { normalizarTexto } from './src/services/memoryService.js';
 import { transcribirAudioBuffer } from './src/services/voiceService.js';
@@ -345,6 +346,14 @@ function inicializarServiciosProactivos() {
     iniciarMonitorSnoozes();
   } catch (errSnooze) {
     console.error('Error iniciando monitor de snoozes:', errSnooze.message);
+  }
+
+  // 6h. Digest semanal del segundo cerebro: solo arranca si el propietario
+  // lo activo explicitamente.
+  try {
+    iniciarMonitorDigest();
+  } catch (errDigest) {
+    console.error('Error iniciando monitor del digest:', errDigest.message);
   }
 
   // 7. Watchdog de Docker y Auto-Healing (cada 60 segundos)
@@ -875,6 +884,10 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
           fetchFnCercanias: deps.fetchFnCercanias,
           clientIdEmt: deps.clientIdEmt,
           passKeyEmt: deps.passKeyEmt,
+          rutaArchivoContactos: deps.rutaArchivoContactos,
+          rutaArchivoDigest: deps.rutaArchivoDigest,
+          carpetaNotas: deps.carpetaNotas,
+          extraerArticulo: deps.extraerArticulo,
           otpDelivery: async ({ otpCode, ttlSeconds, reason, command }) => {
             await sock.sendMessage(remoteJid, {
               text: `Codigo de autorizacion 2FA para el comando critico "${command}" (${reason}):\n\n${otpCode}\n\nValidez: ${ttlSeconds} segundos. Responde "confirmar otp ${otpCode}" para autorizar la ejecucion. Este codigo solo lo ves tu.`
