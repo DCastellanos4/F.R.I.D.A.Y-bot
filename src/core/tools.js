@@ -1587,6 +1587,88 @@ export const herramientasJarvis = [
         required: ['activo']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'iniciar_simulacro_entrevista',
+      description: 'Abre un simulacro de entrevista tecnica en este chat (por voz o texto): 5 preguntas, evaluacion de cada respuesta y cierre con nota. Se sale con "terminar entrevista".',
+      parameters: {
+        type: 'object',
+        properties: {
+          rol: { type: 'string', description: 'Puesto (ej: "backend junior").' },
+          nivel: { type: 'string', description: 'Nivel (junior, mid...).' }
+        },
+        required: ['rol']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'analizar_cv_oferta',
+      description: 'Analiza el encaje entre el CV de David y una oferta concreta. El CV se pega como texto o se busca en sus notas (titulo/tag "cv").',
+      parameters: {
+        type: 'object',
+        properties: {
+          oferta: { type: 'string', description: 'Texto de la oferta (o descripcion pegada).' },
+          cvTexto: { type: 'string', description: 'Texto del CV si David lo pega ahora.' }
+        },
+        required: ['oferta']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'resumir_apuntes',
+      description: 'Resume apuntes: un texto pegado o las notas del segundo cerebro que encajen con un criterio. Cita las notas usadas.',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string', description: 'Tema o asignatura a resumir de las notas.' },
+          texto: { type: 'string', description: 'Texto pegado directamente.' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'registrar_entrega',
+      description: 'Apunta una entrega o examen con su fecha (AAAA-MM-DD).',
+      parameters: {
+        type: 'object',
+        properties: {
+          titulo: { type: 'string', description: 'Que se entrega o que examen es.' },
+          fecha: { type: 'string', description: 'Fecha AAAA-MM-DD.' },
+          tipo: { type: 'string', enum: ['entrega', 'examen'], description: 'Tipo (por defecto entrega).' }
+        },
+        required: ['titulo', 'fecha']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_entregas',
+      description: 'Lista entregas y examenes ordenados por fecha con los dias que quedan.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'eliminar_entrega',
+      description: 'Borra una entrega o examen por titulo o id.',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string', description: 'Titulo o id.' }
+        },
+        required: ['criterio']
+      }
+    }
   }
 ];
 
@@ -1623,6 +1705,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   transporte: ['registrar_parada_favorita', 'listar_paradas_favoritas', 'eliminar_parada_favorita', 'proximas_llegadas_transporte'],
   cerebro: ['registrar_contacto', 'buscar_contacto', 'listar_contactos', 'buscar_recuerdo_semantico', 'generar_digest_cerebro', 'configurar_digest_semanal', 'generar_wiki', 'capturar_pagina', 'preguntar_documentos'],
   bienestar: ['escribir_diario', 'leer_diario', 'registrar_habito', 'marcar_habito', 'listar_habitos', 'poner_menu', 'ver_menu', 'sugerir_menu', 'anadir_compra', 'listar_compra', 'tachar_compra', 'vaciar_compra', 'recomendar_serie_pelicula', 'crear_quedada', 'listar_quedadas', 'redactar_invitacion', 'resumen_deportivo', 'configurar_modo_nocturno'],
+  carrera: ['iniciar_simulacro_entrevista', 'analizar_cv_oferta', 'resumir_apuntes', 'registrar_entrega', 'listar_entregas', 'eliminar_entrega'],
   procesos: ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'],
   finanzas: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'],
   conversacion: []

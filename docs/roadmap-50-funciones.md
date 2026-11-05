@@ -10,8 +10,8 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ## Resumen
 
-- Implementadas: 29 de 50 operativas (nº 2, 5, 6, 17, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50) + 3 pendientes de config del propietario (nº 1 radar; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: via de texto operativa, lectura de imagen pendiente de configurar el adaptador). La nº 36 lleva una dependencia externa relevante, ver su entrada.
-- Pendientes: 18 de 50 (50 - 29 operativas - 3 config-required).
+- Implementadas: 33 de 50 operativas (nº 2, 3, 4, 5, 6, 7, 8, 17, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50) + 3 pendientes de config del propietario (nº 1 radar; nº 23 watchdog externo: necesita host/servicio aparte; nº 24 gastos por foto: via de texto operativa, lectura de imagen pendiente de configurar el adaptador). La nº 36 lleva una dependencia externa relevante, ver su entrada.
+- Pendientes: 14 de 50 (50 - 33 operativas - 3 config-required).
 
 ## Detalle por funcion
 
@@ -21,17 +21,17 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 - **2. CRM de candidaturas** - Implementada (bloque 1). CRM completo: registrar_candidatura (con dedupe y recordatorio de seguimiento automatico), listar_candidaturas, actualizar_candidatura. Estados: registrada, enviada, entrevista, oferta, descartada.
 
-- **3. Simulador de entrevistas técnicas por voz** - Pendiente. Bloque por priorizar.
+- **3. Simulador de entrevistas técnicas por voz o texto** - Implementada (bloque 10). Simulacro por chat de 5 preguntas con evaluacion de cada respuesta (VEREDICTO/COMENTARIO/SIGUIENTE) y cierre con nota. Las notas de voz llegan transcritas por el flujo de audio, asi que hablar o escribir es el mismo camino. Mientras hay simulacro activo, cada mensaje se evalua por un interceptor; la salida es determinista ("terminar entrevista"), anterior al modo. Sin el modelo no hay simulacro y lo dice. Herramienta: iniciar_simulacro_entrevista.
 
-- **4. Analizador de CV contra oferta** - Pendiente. Bloque por priorizar.
+- **4. Analizador de CV contra oferta** - Implementada (bloque 10). Compara el CV con la oferta pegada (encaje, puntos fuertes, lagunas, consejo). El CV se pega como texto o se busca en las notas del segundo cerebro (titulo/tag "cv"), declarando la fuente; sin CV o sin modelo no inventa encaje. Herramienta: analizar_cv_oferta.
 
 - **5. Planificador de estudio** - Implementada (bloque 2). Reparte el temario entre los dias hasta el examen (ultimo dia de repaso, calendario Europe/Madrid). Los recordatorios solo se programan con la hora elegida por David, nunca inventada; sin hora el plan se crea sin ellos y se piden despues. Herramientas: planificar_estudio, listar_planes_estudio, registrar_avance_estudio, programar_recordatorios_estudio.
 
 - **6. Flashcards de repaso espaciado** - Implementada (bloque 2). Repeticion espaciada ligera (acierto espacia, fallo vuelve en 12h; la misma revision no se califica dos veces). Rondas proactivas DESACTIVADAS por defecto: solo con opt-in explicito de David, con cadencia minima, maximo 3 tarjetas por ronda y horario de silencio (22:00-8:00 por defecto). Herramientas: crear_flashcard, repasar_flashcards, responder_flashcard, configurar_repaso_flashcards.
 
-- **7. Resumidor de apuntes** - Pendiente. Bloque por priorizar.
+- **7. Resumidor de apuntes** - Implementada (bloque 10). Resume un texto pegado o las notas del segundo cerebro que encajen con un criterio (titulo, categoria, tags o contenido), citando las notas usadas y sin mezclar las que no encajan. Sin modelo o sin coincidencias lo dice. Herramienta: resumir_apuntes.
 
-- **8. Calendario de entregas y exámenes** - Pendiente. Bloque por priorizar.
+- **8. Calendario de entregas y exámenes** - Implementada (bloque 10). Registro con dedupe por titulo+fecha, listado ordenado con dias restantes (Europe/Madrid) y borrado. Los avisos puntuales los cubre el sistema de recordatorios (nº 2) cuando David los pide; no hay monitor proactivo propio. La captura de notas personales excluye las frases de registro para que lleguen a JARVIS. Herramientas: registrar_entrega, listar_entregas, eliminar_entrega.
 
 ### Desarrollo y DevOps
 
