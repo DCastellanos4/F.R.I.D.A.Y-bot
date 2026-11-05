@@ -10,8 +10,8 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 ## Resumen
 
-- Implementadas: 1 de 50 operativa (nº 2 CRM) + 1 con adaptadores listos pendientes de config del propietario (nº 1 radar).
-- Pendientes: 48 de 50.
+- Implementadas: 3 de 50 operativas (nº 2 CRM, nº 5 planificador, nº 6 flashcards) + 1 con adaptadores listos pendientes de config del propietario (nº 1 radar).
+- Pendientes: 46 de 50.
 
 ## Detalle por funcion
 
@@ -25,9 +25,9 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 
 - **4. Analizador de CV contra oferta** - Pendiente. Bloque por priorizar.
 
-- **5. Planificador de estudio** - Pendiente. Propuesta: Bloque 2 (estudio).
+- **5. Planificador de estudio** - Implementada (bloque 2). Reparte el temario entre los dias hasta el examen (ultimo dia de repaso) y programa un recordatorio por sesion en el sistema de recordatorios existente. Herramientas: planificar_estudio, listar_planes_estudio, registrar_avance_estudio.
 
-- **6. Flashcards de repaso espaciado** - Pendiente. Propuesta: Bloque 2 (estudio).
+- **6. Flashcards de repaso espaciado** - Implementada (bloque 2). Repeticion espaciada ligera (acierto espacia, fallo vuelve en 12h) con rondas que llegan por la cola de alertas proactiva; el monitor solo arranca si hay tarjetas creadas. Herramientas: crear_flashcard, repasar_flashcards, responder_flashcard.
 
 - **7. Resumidor de apuntes** - Pendiente. Bloque por priorizar.
 
@@ -132,7 +132,7 @@ Fuente del alcance: las 50 funcionalidades acordadas con David (documento "50 fu
 ## Orden de trabajo propuesto
 
 1. **Bloque 1 - Empleo y practicas (nº 1 y 2)**: implementado en esta rama. Priorizado por la busqueda de practicas activa de David.
-2. **Bloque 2 - Estudio (nº 5 y 6)**: planificador de estudio y flashcards, apoyados en el sistema de recordatorios existente.
+2. **Bloque 2 - Estudio (nº 5 y 6)**: implementado en esta rama (planificador + flashcards sobre el sistema de recordatorios existente).
 3. **Bloque 3 - Finanzas (nº 24 a 27)**: registro de gastos, resumen mensual, suscripciones y presupuesto.
 4. **Bloque 4 - Servidor (nº 17 y 23)**: vigilante de CPU y watchdog externo del bot.
 5. **Resto**: se prioriza con David segun utilidad inmediata.
