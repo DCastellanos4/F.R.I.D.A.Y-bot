@@ -37,6 +37,7 @@ import { clasificarIntencionConModelo, UMBRAL_CONFIANZA } from './intentRouterSe
 import { registrarCandidatura, listarCandidaturas, actualizarCandidatura, resumenCandidaturas } from '../services/applicationTrackerService.js';
 import { crearPlanEstudio, listarPlanes, registrarAvance, resumenPlan, programarRecordatoriosPlan } from '../services/studyPlannerService.js';
 import { agregarFlashcard, pendientesDeRepaso, registrarRespuesta, listarFlashcards, resumenFlashcards, configurarRepaso, iniciarMonitorFlashcards } from '../services/flashcardService.js';
+import { registrarGasto, eliminarGasto, listarGastos, resumenMensual, registrarSuscripcion, listarSuscripciones, configurarPresupuesto, estadoPresupuestos, configurarAvisosSuscripciones } from '../services/financeService.js';
 import { escanearRadar, configurarRadar, leerConfigRadar, iniciarMonitorRadar } from '../services/jobRadarService.js';
 import {
   setVipMode,
@@ -179,6 +180,7 @@ export function analizarIntencion(mensaje) {
     // Empleo y practicas: radar de ofertas y CRM de candidaturas
     empleo: /(pr[aá]cticas\s+(de\s+)?(empresa|curriculares)?|oferta(s)?\s+de\s+(empleo|trabajo|pr[aá]cticas)|busca(r)?\s+(empleo|trabajo|ofertas)|candidatura(s)?|curr[ií]culum|\bcv\b|entrevista\s+(de\s+)?(trabajo|empleo)|infojobs|linkedin|radar\s+de\s+ofertas|seguimiento\s+de\s+candidatura)/i,
     estudio: /(ex[aá]men(es)?|\bestudiar\b|plan\s+de\s+estudio|temario|asignatura(s)?|flashcard(s)?|tarjeta(s)?\s+de\s+repaso|repaso\s+espaciado|\brepasar\b)/i,
+    finanzas: /(\bgastos?\b|\bgast[eé]\b|\btickets?\b|recibo(s)?|suscripci[oó]n(es)?|presupuesto(s)?|\bfinanzas\b|cu[aá]nto\s+(he\s+|llevo\s+)?gastado|renovaci[oó]n\s+de)/i,
 
     // Terminal, consola bash y codigos 2FA OTP (Sector 2)
     bash: /(consola|terminal|bash|comando|ejecuta|ejecutar|lanzar|shell|otp|2fa|autorizar|confirmar\s+otp|codigo\s+de\s+confirmacion|uptime|top|free|df|ps\s+aux|pm2\s+status|pm2\s+restart|systemctl)/i,
@@ -221,6 +223,7 @@ export function analizarIntencion(mensaje) {
   let matchBackup = intents.backup.test(sinNombre);
   let matchEmpleo = intents.empleo.test(sinNombre);
   let matchEstudio = intents.estudio.test(sinNombre);
+  let matchFinanzas = intents.finanzas.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
   if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio) {
@@ -311,6 +314,9 @@ export function analizarIntencion(mensaje) {
   if (matchEstudio) {
     tools.push(...herramientasJarvis.filter(h => ['planificar_estudio', 'listar_planes_estudio', 'registrar_avance_estudio', 'programar_recordatorios_estudio', 'crear_flashcard', 'repasar_flashcards', 'responder_flashcard', 'configurar_repaso_flashcards'].includes(h.function.name)));
   }
+  if (matchFinanzas) {
+    tools.push(...herramientasJarvis.filter(h => ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'].includes(h.function.name)));
+  }
 
   // Safety Net: si no encajó en ninguna categoría pero tampoco es chit-chat, pasar todas las herramientas
   if (tools.length === 0) {
@@ -342,6 +348,7 @@ export function analizarIntencion(mensaje) {
   if (matchBackup) intenciones.push('backup');
   if (matchEmpleo) intenciones.push('empleo');
   if (matchEstudio) intenciones.push('estudio');
+  if (matchFinanzas) intenciones.push('finanzas');
 
   // Eliminar duplicados
   const unicas = [];
@@ -553,6 +560,50 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
         } else {
           resultadoTool = res.error;
         }
+      } else if (nombreFuncion === 'registrar_gasto') {
+        const res = registrarGasto({ importe: args.importe, comercio: args.comercio, categoria: args.categoria, fecha: args.fecha, notas: args.notas }, { rutaArchivo: opciones.rutaArchivoFinanzas });
+        resultadoTool = res.ok
+          ? `Anotado, David: ${res.gasto.importe.toFixed(2)} EUR en ${res.gasto.comercio} (${res.gasto.categoria}, ${res.gasto.fecha}).${res.aviso ? ` ${res.aviso}` : ''}`
+          : `No lo he podido anotar: ${res.error}`;
+      } else if (nombreFuncion === 'listar_gastos') {
+        const gastos = listarGastos({ mes: args.mes, categoria: args.categoria }, { rutaArchivo: opciones.rutaArchivoFinanzas });
+        resultadoTool = gastos.length === 0
+          ? 'No hay gastos registrados con ese filtro.'
+          : 'Gastos:\n' + gastos.map((g) => `- ${g.fecha}: ${g.importe.toFixed(2)} EUR en ${g.comercio} (${g.categoria})`).join('\n');
+      } else if (nombreFuncion === 'resumen_gastos_mes') {
+        const r = resumenMensual({ mes: args.mes }, { rutaArchivo: opciones.rutaArchivoFinanzas });
+        const lineas = r.comparativa.map((c) => `- ${c.categoria}: ${c.actual.toFixed(2)} EUR${c.variacion === null ? ' (sin datos del mes anterior)' : ` (${c.variacion >= 0 ? '+' : ''}${c.variacion}% vs ${r.mesAnterior})`}`);
+        resultadoTool = `Resumen de ${r.mes}, David: total ${r.totalActual.toFixed(2)} EUR (mes anterior: ${r.totalAnterior.toFixed(2)} EUR).${lineas.length ? '\n' + lineas.join('\n') : '\nSin gastos este mes.'}`;
+      } else if (nombreFuncion === 'registrar_suscripcion') {
+        const res = registrarSuscripcion({ nombre: args.nombre, importe: args.importe, diaRenovacion: args.diaRenovacion, categoria: args.categoria }, { rutaArchivo: opciones.rutaArchivoFinanzas });
+        resultadoTool = res.ok
+          ? `Suscripcion registrada, David: ${res.suscripcion.nombre}, ${res.suscripcion.importe.toFixed(2)} EUR, renueva el dia ${res.suscripcion.diaRenovacion} de cada mes. Te avisare 3 dias antes de cada renovacion.`
+          : `No la he podido registrar: ${res.error}`;
+      } else if (nombreFuncion === 'listar_suscripciones') {
+        const subs = listarSuscripciones({ rutaArchivo: opciones.rutaArchivoFinanzas });
+        resultadoTool = subs.length === 0
+          ? 'No tienes suscripciones registradas.'
+          : 'Suscripciones:\n' + subs.map((x) => `- ${x.nombre}: ${x.importe.toFixed(2)} EUR, renueva el dia ${x.diaRenovacion}`).join('\n');
+      } else if (nombreFuncion === 'configurar_presupuesto') {
+        const res = configurarPresupuesto({ categoria: args.categoria, limite: args.limite }, { rutaArchivo: opciones.rutaArchivoFinanzas });
+        resultadoTool = res.ok
+          ? `Presupuesto fijado, David: ${res.categoria}, ${res.limite.toFixed(2)} EUR al mes. Te avisare al superar el 80%.`
+          : `No lo he podido fijar: ${res.error}`;
+      } else if (nombreFuncion === 'configurar_avisos_suscripciones') {
+        const pideActivarSus = /(activa(r|s|do)?|enciend(e|er)|pon\s+en\s+marcha)\s+.{0,30}(aviso|suscripci)/i.test(opciones.mensajeUsuario || '');
+        if (args.activo === true && !pideActivarSus) {
+          resultadoTool = 'Para activar los avisos de suscripciones necesito que me lo pidas tu directamente (por ejemplo: "activa los avisos de suscripciones").';
+        } else {
+          const res = configurarAvisosSuscripciones({ activo: args.activo === true }, { rutaArchivo: opciones.rutaArchivoFinanzas });
+          resultadoTool = res.ok
+            ? (res.activo ? 'Avisos de suscripciones activados, David: te avisare 3 dias antes de cada renovacion.' : 'Avisos de suscripciones desactivados, David.')
+            : `No he podido cambiar los avisos: ${res.error}`;
+        }
+      } else if (nombreFuncion === 'estado_presupuestos') {
+        const filas = estadoPresupuestos({ mes: args.mes }, { rutaArchivo: opciones.rutaArchivoFinanzas });
+        resultadoTool = filas.length === 0
+          ? 'No hay presupuestos configurados. Fija uno con "configurar_presupuesto".'
+          : 'Presupuestos del mes:\n' + filas.map((f) => `- ${f.categoria}: ${f.gastado.toFixed(2)} de ${f.limite.toFixed(2)} EUR (${f.porcentaje}%)${f.alerta ? ' - OJO: por encima del 80%' : ''}`).join('\n');
       } else if (nombreFuncion === 'crear_flashcard') {
         const depsFlash = { rutaArchivo: opciones.rutaArchivoFlashcards };
         const res = agregarFlashcard({ asignatura: args.asignatura, pregunta: args.pregunta, respuesta: args.respuesta }, depsFlash);
@@ -987,6 +1038,7 @@ Directrices de selección:
 11. GESTION DE TUNELES: Para consultar estado o arrancar/detener tuneles Cloudflare o Tailscale, invoca "manage_tunnel".
 12. COPIAS DE SEGURIDAD: Para generar backups cifrados AES-256-GCM inmediatos, invoca "trigger_encrypted_backup".
 13b. ESTUDIO: Para crear planes de estudio, "planificar_estudio" (asignatura, fechaExamen AAAA-MM-DD, temas; la hora de estudio solo si David la indica, nunca inventada); si ya hay plan sin recordatorios, "programar_recordatorios_estudio" con la hora elegida. Consulta con "listar_planes_estudio" y avance con "registrar_avance_estudio". Para tarjetas: "crear_flashcard", "repasar_flashcards" y "responder_flashcard"; las rondas proactivas se configuran con "configurar_repaso_flashcards" y solo se activan si David lo pide textualmente.
+13c. FINANZAS: Los gastos se anotan con "registrar_gasto" (importe y comercio obligatorios; fecha por defecto hoy), se consultan con "listar_gastos" y "resumen_gastos_mes". Suscripciones con "registrar_suscripcion"/"listar_suscripciones" (el vigilante avisa 3 dias antes de renovar, solo si David las registro el). Presupuestos con "configurar_presupuesto"/"estado_presupuestos" (alerta al 80%). Los avisos de renovacion solo se activan si David lo pide textualmente ("configurar_avisos_suscripciones"). Nunca inventes importes, comercios ni fechas: si faltan, preguntalos.
 14. EMPLEO Y PRACTICAS: Para registrar o actualizar candidaturas, "registrar_candidatura" y "actualizar_candidatura"; para consultarlas, "listar_candidaturas". Para lanzar el radar de ofertas, "escanear_ofertas_empleo"; para configurarlo (palabras clave, ubicacion, activacion), "configurar_radar_ofertas". Si una fuente requiere credenciales, informa a David de que configuracion falta en lugar de simular resultados.`;
   }
 
