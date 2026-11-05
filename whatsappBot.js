@@ -21,6 +21,7 @@ import { resolverConfirmacionBorrado } from './src/services/destructiveActionSer
 import { olvidarMemoria } from './src/services/memoryService.js';
 import { iniciarVigilanteProactivo } from './src/monitors/proactiveAlerts.js';
 import { iniciarSniperWatchdog } from './src/monitors/sniperService.js';
+import { iniciarMonitorRadar } from './src/services/jobRadarService.js';
 import { programarEnvioMatutino } from './src/services/dailyBriefing.js';
 import { normalizarTexto } from './src/services/memoryService.js';
 import { transcribirAudioBuffer } from './src/services/voiceService.js';
@@ -288,6 +289,15 @@ function inicializarServiciosProactivos() {
       console.error('Error drenando cola de alertas:', errCola.message);
     }
   }, 5 * 1000);
+
+  // 6b. Radar de ofertas de empleo: rondas periodicas que encolan alertas;
+  // salen por el drenado de la cola (punto 6). Sin fuentes listas, la ronda
+  // solo registra el estado, no envia ruido.
+  try {
+    iniciarMonitorRadar();
+  } catch (errRadar) {
+    console.error('Error iniciando radar de ofertas:', errRadar.message);
+  }
 
   // 7. Watchdog de Docker y Auto-Healing (cada 60 segundos)
   setInterval(async () => {
@@ -707,6 +717,8 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
           chatId: remoteJid,
           urgencyDirective,
           chatCompletion: deps.chatCompletion,
+          rutaArchivoCandidaturas: deps.rutaArchivoCandidaturas,
+          radarDeps: deps.radarDeps,
           otpDelivery: async ({ otpCode, ttlSeconds, reason, command }) => {
             await sock.sendMessage(remoteJid, {
               text: `Codigo de autorizacion 2FA para el comando critico "${command}" (${reason}):\n\n${otpCode}\n\nValidez: ${ttlSeconds} segundos. Responde "confirmar otp ${otpCode}" para autorizar la ejecucion. Este codigo solo lo ves tu.`

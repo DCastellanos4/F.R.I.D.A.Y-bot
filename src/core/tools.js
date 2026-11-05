@@ -2,6 +2,78 @@ export const herramientasJarvis = [
   {
     type: 'function',
     function: {
+      name: 'registrar_candidatura',
+      description: 'Registra una candidatura de practicas o empleo en el CRM personal: empresa, puesto y estado, con recordatorio de seguimiento opcional para no dejar morir el proceso.',
+      parameters: {
+        type: 'object',
+        properties: {
+          empresa: { type: 'string', description: 'Nombre de la empresa.' },
+          puesto: { type: 'string', description: 'Puesto o rol al que se aplica.' },
+          url: { type: 'string', description: 'Enlace de la oferta, si existe.' },
+          estado: { type: 'string', enum: ['registrada', 'enviada', 'entrevista', 'oferta', 'descartada'], description: 'Estado actual del proceso. Por defecto "registrada".' },
+          notas: { type: 'string', description: 'Notas libres (contacto, salario, stack...).' },
+          seguimientoDias: { type: 'number', description: 'Dias hasta el recordatorio de seguimiento (ej: 5). Sin valor no se crea recordatorio.' }
+        },
+        required: ['empresa', 'puesto']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_candidaturas',
+      description: 'Lista las candidaturas registradas, con filtro opcional por estado, o el resumen del pipeline si no hay ninguna.',
+      parameters: {
+        type: 'object',
+        properties: {
+          estado: { type: 'string', enum: ['registrada', 'enviada', 'entrevista', 'oferta', 'descartada'], description: 'Filtro opcional por estado.' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'actualizar_candidatura',
+      description: 'Actualiza el estado o las notas de una candidatura existente, localizada por id o por texto de empresa/puesto.',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string', description: 'Id de la candidatura o texto de empresa/puesto que la identifique.' },
+          estado: { type: 'string', enum: ['registrada', 'enviada', 'entrevista', 'oferta', 'descartada'], description: 'Nuevo estado del proceso.' },
+          notas: { type: 'string', description: 'Nota a anadir al historial de notas.' }
+        },
+        required: ['criterio']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'escanear_ofertas_empleo',
+      description: 'Ejecuta ahora una ronda del radar de ofertas de practicas/empleo con la configuracion guardada. Informa del estado real de cada fuente; si falta configuracion o credenciales lo dice en lugar de inventar ofertas.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'configurar_radar_ofertas',
+      description: 'Configura el radar de ofertas: palabras clave, ubicacion, remoto y activacion. Necesario antes del primer escaneo util.',
+      parameters: {
+        type: 'object',
+        properties: {
+          palabrasClave: { type: 'array', items: { type: 'string' }, description: 'Terminos de busqueda (ej: ["full stack", "practicas"]).' },
+          ubicacion: { type: 'string', description: 'Provincia o ciudad objetivo (ej: Madrid).' },
+          remoto: { type: 'boolean', description: 'true para priorizar remoto.' },
+          activo: { type: 'boolean', description: 'true para activar el radar periodico.' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'consultar_clima',
       description: 'OBLIGATORIA: Consulta el estado meteorológico actual y la previsión (temperatura, probabilidad de lluvia, viento, estado del cielo) para cualquier ciudad, pueblo o lugar del mundo tanto de hoy como de mañana, incluyendo horas específicas si se solicitan (ej: Madrid, Barcelona, Valencia, Londres).',
       parameters: {
@@ -688,6 +760,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   infraestructura: ['get_infrastructure_status'],
   tuneles: ['manage_tunnel'],
   backup: ['trigger_encrypted_backup'],
+  empleo: ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura', 'escanear_ofertas_empleo', 'configurar_radar_ofertas'],
   conversacion: []
 };
 
