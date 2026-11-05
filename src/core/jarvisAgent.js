@@ -66,6 +66,7 @@ import { resumirApuntes } from '../services/notesSummarizerService.js';
 import { anotarIdea, listarIdeas, priorizarIdeas, generarEntradaChangelog, guiarDepuracion, revisarPullRequest } from '../services/devToolsService.js';
 import { auditarDependencias, configurarVigilanciaDependencias, informeMetricas, configurarInformeMetricas, actividadRepos, configurarAlertasRepos, crearBackupSesion, verificarBackupSesion } from '../services/opsService.js';
 import { encenderPc, listarDispositivosRed, configurarVigilanciaRed, controlarDomotica, estadoDescargas, configurarAvisoDescargas, estimarFacturaOracle } from '../services/hogarService.js';
+import { vigilarRuta, listarRutasVigiladas, cancelarVigilanciaRuta, registrarPrecioRuta } from '../services/viajesService.js';
 import { registrarEntrega, listarEntregas, eliminarEntrega } from '../services/deadlinesService.js';
 import { buscarProducto, verificarOferta } from '../services/productSearchService.js';
 import { escanearRadar, configurarRadar, leerConfigRadar, iniciarMonitorRadar } from '../services/jobRadarService.js';
@@ -223,6 +224,7 @@ export function analizarIntencion(mensaje) {
     // Ops del bot (bloque 13): dependencias, metricas, repos, backup
     ops: /(audita(r)?\s+(las\s+)?dependencias|npm\s+audit|vulnerabilidades\s+de\s+(las\s+)?dependencias|m[eé]tricas\s+del\s+bot|informe\s+(semanal\s+)?de\s+m[eé]tricas|actividad\s+de\s+(mis\s+)?repos|alertas\s+de\s+(mis\s+)?repos|backup\s+de\s+(la\s+)?sesi[oó]n|copia\s+de\s+seguridad\s+(de\s+la\s+)?sesi[oó]n)/i,
     hogar: /(enciende\s+(el|mi)\s+(pc|ordenador)|wake[ -]?on[ -]?lan|dispositivos\s+(conectados\s+)?(a|en|de)\s+(mi\s+|la\s+)?red|vigilancia\s+de\s+(mi\s+|la\s+)?red|dispositivos\s+desconocidos|qui[eé]n\s+(est[aá]|hay)\s+conectado|dom[oó]tica|home\s+assistant|enciende\s+(la\s+)?(luz|l[aá]mpara)|apaga\s+(la\s+)?(luz|l[aá]mpara)|panel\s+de\s+descargas|estado\s+de\s+(las\s+)?descargas|avisa(me)?\s+cuando\s+(termine|acabe|baje)\s+(la\s+)?descarga|aviso\s+de\s+descargas|factura\s+de\s+oracle|term[oó]metro\s+de\s+oracle|cu[aá]nto\s+(me\s+)?(cuesta|costar[aá]|gasta)\s+(el\s+)?(oracle|vps|servidor))/i,
+    viajes: /(vigila(r)?\s+(el|un|mi)\s+(vuelo|tren)|vuelos?\s+(a|para|hacia)\s+\w|tren(es)?\s+(a|para|hacia)\s+\w|rutas?\s+(de\s+)?(vuelos?|tren(es)?)|avisa(me)?\s+si\s+baja\s+(el\s+)?(vuelo|tren|billete)|seguimiento\s+de\s+(vuelos|trenes)|billete(s)?\s+(de\s+)?(avion|tren|renfe)|escapada\s+(a|en)\s+\w|precio\s+del\s+(vuelo|tren|billete))/i,
     // DevTools (bloque 12): revisor PRs, changelog, pair programming, ideas
     devtools: /(revisa(r)?\s+(la\s+|el\s+|esta\s+)?(pr|pull\s+request)|changelog|guia(r)?\s+(la\s+)?depuraci[oó]n|depura(r)?\s+(este|el|mi)\s+(fallo|error|c[oó]digo)|pair\s+programming|tengo\s+un\s+fallo|anota(r)?\s+(esta\s+|una\s+)?idea|mis\s+ideas|prioriza(r)?\s+(mis\s+)?ideas)/i,
     // Compras bajo demanda (extra aprobado por David, 5 nov 2026): sin compras ni vigilancia
@@ -281,9 +283,10 @@ export function analizarIntencion(mensaje) {
   let matchDevtools = intents.devtools.test(sinNombre);
   let matchOps = intents.ops.test(sinNombre);
   let matchHogar = intents.hogar.test(sinNombre);
+  let matchViajes = intents.viajes.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
-  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro && !matchBienestar && !matchCarrera && !matchCompras && !matchDevtools && !matchOps && !matchHogar) {
+  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro && !matchBienestar && !matchCarrera && !matchCompras && !matchDevtools && !matchOps && !matchHogar && !matchViajes) {
     return { herramientas: [], intenciones: ['conversacion'], safetyNet: false, esChitChat: true };
   }
 
@@ -404,6 +407,9 @@ export function analizarIntencion(mensaje) {
   if (matchHogar) {
     tools.push(...herramientasJarvis.filter(h => ['encender_pc', 'listar_dispositivos_red', 'configurar_vigilancia_red', 'controlar_domotica', 'estado_descargas', 'configurar_aviso_descargas', 'estimar_factura_oracle'].includes(h.function.name)));
   }
+  if (matchViajes) {
+    tools.push(...herramientasJarvis.filter(h => ['vigilar_ruta', 'listar_rutas_vigiladas', 'cancelar_vigilancia_ruta', 'registrar_precio_ruta'].includes(h.function.name)));
+  }
 
   // Safety Net: si no encajó en ninguna categoría pero tampoco es chit-chat, pasar todas las herramientas
   if (tools.length === 0) {
@@ -446,6 +452,7 @@ export function analizarIntencion(mensaje) {
   if (matchDevtools) intenciones.push('devtools');
   if (matchOps) intenciones.push('ops');
   if (matchHogar) intenciones.push('hogar');
+  if (matchViajes) intenciones.push('viajes');
 
   // Eliminar duplicados
   const unicas = [];
@@ -1119,6 +1126,25 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
       } else if (nombreFuncion === 'estimar_factura_oracle') {
         const res = await estimarFacturaOracle({});
         resultadoTool = !res.ok ? res.error : res.nota;
+      } else if (nombreFuncion === 'vigilar_ruta') {
+        const res = vigilarRuta({ tipo: args.tipo, origen: args.origen, destino: args.destino, fecha: args.fecha, precioObjetivo: args.precioObjetivo }, { rutaArchivo: opciones.rutaArchivoViajes });
+        resultadoTool = !res.ok ? res.error
+          : `Vigilando tu ${res.ruta.tipo} ${res.ruta.origen} -> ${res.ruta.destino} del ${res.ruta.fecha}${res.ruta.precioObjetivo ? ` (objetivo: ${res.ruta.precioObjetivo} EUR)` : ''}.\n${res.nota}`;
+      } else if (nombreFuncion === 'listar_rutas_vigiladas') {
+        const rutas = listarRutasVigiladas({ rutaArchivo: opciones.rutaArchivoViajes });
+        resultadoTool = rutas.length === 0
+          ? 'No vigilo ninguna ruta. Dime por ejemplo "vigila el vuelo Madrid-Lisboa del 2026-12-12".'
+          : 'Rutas vigiladas:\n' + rutas.map((r) => {
+              const ultimo = r.historial.length ? r.historial[r.historial.length - 1].precio.toFixed(2) + ' EUR' : 'sin precios aun';
+              return `- ${r.tipo} ${r.origen} -> ${r.destino} (${r.fecha}): objetivo ${r.precioObjetivo != null ? r.precioObjetivo + ' EUR' : 'sin objetivo'}, ultimo ${ultimo}`;
+            }).join('\n');
+      } else if (nombreFuncion === 'cancelar_vigilancia_ruta') {
+        const res = cancelarVigilanciaRuta({ criterio: args.criterio }, { rutaArchivo: opciones.rutaArchivoViajes });
+        resultadoTool = !res.ok ? res.error : `Vigilancia cancelada (${res.canceladas} ruta(s)).`;
+      } else if (nombreFuncion === 'registrar_precio_ruta') {
+        const res = registrarPrecioRuta({ criterio: args.criterio, precio: args.precio }, { rutaArchivo: opciones.rutaArchivoViajes });
+        resultadoTool = !res.ok ? res.error
+          : `Anotado: ${res.precio.toFixed(2)} EUR para tu ${res.ruta.tipo} ${res.ruta.origen} -> ${res.ruta.destino}.${res.baja ? ' Es el minimo hasta ahora.' : ''}${res.bajoObjetivo ? ' POR DEBAJO de tu objetivo: buen momento para mirarlo.' : ''}`;
       } else if (nombreFuncion === 'revisar_pr') {
         const res = await revisarPullRequest({ numero: args.numero, repo: args.repo }, { fetchFn: opciones.fetchFnGitHub, chatCompletion: opciones.chatCompletion });
         resultadoTool = res.ok
@@ -1572,6 +1598,7 @@ Directrices de selección:
 13l. DEVTOOLS (nº 9-15): revisar_pr trae la resena AQUI (nunca publiques comentarios en GitHub); generar_changelog propone texto sin tocar archivos ni commits; guiar_depuracion va paso a paso, una hipotesis cada vez y pidiendo salidas concretas; las ideas se anotan con anotar_idea y se priorizan solo cuando David lo pide (sin revision proactiva sin opt-in explicito).
 13m. OPS DEL BOT (nº 10-16): auditar_dependencias informa y propone, NUNCA actualiza; informe_metricas resume lo registrado localmente; actividad_repos es instantanea publica; los tres avisos proactivos (dependencias, informe semanal, alertas de repos) solo se activan con peticion textual de David (el guard ya lo aplica); crear_backup_sesion hace copia cifrada LOCAL (sin DAVIS_BACKUP_KEY por entorno es config-required) y la subida externa esta sin implementar hasta configurar URL de subida: nunca pidas la clave por chat.
 13n. HOGAR (nº 18-22): encender_pc usa WoL con la MAC del entorno (sin ella, config-required: nunca pidas la MAC por chat); listar_dispositivos_red muestra la LAN DEL EQUIPO DEL BOT y lo dice (si esta en el VPS no es la casa de David); domotica va por Home Assistant con URL/token de entorno; el aviso de descargas y la vigilancia de red solo se activan con peticion textual (el guard ya lo aplica); estimar_factura_oracle es config-required sin OCI CLI: nunca inventes cifras de facturacion.
+13o. VIAJES (nº 28): vigilar_ruta registra rutas (vuelo/tren, fecha AAAA-MM-DD) y avisa de bajadas; la fuente de precios en vivo es CONFIG-REQUIRED (sin proveedor configurado no hay comprobacion automatica: dilo claro y nunca inventes precios); registrar_precio_ruta anota precios que David ve y los compara con el objetivo; todo precio de fuente se presenta como referencia a confirmar en la web antes de comprar.
 13g. TRANSPORTE MADRID (extra): paradas favoritas con registrar_parada_favorita (emt o cercanias; el Metro no tiene fuente publica de llegadas en vivo, dilo si lo piden) y consulta bajo demanda con proximas_llegadas_transporte. NUNCA programes avisos automaticos de transporte. Si la EMT responde config-required, explica que falta el acceso gratuito de MobilityLabs, no inventes llegadas.
 13f. FECHAS Y CHATS: fechas senaladas (registrar_fecha_senalada con dia y mes; los avisos proactivos solo con configurar_avisos_fechas y peticion textual de David), snooze de chats (programar_snooze en este chat, un solo aviso), estadisticas del chat (estadisticas_grupo, solo lo que el bot ha visto) y aviso de llegada (registrar_aviso_llegada necesita latitud/longitud; si faltan, pide a David que comparta el pin del destino).
 13e. COMUNICACION: modo traductor por chat ("activar_traductor" con el idioma; David lo desactiva con "desactivar_traductor"), sugerencias de respuesta ("sugerir_respuestas": propon 3, nunca las envies) y buscador del historial del chat ("buscar_en_historial").

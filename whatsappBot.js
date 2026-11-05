@@ -25,6 +25,7 @@ import { iniciarMonitorRadar } from './src/services/jobRadarService.js';
 import { iniciarMonitorFlashcards } from './src/services/flashcardService.js';
 import { iniciarMonitorOps, registrarEventoMetrica } from './src/services/opsService.js';
 import { iniciarMonitorHogar } from './src/services/hogarService.js';
+import { iniciarMonitorViajes } from './src/services/viajesService.js';
 import { iniciarMonitorFinanzas, crearBorradorDesdeTicket, borradorPendiente, confirmarBorrador, descartarBorrador, interpretarRespuestaBorrador } from './src/services/financeService.js';
 import { crearAnalizadorTicket } from './src/services/ticketVisionAdapter.js';
 import { iniciarMonitorProcesos } from './src/services/processWatchdogService.js';
@@ -321,6 +322,7 @@ function inicializarServiciosProactivos() {
     iniciarMonitorFlashcards();
     iniciarMonitorOps();
     iniciarMonitorHogar();
+    iniciarMonitorViajes();
   } catch (errFlash) {
     console.error('Error iniciando monitor de flashcards:', errFlash.message);
   }
@@ -943,6 +945,7 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
           rutaArchivoMetricas: deps.rutaArchivoMetricas,
           rutaConfigOps: deps.rutaConfigOps,
           rutaConfigHogar: deps.rutaConfigHogar,
+          rutaArchivoViajes: deps.rutaArchivoViajes,
           otpDelivery: async ({ otpCode, ttlSeconds, reason, command }) => {
             await sock.sendMessage(remoteJid, {
               text: `Codigo de autorizacion 2FA para el comando critico "${command}" (${reason}):\n\n${otpCode}\n\nValidez: ${ttlSeconds} segundos. Responde "confirmar otp ${otpCode}" para autorizar la ejecucion. Este codigo solo lo ves tu.`
