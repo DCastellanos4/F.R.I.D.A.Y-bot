@@ -401,3 +401,44 @@ test('[Unit] Programados: enviado sin acuse pasa a incierto sin reintentar', asy
   programados.cancelarMensajeProgramado(antiguo.programado.id);
   programados.cancelarMensajeProgramado(fresco.programado.id);
 });
+
+// --- scheduledMessageService: rotacion del log de envios (hallazgo revision 3, punto 6) ---
+test('[Unit] Programados: el log de envios rota conservando el contenido previo', async () => {
+  const fsReal = await import('node:fs');
+  const pathReal = await import('node:path');
+  const { DATA_DIR } = await import('../../src/config/paths.js');
+  const log = pathReal.join(DATA_DIR, 'scheduled_messages.log');
+  const backup = `${log}.1`;
+
+  const teniaLog = fsReal.existsSync(log);
+  const previo = teniaLog ? fsReal.readFileSync(log, 'utf-8') : null;
+  const teniaBackup = fsReal.existsSync(backup);
+  const previoBackup = teniaBackup ? fsReal.readFileSync(backup, 'utf-8') : null;
+
+  try {
+    const relleno = 'x'.repeat(programados.LOG_ENVIOS_MAX_BYTES + 16);
+    fsReal.writeFileSync(log, relleno, 'utf-8');
+
+    const creado = programados.programarMensaje({
+      numero: '+34600999003',
+      mensaje: 'fixture rotacion de log',
+      minutosEnElFuturo: -1
+    });
+    assert.equal(creado.ok, true);
+    const despachados = await programados.despacharMensajesPendientes();
+    assert.ok(despachados.some((m) => m.id === creado.programado.id), 'el mensaje debio despacharse');
+
+    assert.ok(fsReal.existsSync(backup), 'el contenido previo queda protegido en .1');
+    assert.equal(fsReal.readFileSync(backup, 'utf-8'), relleno, 'el backup conserva el log anterior integro');
+    const logNuevo = fsReal.readFileSync(log, 'utf-8');
+    assert.ok(logNuevo.includes('fixture rotacion de log'), 'el log nuevo recibe la entrada del despacho');
+    assert.ok(logNuevo.length < relleno.length, 'el log nuevo empieza de cero');
+
+    programados.cancelarMensajeProgramado(creado.programado.id);
+  } finally {
+    if (previo !== null) fsReal.writeFileSync(log, previo, 'utf-8');
+    else if (fsReal.existsSync(log)) fsReal.unlinkSync(log);
+    if (previoBackup !== null) fsReal.writeFileSync(backup, previoBackup, 'utf-8');
+    else if (fsReal.existsSync(backup)) fsReal.unlinkSync(backup);
+  }
+});
