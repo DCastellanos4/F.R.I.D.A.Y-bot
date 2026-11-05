@@ -1358,6 +1358,235 @@ export const herramientasJarvis = [
         required: ['pregunta']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'escribir_diario',
+      description: 'Apunta una entrada en el diario personal de David (texto o voz ya transcrita). Append por dia.',
+      parameters: {
+        type: 'object',
+        properties: {
+          texto: { type: 'string', description: 'Lo que quiere apuntar.' },
+          fecha: { type: 'string', description: 'Dia AAAA-MM-DD (por defecto hoy, hora de Madrid).' }
+        },
+        required: ['texto']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'leer_diario',
+      description: 'Lee la entrada del diario de un dia (por defecto hoy).',
+      parameters: {
+        type: 'object',
+        properties: {
+          fecha: { type: 'string', description: 'Dia AAAA-MM-DD.' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'registrar_habito',
+      description: 'Empieza a seguir un habito (ej: "leer 20 minutos"). Sin avisos proactivos: seguimiento bajo demanda.',
+      parameters: {
+        type: 'object',
+        properties: {
+          nombre: { type: 'string', description: 'Nombre del habito.' }
+        },
+        required: ['nombre']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'marcar_habito',
+      description: 'Marca un habito como hecho (por defecto hoy).',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string', description: 'Nombre o parte del nombre del habito.' },
+          fecha: { type: 'string', description: 'Dia AAAA-MM-DD (por defecto hoy).' }
+        },
+        required: ['criterio']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_habitos',
+      description: 'Lista los habitos con racha de dias y si estan hechos hoy.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'poner_menu',
+      description: 'Guarda la comida y/o la cena de un dia en el menu semanal.',
+      parameters: {
+        type: 'object',
+        properties: {
+          dia: { type: 'string', description: 'Dia de la semana (lunes a domingo).' },
+          comida: { type: 'string', description: 'Plato de la comida.' },
+          cena: { type: 'string', description: 'Plato de la cena.' }
+        },
+        required: ['dia']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'ver_menu',
+      description: 'Muestra el menu de la semana (por defecto la actual).',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'sugerir_menu',
+      description: 'Propone un menu semanal con el modelo. Es solo una propuesta: se guarda lo que David confirme con poner_menu.',
+      parameters: {
+        type: 'object',
+        properties: {
+          preferencias: { type: 'string', description: 'Preferencias o restricciones (ej: "sin carne", "barato").' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'anadir_compra',
+      description: 'Anade uno o varios articulos a la lista de la compra.',
+      parameters: {
+        type: 'object',
+        properties: {
+          items: { type: 'array', items: { type: 'string' }, description: 'Articulos a anadir.' }
+        },
+        required: ['items']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_compra',
+      description: 'Muestra la lista de la compra.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'tachar_compra',
+      description: 'Quita un articulo de la lista de la compra.',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string', description: 'Nombre o parte del articulo.' }
+        },
+        required: ['criterio']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'vaciar_compra',
+      description: 'Vacia por completo la lista de la compra. Solo si David lo pide expresamente.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'recomendar_serie_pelicula',
+      description: 'Recomienda series o peliculas segun los gustos guardados de David, sin repetir recomendaciones anteriores.',
+      parameters: {
+        type: 'object',
+        properties: {
+          genero: { type: 'string', description: 'Genero o antojo (ej: "thriller", "algo corto").' },
+          tipo: { type: 'string', enum: ['pelicula', 'serie'], description: 'Limitar a peliculas o series.' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'crear_quedada',
+      description: 'Registra una quedada (titulo, fecha, hora, lugar, participantes). No invita a nadie por si misma.',
+      parameters: {
+        type: 'object',
+        properties: {
+          titulo: { type: 'string', description: 'Que quedada es (ej: "cena con la uni").' },
+          fecha: { type: 'string', description: 'Dia AAAA-MM-DD.' },
+          hora: { type: 'string', description: 'Hora HH:MM.' },
+          lugar: { type: 'string', description: 'Sitio.' },
+          participantes: { type: 'array', items: { type: 'string' }, description: 'Quien va.' }
+        },
+        required: ['titulo']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_quedadas',
+      description: 'Lista las quedadas registradas (las 10 mas recientes).',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'redactar_invitacion',
+      description: 'Redacta el BORRADOR de la invitacion a una quedada para que David lo revise y lo envie el mismo. NUNCA lo envia a terceros.',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string', description: 'Titulo o id de la quedada.' }
+        },
+        required: ['criterio']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'resumen_deportivo',
+      description: 'Resume la actualidad deportiva con fuentes RSS reales ya curadas (Marca, El Periodico, El Confidencial). Nunca inventa marcadores.',
+      parameters: {
+        type: 'object',
+        properties: {
+          limite: { type: 'number', description: 'Numero de titulares (por defecto 5).' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'configurar_modo_nocturno',
+      description: 'Activa o desactiva el modo desconexion nocturno: silencia los avisos proactivos no urgentes dentro de la franja (por defecto 23:00-08:00, hora de Madrid). Los recordatorios puntuales que David programa no se tocan.',
+      parameters: {
+        type: 'object',
+        properties: {
+          activo: { type: 'boolean', description: 'true para activar, false para desactivar.' },
+          desde: { type: 'string', description: 'Inicio de la franja HH:MM.' },
+          hasta: { type: 'string', description: 'Fin de la franja HH:MM.' }
+        },
+        required: ['activo']
+      }
+    }
   }
 ];
 
@@ -1393,6 +1622,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   comunicacion: ['activar_traductor', 'desactivar_traductor', 'sugerir_respuestas', 'buscar_en_historial', 'registrar_fecha_senalada', 'listar_fechas_senaladas', 'eliminar_fecha_senalada', 'configurar_avisos_fechas', 'programar_snooze', 'listar_snoozes', 'cancelar_snooze', 'estadisticas_grupo', 'registrar_aviso_llegada', 'listar_avisos_llegada', 'cancelar_aviso_llegada'],
   transporte: ['registrar_parada_favorita', 'listar_paradas_favoritas', 'eliminar_parada_favorita', 'proximas_llegadas_transporte'],
   cerebro: ['registrar_contacto', 'buscar_contacto', 'listar_contactos', 'buscar_recuerdo_semantico', 'generar_digest_cerebro', 'configurar_digest_semanal', 'generar_wiki', 'capturar_pagina', 'preguntar_documentos'],
+  bienestar: ['escribir_diario', 'leer_diario', 'registrar_habito', 'marcar_habito', 'listar_habitos', 'poner_menu', 'ver_menu', 'sugerir_menu', 'anadir_compra', 'listar_compra', 'tachar_compra', 'vaciar_compra', 'recomendar_serie_pelicula', 'crear_quedada', 'listar_quedadas', 'redactar_invitacion', 'resumen_deportivo', 'configurar_modo_nocturno'],
   procesos: ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'],
   finanzas: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'],
   conversacion: []
