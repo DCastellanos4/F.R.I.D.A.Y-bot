@@ -14,7 +14,7 @@
 
 Self-hosted personal AI assistant running 24/7 on an Oracle Cloud VPS under PM2. It pairs a sober J.A.R.V.I.S.-style persona (zero-emoji Spanish) with real SysAdmin and DevOps automation: WhatsApp multi-device chat over the native WebSocket protocol, multi-provider LLM tool calling, local Whisper.cpp voice transcription, Edge-TTS voice replies, and self-healing infrastructure watchdogs.
 
-**What it solves:** one WhatsApp chat as the control surface for one person's digital operations - messaging, reminders, a personal knowledge base, media downloads and administration of a real Linux server, with an 804-test suite (802 passing, 2 explicit skips) gating every change that ships.
+**What it solves:** one WhatsApp chat as the control surface for one person's digital operations - messaging, reminders, a personal knowledge base, media downloads and administration of a real Linux server, with automated CI quality gates on every push (critical battery at 100%, full suite at 95% or better).
 
 **Documentation:** architecture, engineering decisions, the full feature matrix, security standards and known limitations live on the [project documentation site](https://dcastellanos4.github.io/F.R.I.D.A.Y-bot/).
 
