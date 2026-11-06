@@ -479,6 +479,12 @@ export const casosDorados = [
     esperado: { sinHerramientas: true, clasificador: false, textoContiene: 'numero' }
   },
   {
+    id: 'R25-real-skill-diagnostico',
+    entrada: 'haz el diagnostico de davis',
+    pasos: [{ llama: 'ejecutar_skill', args: { nombre: 'diagnostico_davis' } }, { texto: 'Aqui va el diagnostico.' }],
+    esperado: { invoca: ['ejecutar_skill'], clasificador: false }
+  },
+  {
     id: 'R24-real-conversacion-saludo',
     entrada: 'buenas noches, que tal?',
     pasos: [{ texto: 'Buenas noches, David. Todo en orden.' }],

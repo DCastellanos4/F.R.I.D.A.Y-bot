@@ -310,3 +310,20 @@ test('procesarMensajesEntrantes: "aprobar skill X" por AUDIO exige el si previo 
   }, { chatCompletion: llm, skipPersistencia: true });
   assert.ok(enviados.some((m) => String(m.payload.text || '').includes('aprobada')), 'el si textual aprueba');
 });
+
+test('Regresion: la directiva de skills esta en el prompt del agente (el modelo la ve)', async () => {
+  // El 400 real de Groq del 6-nov ("attempted to call tool
+  // 'consultar_estado_servidor' which was not in request.tools") ocurrio
+  // porque el prompt nunca mencionaba las skills: el modelo seguia la regla 7
+  // e invocaba la herramienta interna directamente. La directiva 15 lo evita.
+  const { consultarJarvis } = await import('../../src/core/jarvisAgent.js');
+  let promptSistema = '';
+  const chat = async ({ messages }) => {
+    promptSistema = (messages.find((m) => m.role === 'system') || {}).content || '';
+    return { message: { content: 'vale' } };
+  };
+  await consultarJarvis('haz el diagnostico de davis', [], { chatId: 'test-skills-prompt', chatCompletion: chat });
+  assert.ok(promptSistema.includes('15. SKILLS'), 'la directiva 15 de skills esta en el prompt');
+  assert.ok(promptSistema.includes('ejecutar_skill'), 'la directiva nombra ejecutar_skill');
+  assert.ok(promptSistema.includes('EN LUGAR de llamar a las herramientas individuales'), 'la directiva prefiere la skill sobre llamadas individuales');
+});
