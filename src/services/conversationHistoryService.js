@@ -33,6 +33,8 @@ const CARPETA_HISTORIAL = process.env.DAVIS_HISTORY_DIR
   ? path.resolve(process.env.DAVIS_HISTORY_DIR)
   : path.join(DATA_DIR, 'history');
 
+import { archivarEpisodios, limpiarEpisodios } from './episodicMemoryService.js';
+
 export const MAX_MENSAJES_VENTANA = 12;   // mensajes que se entregan al modelo
 export const MAX_MENSAJES_ARCHIVO = 40;   // tope persistido antes de condensar
 
@@ -125,6 +127,9 @@ export function registrarMensaje(chatId, role, content) {
     // Red de seguridad: el recorte duro solo aplica si la condensacion
     // programada (programarCondensacionSiNecesario) aun no ha corrido; el
     // flujo normal condensa lo antiguo en el resumen antes de llegar aqui.
+    // Lo recortado se archiva como episodios (memoria episodica).
+    const descartados = registro.mensajes.slice(0, registro.mensajes.length - MAX_MENSAJES_ARCHIVO);
+    archivarEpisodios(chatId, descartados);
     registro.mensajes = registro.mensajes.slice(-MAX_MENSAJES_ARCHIVO);
   }
 
@@ -146,6 +151,7 @@ export function limpiarHistorial(chatId) {
   try {
     const ruta = rutaChat(chatId);
     if (fs.existsSync(ruta)) fs.unlinkSync(ruta);
+    limpiarEpisodios(chatId);
     return true;
   } catch (err) {
     console.error('[Historial] Error limpiando historial:', err.message);
@@ -173,6 +179,10 @@ export async function condensarHistorial(chatId, deps = {}) {
 
   const antiguos = registro.mensajes.slice(0, -MAX_MENSAJES_VENTANA);
   const recientes = registro.mensajes.slice(-MAX_MENSAJES_VENTANA);
+
+  // Memoria episodica: el resumen conserva la idea, pero el detalle verbatim
+  // se archiva para poder recuperarlo despues por busqueda.
+  archivarEpisodios(chatId, antiguos);
 
   let nuevoResumen = registro.resumen;
   const chatCompletion = deps.chatCompletion;
