@@ -585,6 +585,20 @@ function numerosCoinciden(a, b) {
   return corto.length >= 9 && largo.endsWith(corto);
 }
 
+// Los argumentos de las herramientas pueden llevar telefonos, contenidos de
+// mensajes u otros datos privados: en los logs solo se muestran valores de
+// claves no sensibles; el resto se redacta conservando el tipo.
+const CLAVES_ARGS_SENSIBLES = /numero|telefono|tel$|mensaje|nota|dato|contenido|texto|password|contrasena|clave|token|secreto|codigo|pin|consulta|titulo|tema|criterio/i;
+
+function argsParaLog(args) {
+  if (!args || typeof args !== 'object') return args;
+  const limpio = {};
+  for (const [k, v] of Object.entries(args)) {
+    limpio[k] = CLAVES_ARGS_SENSIBLES.test(k) ? `[${Array.isArray(v) ? 'array' : typeof v} redactado]` : v;
+  }
+  return limpio;
+}
+
 function esError400ValidacionHerramientas(err) {
   const txt = String((err && err.message) || err || '');
   return /\b400\b/.test(txt) && /tool.?call validation|did not match schema/i.test(txt);
@@ -1789,10 +1803,10 @@ Directrices de selección:
 1. CLIMA Y METEOROLOGÍA: Para consultar el tiempo, temperatura o lluvia de hoy o de mañana en cualquier ciudad o localidad (ej: Madrid), invoca "consultar_clima".
 2. MENSAJES PROGRAMADOS DE WHATSAPP: Para programar el envío de un mensaje de WhatsApp a un número de teléfono en una fecha u hora específica (o en X minutos), invoca "programar_mensaje_whatsapp". El número de destino debe haberlo dado David en la conversación o constar en una ficha de contacto (búscalo antes con "buscar_contacto"); si no lo tienes, pídeselo a David. NUNCA inventes ni supongas un número de teléfono. Para consultar los mensajes programados pendientes, "listar_mensajes_programados". Para cancelar uno, "cancelar_mensaje_programado".
 3. RECORDATORIOS Y ALARMAS PERSONALES: Para programar avisos o alarmas personales de David, invoca "crear_recordatorio". Para consultarlos, "listar_recordatorios". Para cancelar, "cancelar_recordatorio".
-4. SECOND BRAIN (MEMORIA PERSONAL): Para guardar hechos o datos personales (claves, cumpleaños, tallas, correos), invoca "guardar_memoria". Para consultar datos del pasado, "buscar_memoria". Para borrar, "olvidar_memoria".
+4. SECOND BRAIN (MEMORIA PERSONAL): Para guardar hechos o datos personales (claves, cumpleaños, tallas, correos), invoca "guardar_memoria". Para consultar datos del pasado, invoca SIEMPRE "buscar_memoria" antes de responder (incluido "que sabes de..."): NUNCA afirmes datos personales (cumpleaños, tallas, claves, telefonos, direcciones) que no vengan de esa consulta o del propio David en este chat; si la busqueda no devuelve nada, di que no tienes nada guardado. Para borrar, "olvidar_memoria".
 5. SNIPER DE PRECIOS: Para vigilar un producto u oferta si baja de precio, invoca "vigilar_producto". Para listar, "listar_productos_vigilados".
 6. NOTICIAS Y NAVEGADOR PLAYWRIGHT: Para noticias de actualidad, invoca "obtener_noticias_actuales". Para abrir o inspeccionar un enlace o artículo web con el navegador, invoca "navegar_y_leer_noticia" o "resumir_enlace".
-7. ESTADO DEL SISTEMA: Para consultar la salud del servidor o el estado de Minecraft, invoca "consultar_estado_servidor".
+7. ESTADO DEL SISTEMA: Para consultar la salud del servidor o el estado de Minecraft, invoca "consultar_estado_servidor". Al resumir el resultado de CUALQUIER herramienta, limitate a los datos que esa herramienta ha devuelto: si un dato no aparece en su resultado, di que no esta disponible en lugar de inventarlo (metricas, estados, precios, fechas).
 8. TERMINAL Y BASH: Para ejecutar comandos en consola bash, invoca "execute_bash_command". Si un comando es critico, el sistema envia un codigo OTP al canal privado de David y solo el puede confirmarlo respondiendo "confirmar otp CODIGO": tu nunca ves ni confirmas ese codigo.
 9. GENERADOR CRIPTOGRAFICO: Para generar contraseñas seguras, PINs, tokens o claves criptograficas, invoca "generate_crypto_credential".
 10. INFRAESTRUCTURA Y SERVICIOS: Para consultar el estado de Docker, espacio en disco, red o certificados SSL, invoca "get_infrastructure_status".
@@ -1859,7 +1873,7 @@ Directrices de selección:
     for (const llamada of respuesta.message.tool_calls) {
       const nombreFuncion = llamada.function.name;
       const args = llamada.function.arguments || {};
-      console.log(`[J.A.R.V.I.S. Tool Call R${ronda}] Invocando: ${nombreFuncion} con argumentos:`, args);
+      console.log(`[J.A.R.V.I.S. Tool Call R${ronda}] Invocando: ${nombreFuncion} con argumentos:`, argsParaLog(args));
 
       if (HERRAMIENTAS_ENVIO_TERCEROS.has(nombreFuncion) && !destinatarioVerificado(args.numero, mensajeUsuario, historial, opciones)) {
         const bloqueo = 'Bloqueado por seguridad, senor: el numero de destino no consta en este chat ni en sus contactos verificados, asi que no se programa ningun envio. Pida a David el numero de telefono del destinatario, o que lo registre como contacto, antes de programar el mensaje.';
@@ -1873,7 +1887,7 @@ Directrices de selección:
       const claveAccion = `${nombreFuncion}:${JSON.stringify(args)}`;
       if (!HERRAMIENTAS_IDEMPOTENTES.has(nombreFuncion) && accionesConEfectosEjecutadas.has(claveAccion)) {
         resultadoTool = `La accion ${nombreFuncion} con esos mismos argumentos ya se ejecuto en esta peticion. NO se duplica una accion con efectos externos: verifica su resultado e informa a David en lugar de repetirla.`;
-        console.warn(`[J.A.R.V.I.S. Tool Dedup] Duplicado bloqueado: ${claveAccion}`);
+        console.warn(`[J.A.R.V.I.S. Tool Dedup] Duplicado bloqueado: ${nombreFuncion} (mismos argumentos en esta peticion)`);
         traza.llamadas.push({ nombre: nombreFuncion, ronda, resultado: 'duplicado_bloqueado' });
         mensajes.push({ role: 'tool', content: resultadoTool, tool_call_id: llamada.id });
         continue;

@@ -17,6 +17,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'path';
 import os from 'os';
+import util from 'node:util';
 
 const dirEntorno = fs.mkdtempSync(path.join(os.tmpdir(), 'davis-msg-guard-'));
 process.env.DAVIS_DATA_DIR = path.join(dirEntorno, 'data');
@@ -111,4 +112,27 @@ test('Guard: numero aportado por David antes en el mismo chat si se ejecuta', as
   ];
   await consultarJarvis('dile a mi madre en 15 minutos que ya he salido', historial, opciones(obs));
   assert.equal(obs.ejecuciones.length, 1, 'numero aportado por David antes en el chat: permitido');
+});
+
+test('Privacidad: los logs no muestran telefonos ni contenidos de mensajes', async () => {
+  const obs = { ejecuciones: [], mensajesTool: [] };
+  const salida = [];
+  const logOriginal = console.log;
+  const warnOriginal = console.warn;
+  console.log = (...a) => { salida.push(a.map((v) => (typeof v === 'object' && v !== null ? util.inspect(v) : String(v))).join(' ')); };
+  console.warn = (...a) => { salida.push(a.map((v) => (typeof v === 'object' && v !== null ? util.inspect(v) : String(v))).join(' ')); };
+  const rutaContactos = path.join(dirEntorno, 'contactos-log.json');
+  registrarContacto({ nombre: 'Madre', telefono: NUMERO_INVENTADO }, { rutaArchivo: rutaContactos });
+  try {
+    // El numero SOLO consta en la ficha: si aparece en los logs, la fuga
+    // viene de los argumentos de la herramienta, no del texto de David.
+    await consultarJarvis('dile a mi madre en 15 minutos que ya he salido', [], opciones(obs, { rutaArchivoContactos: rutaContactos }));
+  } finally {
+    console.log = logOriginal;
+    console.warn = warnOriginal;
+  }
+  const textoLog = salida.join('\n');
+  assert.ok(!textoLog.includes(NUMERO_INVENTADO), 'el numero no aparece en los logs');
+  assert.ok(!textoLog.includes('Ya he salido'), 'el contenido del mensaje no aparece en los logs');
+  assert.ok(/redactado/.test(textoLog), 'la redaccion queda marcada');
 });
