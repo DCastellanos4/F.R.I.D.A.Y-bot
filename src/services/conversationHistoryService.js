@@ -142,7 +142,7 @@ export function limpiarHistorial(chatId, deps = {}) {
   try {
     const ruta = rutaChat(chatId);
     if (fs.existsSync(ruta)) fs.unlinkSync(ruta);
-    limpiarEpisodios(chatId);
+    limpiarEpisodios(chatId, deps);
     // Las trazas del recorrido tambien son historial del chat: se borran
     // siempre, haya o no mensajes guardados.
     borrarTrazas(chatId, deps);

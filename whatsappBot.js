@@ -15,9 +15,9 @@ import { consultarJarvis } from './src/core/jarvisAgent.js';
 import { confirmAndExecute } from './src/system/bashConsoleService.js';
 import { iniciarMonitorRecordatorios } from './src/services/reminderService.js';
 import { iniciarMonitorMensajesProgramados, registrarIdWhatsApp, procesarActualizacionEntrega } from './src/services/scheduledMessageService.js';
-import { obtenerHistorial, registrarIntercambio, programarCondensacionSiNecesario } from './src/services/conversationHistoryService.js';
+import { obtenerHistorial, registrarIntercambio, programarCondensacionSiNecesario, limpiarHistorial } from './src/services/conversationHistoryService.js';
 import { esAccionCriticaPorVoz, guardarPendienteVoz, resolverConfirmacionVoz } from './src/services/voiceConfirmationService.js';
-import { resolverConfirmacionBorrado } from './src/services/destructiveActionService.js';
+import { resolverConfirmacionBorrado, resolverCancelacionBorrado, registrarBorradoConversacionPendiente, esPeticionBorradoConversacion } from './src/services/destructiveActionService.js';
 import { olvidarMemoria } from './src/services/memoryService.js';
 import { iniciarVigilanteProactivo } from './src/monitors/proactiveAlerts.js';
 import { iniciarSniperWatchdog } from './src/monitors/sniperService.js';
@@ -881,12 +881,41 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         continue;
       }
 
-      // Confirmacion de borrado masivo de memoria: fuera de banda, ligada al
-      // chat, al id exacto, con TTL y de un solo uso. Nunca pasa por el LLM.
+      // Cancelacion de un borrado pendiente (memoria o conversacion): fuera
+      // del modelo, misma mecanica que la confirmacion.
+      const resCancelaBorrado = resolverCancelacionBorrado(remoteJid, texto);
+      if (resCancelaBorrado) {
+        await sock.sendMessage(remoteJid, {
+          text: resCancelaBorrado.cancelados > 0
+            ? 'Borrado cancelado; no se ha eliminado nada.'
+            : 'No habia ningun borrado pendiente en este chat.'
+        }, { quoted: msg });
+        continue;
+      }
+
+      // Borrado de la conversacion (historial, episodios archivados y trazas
+      // del recorrido de ESTE chat): peticion con confirmacion fuera del
+      // modelo. Los recuerdos del Second Brain NO se tocan: tienen su propio
+      // flujo (olvidar_memoria con comodin).
+      if (esPeticionBorradoConversacion(texto)) {
+        const idBorradoConv = registrarBorradoConversacionPendiente(remoteJid);
+        await sock.sendMessage(remoteJid, {
+          text: `Entendido, señor. Esto borrara el historial de esta conversacion, sus episodios archivados y las trazas del recorrido. Sus recuerdos guardados (Second Brain) NO se tocan. Para ejecutarlo, responda: "confirmar borrado ${idBorradoConv}". Para cancelarlo: "cancelar borrado".`
+        }, { quoted: msg });
+        continue;
+      }
+
+      // Confirmacion de borrado (memoria o conversacion): fuera de banda,
+      // ligada al chat, al id exacto, con TTL y de un solo uso. Nunca pasa
+      // por el LLM.
       const resBorrado = resolverConfirmacionBorrado(remoteJid, texto);
       if (resBorrado) {
         let textoBorrado;
-        if (resBorrado.confirmado) {
+        if (resBorrado.confirmado && resBorrado.tipo === 'conversacion') {
+          console.log('[Conversacion 2FA] Borrado de conversacion confirmado por David directamente, sin pasar por el LLM.');
+          limpiarHistorial(remoteJid, deps);
+          textoBorrado = 'Historial de la conversacion, episodios y trazas borrados. Sus recuerdos del Second Brain siguen intactos.';
+        } else if (resBorrado.confirmado) {
           console.log('[Memoria 2FA] Borrado masivo confirmado por David directamente, sin pasar por el LLM.');
           const resVaciado = olvidarMemoria(resBorrado.criterio, { confirmado: true });
           textoBorrado = resVaciado.mensaje || resVaciado.error || 'Borrado completado.';

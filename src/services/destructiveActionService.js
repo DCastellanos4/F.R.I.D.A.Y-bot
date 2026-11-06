@@ -37,9 +37,56 @@ export function registrarBorradoMasivoPendiente(chatId, criterio, total, deps = 
   if (!chatId || !criterio) return null;
   const ahora = typeof deps.now === 'function' ? deps.now() : Date.now();
   const id = generarId();
-  pendientes.set(id, { chatId, criterio, total, creadoEn: ahora });
+  pendientes.set(id, { chatId, criterio, total, tipo: 'memoria', creadoEn: ahora });
   iniciarPurgaPendientes();
   return id;
+}
+
+/**
+ * Registra un borrado pendiente de los registros de conversacion de un chat
+ * (historial, episodios archivados y trazas del recorrido). NO toca los
+ * recuerdos del Second Brain: ese borrado tiene su propio flujo
+ * (olvidar_memoria con comodin). Misma mecanica de confirmacion.
+ */
+export function registrarBorradoConversacionPendiente(chatId, deps = {}) {
+  if (!chatId) return null;
+  const ahora = typeof deps.now === 'function' ? deps.now() : Date.now();
+  const id = generarId();
+  pendientes.set(id, { chatId, tipo: 'conversacion', creadoEn: ahora });
+  iniciarPurgaPendientes();
+  return id;
+}
+
+// Peticion de borrado de la conversacion: "borra el historial",
+// "borra el historial de esta conversacion", "olvida esta conversacion".
+const REGEX_BORRADO_CONVERSACION = /^(borra|limpia|elimina)\s+(el\s+)?historial(\s+de\s+(esta|la|nuestra)\s+conversacion)?\s*[.!?]?$/i;
+const REGEX_OLVIDA_CONVERSACION = /^(olvida|borra|elimina)\s+(esta|nuestra|la)\s+conversacion\s*[.!?]?$/i;
+
+export function esPeticionBorradoConversacion(texto) {
+  if (!texto || typeof texto !== 'string') return false;
+  const limpio = texto.trim();
+  return REGEX_BORRADO_CONVERSACION.test(limpio) || REGEX_OLVIDA_CONVERSACION.test(limpio);
+}
+
+const REGEX_CANCELA_BORRADO = /^cancela(?:r|me)?\s+borrado(\s+(borr_[a-f0-9]{6}))?\s*[.!?]?$/i;
+
+/**
+ * Cancelacion fuera del modelo: "cancelar borrado" (opcionalmente con id).
+ * Devuelve null si el mensaje no es una cancelacion; en caso contrario,
+ * cuantos pendientes de ESTE chat se cancelaron (0 si no habia).
+ */
+export function resolverCancelacionBorrado(chatId, texto) {
+  if (!texto || typeof texto !== 'string') return null;
+  const m = texto.trim().match(REGEX_CANCELA_BORRADO);
+  if (!m) return null;
+  let cancelados = 0;
+  for (const [id, registro] of pendientes) {
+    if (registro.chatId !== chatId) continue;
+    if (m[2] && id !== m[2].toLowerCase()) continue;
+    pendientes.delete(id);
+    cancelados++;
+  }
+  return { cancelados };
 }
 
 /**
@@ -108,7 +155,7 @@ export function resolverConfirmacionBorrado(chatId, texto, deps = {}) {
 
   // Consumo de un solo uso
   pendientes.delete(id);
-  return { confirmado: true, criterio: registro.criterio, total: registro.total };
+  return { confirmado: true, criterio: registro.criterio, total: registro.total, tipo: registro.tipo || 'memoria' };
 }
 
 export function hayBorradoPendiente(chatId) {

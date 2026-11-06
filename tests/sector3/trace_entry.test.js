@@ -14,6 +14,7 @@ import os from 'node:os';
 
 const dirEntorno = fs.mkdtempSync(path.join(os.tmpdir(), 'davis-trazas-'));
 process.env.NODE_ENV = 'test';
+process.env.DAVIS_HISTORY_DIR = path.join(dirEntorno, 'history');
 
 const { iniciarTraza, guardarTraza, ultimaTraza, explicarUltimoRecorrido } = await import('../../src/services/traceService.js');
 const bot = await import('../../whatsappBot.js');
@@ -190,4 +191,98 @@ test('limpiarHistorial borra las trazas aunque no haya historial guardado', asyn
   assert.equal(limpiarHistorial(chat, { carpetaTrazas }), true);
   assert.equal(ultimaTraza(chat, { carpetaTrazas }), null, 'las trazas debieron borrarse con el historial');
   assert.match(explicarUltimoRecorrido(chat, { carpetaTrazas }), /No tengo registrado ningun recorrido/);
+});
+
+test('Entrada real: borrado de conversacion pide confirmacion fuera del modelo y borra historial+trazas', async () => {
+  const { registrarMensaje, contarMensajes } = await import('../../src/services/conversationHistoryService.js');
+  const chat = JID_DAVID;
+  // Semilla: historial y traza del chat
+  registrarMensaje(chat, 'user', 'mensaje previo de prueba');
+  const t = iniciarTraza(chat, 'que tiempo hace?');
+  t.via = 'regex'; t.rondas = 0; t.duracionMs = 5;
+  guardarTraza(t, { carpetaTrazas });
+  assert.ok(contarMensajes(chat) > 0);
+  assert.ok(ultimaTraza(chat, { carpetaTrazas }));
+
+  // 1. Peticion: NO borra nada todavia; pide confirmacion con id y deja
+  //    claro el alcance (Second Brain fuera).
+  const enviados1 = [];
+  await bot.procesarMensajesEntrantes(sockSimulado(enviados1), {
+    type: 'notify',
+    messages: [mensajeEntrante('borra el historial de esta conversacion', 'DEL-1')]
+  }, { carpetaTrazas });
+  const texto1 = enviados1[enviados1.length - 1].payload.text;
+  const mId = texto1.match(/confirmar borrado (borr_[a-f0-9]{6})/);
+  assert.ok(mId, `debio pedir confirmacion con id; texto: ${texto1}`);
+  assert.match(texto1, /Second Brain\) NO se tocan/);
+  assert.ok(ultimaTraza(chat, { carpetaTrazas }), 'sin confirmar no se borra nada');
+  assert.ok(contarMensajes(chat) > 0, 'sin confirmar el historial sigue');
+
+  // 2. Confirmacion exacta: borra historial y trazas; mensaje honesto.
+  const enviados2 = [];
+  await bot.procesarMensajesEntrantes(sockSimulado(enviados2), {
+    type: 'notify',
+    messages: [mensajeEntrante(`confirmar borrado ${mId[1]}`, 'DEL-2')]
+  }, { carpetaTrazas });
+  const texto2 = enviados2[enviados2.length - 1].payload.text;
+  assert.match(texto2, /Historial de la conversacion, episodios y trazas borrados/);
+  assert.match(texto2, /Second Brain siguen intactos/);
+  assert.equal(ultimaTraza(chat, { carpetaTrazas }), null, 'trazas borradas');
+  assert.equal(contarMensajes(chat), 0, 'historial borrado');
+
+  // 3. El id es de un solo uso.
+  const enviados3 = [];
+  await bot.procesarMensajesEntrantes(sockSimulado(enviados3), {
+    type: 'notify',
+    messages: [mensajeEntrante(`confirmar borrado ${mId[1]}`, 'DEL-3')]
+  }, { carpetaTrazas });
+  assert.match(enviados3[enviados3.length - 1].payload.text, /No hay ningun borrado pendiente/);
+});
+
+test('Entrada real: "cancelar borrado" anula la peticion y no borra nada', async () => {
+  const chat = JID_DAVID;
+  const t = iniciarTraza(chat, 'otra peticion');
+  t.via = 'regex'; t.rondas = 0; t.duracionMs = 5;
+  guardarTraza(t, { carpetaTrazas });
+
+  const enviados1 = [];
+  await bot.procesarMensajesEntrantes(sockSimulado(enviados1), {
+    type: 'notify',
+    messages: [mensajeEntrante('olvida esta conversacion', 'DEL-10')]
+  }, { carpetaTrazas });
+  const texto1 = enviados1[enviados1.length - 1].payload.text;
+  const mId = texto1.match(/confirmar borrado (borr_[a-f0-9]{6})/);
+  assert.ok(mId, `debio pedir confirmacion; texto: ${texto1}`);
+
+  const enviados2 = [];
+  await bot.procesarMensajesEntrantes(sockSimulado(enviados2), {
+    type: 'notify',
+    messages: [mensajeEntrante('cancelar borrado', 'DEL-11')]
+  }, { carpetaTrazas });
+  assert.match(enviados2[enviados2.length - 1].payload.text, /Borrado cancelado/);
+  assert.ok(ultimaTraza(chat, { carpetaTrazas }), 'la traza sigue tras cancelar');
+
+  // El id cancelado ya no sirve.
+  const enviados3 = [];
+  await bot.procesarMensajesEntrantes(sockSimulado(enviados3), {
+    type: 'notify',
+    messages: [mensajeEntrante(`confirmar borrado ${mId[1]}`, 'DEL-12')]
+  }, { carpetaTrazas });
+  assert.match(enviados3[enviados3.length - 1].payload.text, /No hay ningun borrado pendiente/);
+  assert.ok(ultimaTraza(chat, { carpetaTrazas }), 'la traza sigue tras id cancelado');
+});
+
+test('Borrado conversacion: aislamiento entre chats (un chat no confirma el borrado de otro)', async () => {
+  const { registrarBorradoConversacionPendiente, resolverConfirmacionBorrado } = await import('../../src/services/destructiveActionService.js');
+  const chatA = 'chat-a@test';
+  const chatB = 'chat-b@test';
+  const idA = registrarBorradoConversacionPendiente(chatA);
+  // Desde otro chat: mismo mensaje de "No hay ningun borrado", sin consumir.
+  const resB = resolverConfirmacionBorrado(chatB, `confirmar borrado ${idA}`);
+  assert.equal(resB.confirmado, false);
+  assert.match(resB.motivo, /No hay ningun borrado pendiente/);
+  // El chat correcto si puede confirmar despues del intento cruzado.
+  const resA = resolverConfirmacionBorrado(chatA, `confirmar borrado ${idA}`);
+  assert.equal(resA.confirmado, true);
+  assert.equal(resA.tipo, 'conversacion');
 });
