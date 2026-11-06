@@ -205,7 +205,7 @@ export function analizarIntencion(mensaje) {
     navegacion: /(navega|entra|abre|lee|inspecciona|mira|visita|accede)\s+(a\s+la|en\s+la|la)?\s*(noticia|web|pagina|enlace|link|articulo)|resum(e|ir)|qu[eé?] dice|de qu[eé?] va/i,
     
     // Servidor / Minecraft
-    servidor: /(servidor|server|minecraft|mc|ram|cpu|salud del servidor|sistema|como esta el server|esta online|puerto 25565)/i,
+    servidor: /(servidor|server|minecraft|\bmc\b|\bram\b|\bcpu\b|salud del servidor|sistema|como esta el server|esta online|puerto 25565)/i,
 
     // Filtro VIP / No molestar
     vip: /(modo\s+vip|filtro\s+vip|no\s+molestar|dnd|lista\s+blanca|contacto\s+vip|activar\s+vip|desactivar\s+vip|estado\s+vip)/i,
@@ -262,6 +262,10 @@ export function analizarIntencion(mensaje) {
     // Gestion de tuneles Cloudflare / Tailscale (Sector 2)
     tuneles: /(t[uú]nel(es)?|tunnel(s)?|cloudflare\s+tunnel|cloudflared|tailscale|abrir\s+t[uú]nel|cerrar\s+t[uú]nel|iniciar\s+t[uú]nel|detener\s+t[uú]nel|estado\s+del?\s+t[uú]nel)/i,
 
+    // Contenido generativo (imagen, video, audio): NO hay herramienta de generacion;
+    // se reconoce la intencion para declararla honesta en lugar de desviarla
+    generativo: /(genera(r|me)?|crea(r|me)?|haz(me)?|dibuja(r|me)?|pinta(r|me)?|hacer)\s+(una?\s+|un\s+)?(imagen|im[aá]genes|foto|dibujo|logo|ilustraci[oó]n|v[ií]deo|canci[oó]n|melod[ií]a|m[uú]sica)\b/i,
+
     // Copias de seguridad cifradas DAVBAK (Sector 2)
     backup: /(backup|copia\s+de\s+seguridad|respaldo|hacer\s+backup|crear\s+backup|backup\s+cifrado|davbak|restaurar\s+backup)/i
   };
@@ -301,9 +305,10 @@ export function analizarIntencion(mensaje) {
   let matchOps = intents.ops.test(sinNombre);
   let matchHogar = intents.hogar.test(sinNombre);
   let matchViajes = intents.viajes.test(sinNombre);
+  let matchGenerativo = intents.generativo.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
-  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro && !matchBienestar && !matchCarrera && !matchCompras && !matchDevtools && !matchOps && !matchHogar && !matchViajes) {
+  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro && !matchBienestar && !matchCarrera && !matchCompras && !matchDevtools && !matchOps && !matchHogar && !matchViajes && !matchGenerativo) {
     return { herramientas: [], intenciones: ['conversacion'], safetyNet: false, esChitChat: true };
   }
 
@@ -428,8 +433,11 @@ export function analizarIntencion(mensaje) {
     tools.push(...herramientasJarvis.filter(h => ['vigilar_ruta', 'listar_rutas_vigiladas', 'cancelar_vigilancia_ruta', 'registrar_precio_ruta'].includes(h.function.name)));
   }
 
-  // Safety Net: si no encajó en ninguna categoría pero tampoco es chit-chat, pasar todas las herramientas
-  if (tools.length === 0) {
+  // Safety Net: si no encajó en ninguna categoría pero tampoco es chit-chat, pasar todas las herramientas.
+  // Excepcion: 'generativo' se reconoce SIN herramientas a proposito (no hay
+  // generacion de imagen/video/audio); caer al safety net la desviaria a
+  // cualquier herramienta, que es justo el fallo observado en vivo.
+  if (tools.length === 0 && !matchGenerativo) {
     console.log(`[Router Safety Net] El regex no reconoce la intención: "${norm}". Se consultara al clasificador por modelo.`);
     return { herramientas: herramientasJarvis, intenciones: [], safetyNet: true, esChitChat: false };
   }
@@ -470,6 +478,7 @@ export function analizarIntencion(mensaje) {
   if (matchOps) intenciones.push('ops');
   if (matchHogar) intenciones.push('hogar');
   if (matchViajes) intenciones.push('viajes');
+  if (matchGenerativo) intenciones.push('generativo');
 
   // Eliminar duplicados
   const unicas = [];
@@ -1560,6 +1569,15 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
     }
   }
 
+  // Peticion de contenido generativo (imagen, video, audio): no existe
+  // ninguna herramienta de generacion; se declara honesto en lugar de
+  // desviarla a una herramienta que no corresponde (fallo observado en vivo:
+  // "generame una imagen" acabo en consultar_estado_servidor por un falso
+  // positivo del regex de servidor).
+  if (analisis.intenciones.includes('generativo')) {
+    directivaDesambiguacion += '\n\n[DIRECTIVA DE CAPACIDAD: David pide generar contenido multimedia (imagen, foto, video, cancion o similar). NO tienes ninguna herramienta de generacion de imagenes, video ni audio: no esta implementada. Dile claro y en una frase que no puedes generarlo; NO finjas haberlo creado, NO inventes un enlace y NO respondas con datos de otra herramienta. Ofrece como mucho una alternativa real de tus capacidades si encaja.]';
+  }
+
   // Politica de alcance honesto (ver aplicarPoliticaLimiteSeleccion)
   const politica = aplicarPoliticaLimiteSeleccion(herramientasActivas);
   herramientasActivas = politica.herramientas;
@@ -1585,6 +1603,10 @@ REGLAS CRÍTICAS DE COMUNICACIÓN:
    - Para confirmaciones o acciones operativas (enviar un mensaje, poner una alarma, consultar un dato puntual): sé conciso (1 o 2 frases directas y precisas).
    - Para análisis técnicos, arquitectura, clima o noticias: ofrece respuestas limpiamente estructuradas con viñetas, sin párrafos inflados ni rodeos vacíos.
 3. CERO CLICHÉS CORPORATIVOS: Prohibido decir frases como "¡Hola! ¿En qué puedo ayudarte hoy?", "Como modelo de lenguaje...", o disculpas melodramáticas redundantes.`;
+
+  systemPrompt += `\n\nCAPACIDADES REALES Y LIMITE HONESTO:
+- Cuando David pregunte que sabes hacer o que cosas nuevas puedes hacer, describe SOLO tus capacidades implementadas: clima; recordatorios y mensajes programados; memoria personal y segundo cerebro (notas, contactos, wiki, digest, captura de paginas, preguntas a documentos); vigilancia y busqueda de productos con verificacion de ofertas; noticias y resumen de enlaces; estado de tu propio servidor (procesos, copias de seguridad, consola bash con confirmacion OTP); transporte publico de Madrid; estudio (planes, flashcards, entregas); carrera (CV, simulacro de entrevista, radar de empleo); finanzas personales; bienestar (diario, habitos, menus, lista de la compra, quedadas); fechas senaladas, snooze y avisos de llegada; traductor, encuestas, resumen de grupo y modo VIP; descarga de multimedia. Algunas dependen de configuracion o de altas gratuitas: dilo cuando aplique.
+- PROHIBIDO atribuirte capacidades no implementadas (gestionar Docker o contenedores, desplegar infraestructura cloud, enviar correos o Slack, generar imagenes, video o audio, etc.). Si te piden una capacidad que no tienes, dilo claro y ofrece, como mucho, la alternativa real mas cercana.`;
 
   // Inyección de recuerdos existentes en el prompt para respuesta instantánea y precisa
   if (memoriasProactivas.length > 0) {
