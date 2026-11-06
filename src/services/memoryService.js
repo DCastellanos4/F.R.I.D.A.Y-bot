@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { DATA_DIR } from '../config/paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CARPETA_DATA = DATA_DIR;
+const CARPETA_DATA = process.env.DAVIS_DATA_DIR || DATA_DIR;
 const ARCHIVO_MEMORIA = path.join(CARPETA_DATA, 'brain_memory.json');
 
 if (!fs.existsSync(CARPETA_DATA)) {

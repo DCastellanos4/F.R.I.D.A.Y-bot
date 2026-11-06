@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
+import { mkdtempSync, mkdirSync as fsSyncMkdir } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EMOJI_REGEX } from './harness/validators.js';
@@ -142,7 +144,13 @@ async function runTestSuite() {
     stdio: 'inherit',
     env: {
       ...process.env,
-      NODE_ENV: 'test'
+      NODE_ENV: 'test',
+      // Aislamiento: la suite nunca escribe en el data/ del repo ni, en el
+      // despliegue, en el data/ en vivo del servidor.
+      // La carpeta temporal termina en /data para conservar la forma de las
+      // rutas por defecto (varios tests la comprueban) sin tocar el repo.
+      DAVIS_DATA_DIR: process.env.DAVIS_DATA_DIR || (() => { const d = path.join(mkdtempSync(path.join(os.tmpdir(), 'davis-suite-')), 'data'); fsSyncMkdir(d, { recursive: true }); return d; })(),
+      DAVIS_HISTORY_DIR: process.env.DAVIS_HISTORY_DIR || mkdtempSync(path.join(os.tmpdir(), 'davis-suite-hist-'))
     }
   });
 

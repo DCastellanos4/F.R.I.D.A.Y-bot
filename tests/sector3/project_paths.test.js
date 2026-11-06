@@ -17,10 +17,29 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_ESPERADO = path.resolve(__dirname, '..', '..');
 
-test('paths.js ancla PROJECT_ROOT y DATA_DIR a la raiz del repositorio', async () => {
-  const { PROJECT_ROOT, DATA_DIR } = await import('../../src/config/paths.js');
-  assert.equal(PROJECT_ROOT, ROOT_ESPERADO);
-  assert.equal(DATA_DIR, path.join(ROOT_ESPERADO, 'data'));
+test('paths.js ancla PROJECT_ROOT y DATA_DIR a la raiz del repositorio sin override', async () => {
+  const previo = process.env.DAVIS_DATA_DIR;
+  delete process.env.DAVIS_DATA_DIR;
+  try {
+    // Query unica para evadir la cache de modulos y releer la variable de entorno.
+    const { PROJECT_ROOT, DATA_DIR } = await import(`../../src/config/paths.js?test=${Date.now()}`);
+    assert.equal(PROJECT_ROOT, ROOT_ESPERADO);
+    assert.equal(DATA_DIR, path.join(ROOT_ESPERADO, 'data'));
+  } finally {
+    if (previo !== undefined) process.env.DAVIS_DATA_DIR = previo;
+  }
+});
+
+test('DAVIS_DATA_DIR tiene prioridad sobre la carpeta por defecto', async () => {
+  const dirTemporal = fs.mkdtempSync(path.join(os.tmpdir(), 'davis-data-test-'));
+  const previo = process.env.DAVIS_DATA_DIR;
+  process.env.DAVIS_DATA_DIR = dirTemporal;
+  try {
+    const { DATA_DIR } = await import(`../../src/config/paths.js?test2=${Date.now()}`);
+    assert.equal(DATA_DIR, dirTemporal, 'el override aísla los datos fuera del repo');
+  } finally {
+    if (previo !== undefined) process.env.DAVIS_DATA_DIR = previo; else delete process.env.DAVIS_DATA_DIR;
+  }
 });
 
 test('DAVIS_HISTORY_DIR tiene prioridad sobre la carpeta por defecto', async () => {

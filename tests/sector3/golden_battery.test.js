@@ -177,6 +177,24 @@ for (const caso of casosDorados) {
       }
     }
 
+    if (esperado.noInvoca) {
+      for (const herramienta of esperado.noInvoca) {
+        assert.ok(
+          !obs.invocadas.includes(herramienta),
+          `${caso.id}: NO se debia ejecutar ${herramienta}; invocadas: ${obs.invocadas.join(', ') || 'ninguna'}`
+        );
+      }
+    }
+
+    if (esperado.textoNoContiene) {
+      for (const fragmento of esperado.textoNoContiene) {
+        assert.ok(
+          !respuesta.toLowerCase().includes(fragmento.toLowerCase()),
+          `${caso.id}: la respuesta no debia contener "${fragmento}": ${respuesta.slice(0, 160)}`
+        );
+      }
+    }
+
     if (esperado.sinHerramientas) {
       assert.deepEqual(
         obs.invocadas,

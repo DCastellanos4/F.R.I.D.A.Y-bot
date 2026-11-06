@@ -62,7 +62,13 @@ test('Traza: credenciales se redactan antes de guardar', () => {
 
 test('Traza: guardia de tests sin carpeta inyectada no escribe en data/ real', () => {
   const traza = iniciarTraza('chat-guardia@test', 'hola');
-  assert.equal(guardarTraza(traza), false);
+  if (process.env.DAVIS_DATA_DIR) {
+    // Con DAVIS_DATA_DIR aislada (suite/CI), la escritura va al temporal, no al repo.
+    assert.equal(guardarTraza(traza), true);
+    assert.ok(!fs.existsSync(path.join(process.cwd(), 'data', 'trazas', 'chat-guardia@test.jsonl')), 'no debe aparecer en el data/ del repo');
+  } else {
+    assert.equal(guardarTraza(traza), false);
+  }
 });
 
 test('Traza: tope de 50 por chat conserva las mas recientes', () => {

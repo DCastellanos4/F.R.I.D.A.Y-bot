@@ -63,3 +63,31 @@ test('Errores que no son 400 de validacion se propagan sin reintentar', async ()
   await assert.rejects(() => consultarJarvis('resume la primera noticia', [], { chatCompletion: chatFalso }), /500/);
   assert.equal(llamadas, 1, 'sin reintento ciego de un error no acotado');
 });
+
+test('400 en la degradada (tool choice none): fallback fijo honesto, sin mas llamadas ni exito fingido', async () => {
+  let llamadas = 0;
+  const chatFalso = async () => {
+    llamadas++;
+    if (llamadas <= 2) throw new Error(ERR_400);
+    throw new Error('400 Tool choice is none, but model called a tool');
+  };
+  const respuesta = await consultarJarvis('resume la primera noticia', [], { chatCompletion: chatFalso });
+  assert.equal(llamadas, 3, 'original + reintento + degradada; no hay cuarta llamada');
+  assert.match(respuesta, /NO se ha realizado ninguna accion/i, 'declara con exactitud que no hubo accion');
+  assert.ok(!/completad[ao]|programad[ao]|enviad[ao]/i.test(respuesta.replace(/No he podido completar/, '')), 'no afirma exito');
+});
+
+test('Respuesta vacia tras agotar rondas: fallback honesto que declara si hubo efectos', async () => {
+  let llamadas = 0;
+  const chatFalso = async () => {
+    llamadas++;
+    if (llamadas <= 3) {
+      return { message: { role: 'assistant', content: '', tool_calls: [{ id: 'c' + llamadas, function: { name: 'listar_recordatorios', arguments: {} } }] } };
+    }
+    return { message: { role: 'assistant', content: '' } };
+  };
+  const ejecutores = { listar_recordatorios: async () => 'No tienes recordatorios.' };
+  const respuesta = await consultarJarvis('dime todos mis recordatorios', [], { chatCompletion: chatFalso, ejecutores });
+  assert.ok(respuesta.length > 0, 'nunca se entrega silencio');
+  assert.match(respuesta, /NO se ha realizado ninguna accion/i, 'solo lecturas: declara que no hubo acciones con efectos');
+});

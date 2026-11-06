@@ -1,3 +1,4 @@
+import './setup_aislamiento.mjs';
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -12,7 +13,9 @@ import { assertNoEmojis } from './helpers/s2Validators.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const ARCHIVO_MEMORIA = path.resolve(__dirname, '..', '..', 'data', 'brain_memory.json');
+// El archivo real que usa el servicio: DAVIS_DATA_DIR (setup_aislamiento) o,
+// a falta de override, el data/ del repo. Asi la prueba nunca toca produccion.
+const ARCHIVO_MEMORIA = path.join(process.env.DAVIS_DATA_DIR || path.resolve(__dirname, '..', '..', 'data'), 'brain_memory.json');
 
 const KEY_ENV_VARS = ['MEMORY_ENCRYPTION_KEY', 'BACKUP_PASSPHRASE', 'DAVIS_BACKUP_KEY'];
 

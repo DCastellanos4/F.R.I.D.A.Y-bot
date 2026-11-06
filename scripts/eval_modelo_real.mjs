@@ -41,6 +41,16 @@ const args = process.argv.slice(2);
 const optSolo = args.includes('--solo') ? args[args.indexOf('--solo') + 1].split(',') : null;
 const optSalida = args.includes('--salida') ? args[args.indexOf('--salida') + 1] : null;
 
+// Aislamiento obligatorio: sin un DAVIS_DATA_DIR temporal fuera del repo, la
+// evaluacion podria leer o ESCRIBIR el data/ de produccion (como ya ocurrio
+// via la suite del deploy). Se aborta en lugar de arriesgar efectos reales.
+const { DATA_DIR: DATA_DIR_EFECTIVO } = await import('../src/config/paths.js');
+const raizRepo = new URL('..', import.meta.url).pathname;
+if (!process.env.DAVIS_DATA_DIR || DATA_DIR_EFECTIVO.startsWith(raizRepo)) {
+  console.error('ABORTADO: la evaluacion exige DAVIS_DATA_DIR apuntando a un directorio temporal FUERA del repo; de lo contrario podria tocar datos de produccion.');
+  process.exit(1);
+}
+
 const casos = casosDorados.filter((c) => c.id.startsWith('R') && (!optSolo || optSolo.some((sel) => c.id === sel || c.id.startsWith(sel + '-'))));
 
 function dormir(ms) {
@@ -50,9 +60,15 @@ function dormir(ms) {
 async function ejecutarCaso(caso) {
   const obs = { invocadas: [], llamadasClasificador: 0, llamadasLlm: 0, argsVistos: [] };
 
-  // Intercepta CUALQUIER herramienta: sin efectos reales jamas.
+  // Intercepta CUALQUIER herramienta: sin efectos reales jamas, salvo las
+  // consultas de SOLO LECTURA listadas, que se ejecutan de verdad contra el
+  // DAVIS_DATA_DIR aislado para evaluar grounding con resultados reales.
+  const LECTURA_REAL = new Set(['buscar_memoria', 'listar_memorias']);
   const ejecutores = new Proxy({}, {
     get(_t, nombre) {
+      if (LECTURA_REAL.has(String(nombre))) {
+        return undefined; // cae al ejecutor real (solo lectura)
+      }
       return async (argumentos) => {
         obs.invocadas.push(String(nombre));
         obs.argsVistos.push({ herramienta: String(nombre), args: argumentos });
@@ -92,7 +108,8 @@ async function ejecutarCaso(caso) {
   const respuesta = await consultarJarvis(caso.entrada, [], {
     chatId: 'eval-modelo-real@local',
     chatCompletion: chatRealConTestigos,
-    ejecutores
+    ejecutores,
+    observarInvocacion: (nombre) => { if (!obs.invocadas.includes(String(nombre))) obs.invocadas.push(String(nombre)); }
   });
   const duracionMs = Date.now() - inicio;
 
@@ -105,6 +122,17 @@ async function ejecutarCaso(caso) {
   }
   if (esperado.sinHerramientas && obs.invocadas.length > 0) {
     fallos.push(`no debia invocar herramientas; invoco: ${obs.invocadas.join(', ')}`);
+  }
+  if (esperado.noInvoca) {
+    for (const h of esperado.noInvoca) {
+      if (obs.invocadas.includes(h)) fallos.push(`NO debia ejecutarse ${h}; invoco: ${obs.invocadas.join(', ')}`);
+    }
+  }
+  if (esperado.textoNoContiene) {
+    const lower = String(respuesta || '').toLowerCase();
+    for (const frag of esperado.textoNoContiene) {
+      if (lower.includes(String(frag).toLowerCase())) fallos.push(`la respuesta no debia contener "${frag}"`);
+    }
   }
   if (esperado.clasificador === true && obs.llamadasClasificador === 0) fallos.push('debio usar el clasificador de respaldo');
   if (esperado.clasificador === false && obs.llamadasClasificador > 0) fallos.push('no debia necesitar el clasificador');

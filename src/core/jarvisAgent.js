@@ -625,7 +625,17 @@ async function chatConRecuperacion400(chatImpl, peticion, etiqueta) {
     } catch (err2) {
       if (!esError400ValidacionHerramientas(err2)) throw err2;
       console.warn(`[J.A.R.V.I.S.] Segundo 400 de validacion en ${etiqueta}; respuesta degradada sin herramientas.`);
-      return await chatImpl({ messages: peticion.messages, options: peticion.options });
+      const soloTexto = {
+        role: 'system',
+        content: 'Responde SOLO con texto plano para David: NO invoques ninguna herramienta. Explica que no puedes completar la accion ahora mismo y que NO se ha realizado ninguna accion.'
+      };
+      try {
+        return await chatImpl({ messages: [...peticion.messages, soloTexto], options: peticion.options });
+      } catch (err3) {
+        // Sin mas llamadas: fallback fijo y honesto (no afirma accion alguna).
+        console.error(`[J.A.R.V.I.S.] La degradada tambien fallo en ${etiqueta}:`, String((err3 && err3.message) || err3).slice(0, 200));
+        return { message: { role: 'assistant', content: 'No he podido completar tu peticion, senor: el servicio del modelo ha rechazado la consulta y NO se ha realizado ninguna accion. Puedes reintentarlo en unos minutos.' } };
+      }
     }
   }
 }
@@ -1803,7 +1813,7 @@ Directrices de selección:
 1. CLIMA Y METEOROLOGÍA: Para consultar el tiempo, temperatura o lluvia de hoy o de mañana en cualquier ciudad o localidad (ej: Madrid), invoca "consultar_clima".
 2. MENSAJES PROGRAMADOS DE WHATSAPP: Para programar el envío de un mensaje de WhatsApp a un número de teléfono en una fecha u hora específica (o en X minutos), invoca "programar_mensaje_whatsapp". El número de destino debe haberlo dado David en la conversación o constar en una ficha de contacto (búscalo antes con "buscar_contacto"); si no lo tienes, pídeselo a David. NUNCA inventes ni supongas un número de teléfono. Para consultar los mensajes programados pendientes, "listar_mensajes_programados". Para cancelar uno, "cancelar_mensaje_programado".
 3. RECORDATORIOS Y ALARMAS PERSONALES: Para programar avisos o alarmas personales de David, invoca "crear_recordatorio". Para consultarlos, "listar_recordatorios". Para cancelar, "cancelar_recordatorio".
-4. SECOND BRAIN (MEMORIA PERSONAL): Para guardar hechos o datos personales (claves, cumpleaños, tallas, correos), invoca "guardar_memoria". Para consultar datos del pasado, invoca SIEMPRE "buscar_memoria" antes de responder (incluido "que sabes de..."): NUNCA afirmes datos personales (cumpleaños, tallas, claves, telefonos, direcciones) que no vengan de esa consulta o del propio David en este chat; si la busqueda no devuelve nada, di que no tienes nada guardado. Para borrar, "olvidar_memoria".
+4. SECOND BRAIN (MEMORIA PERSONAL): Para guardar hechos o datos personales (claves, cumpleaños, tallas, correos), invoca "guardar_memoria". Para consultar datos del pasado: si los REGISTROS DEL SECOND BRAIN inyectados arriba cubren la consulta, responde directamente desde ellos; si no, invoca "buscar_memoria". NUNCA afirmes datos personales (cumpleaños, tallas, claves, telefonos, direcciones) que no vengan de esos registros, de una consulta de memoria o del propio David en este chat; si no hay datos, di que no tienes nada guardado. Para borrar, "olvidar_memoria".
 5. SNIPER DE PRECIOS: Para vigilar un producto u oferta si baja de precio, invoca "vigilar_producto". Para listar, "listar_productos_vigilados".
 6. NOTICIAS Y NAVEGADOR PLAYWRIGHT: Para noticias de actualidad, invoca "obtener_noticias_actuales". Para abrir o inspeccionar un enlace o artículo web con el navegador, invoca "navegar_y_leer_noticia" o "resumir_enlace".
 7. ESTADO DEL SISTEMA: Para consultar la salud del servidor o el estado de Minecraft, invoca "consultar_estado_servidor". Al resumir el resultado de CUALQUIER herramienta, limitate a los datos que esa herramienta ha devuelto: si un dato no aparece en su resultado, di que no esta disponible en lugar de inventarlo (metricas, estados, precios, fechas).
@@ -1875,6 +1885,9 @@ Directrices de selección:
       const args = llamada.function.arguments || {};
       console.log(`[J.A.R.V.I.S. Tool Call R${ronda}] Invocando: ${nombreFuncion} con argumentos:`, argsParaLog(args));
 
+      if (typeof opciones.observarInvocacion === 'function') {
+        try { opciones.observarInvocacion(nombreFuncion); } catch { /* observador de evaluacion, nunca rompe el flujo */ }
+      }
       if (HERRAMIENTAS_ENVIO_TERCEROS.has(nombreFuncion) && !destinatarioVerificado(args.numero, mensajeUsuario, historial, opciones)) {
         const bloqueo = 'Bloqueado por seguridad, senor: el numero de destino no consta en este chat ni en sus contactos verificados, asi que no se programa ningun envio. Pida a David el numero de telefono del destinatario, o que lo registre como contacto, antes de programar el mensaje.';
         console.warn(`[J.A.R.V.I.S. Guard Envio R${ronda}] Destinatario no verificado: envio bloqueado (${nombreFuncion}).`);
@@ -1931,6 +1944,16 @@ Directrices de selección:
   }
 
   let textoFinal = (respuesta.message.content || '').trim();
+
+  // Nunca se entrega silencio: si tras las rondas la respuesta quedo vacia,
+  // se informa con exactitud de si se ejecuto algo o nada (sin afirmar exitos).
+  if (!textoFinal) {
+    const huboEfectos = accionesConEfectosEjecutadas.size > 0;
+    textoFinal = huboEfectos
+      ? 'No he podido redactar el cierre de tu peticion, senor. Ten en cuenta que alguna de las acciones anteriores SI se ejecuto; pideme un resumen si quieres repasar que se hizo.'
+      : 'No he podido completar tu peticion, senor, y NO se ha realizado ninguna accion. Intentalo de nuevo en unos minutos o reformula lo que necesitas.';
+    console.warn('[J.A.R.V.I.S.] Respuesta vacia tras las rondas de herramientas; se entrega fallback honesto.');
+  }
 
   // Chequeo de consistencia: si la respuesta quedo cortada por el limite de
   // tokens, se pide una continuacion en lugar de entregarla mutilada.
