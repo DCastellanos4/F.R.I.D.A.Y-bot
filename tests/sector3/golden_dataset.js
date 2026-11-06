@@ -379,14 +379,20 @@ export const casosDorados = [
   {
     id: 'R09-real-mensaje-madre-diferido',
     entrada: 'dile a mi madre en 15 minutos que ya he salido',
-    pasos: [{ llama: 'programar_mensaje_whatsapp', args: { contacto: 'madre' } }, { texto: 'Se lo digo en 15 minutos.' }],
+    pasos: [{ llama: 'programar_mensaje_whatsapp', args: { numero: '123456789', mensaje: 'Ya he salido', minutosEnElFuturo: 15 } }, { texto: 'Necesito el numero de telefono de tu madre para programarlo.' }],
+    esperado: { sinHerramientas: true, clasificador: false, mensajeToolContiene: 'Bloqueado por seguridad', textoContiene: 'numero' }
+  },
+  {
+    id: 'R09b-real-mensaje-numero-en-input',
+    entrada: 'dile a mi madre en 15 minutos que ya he salido, su numero es 612345678',
+    pasos: [{ llama: 'programar_mensaje_whatsapp', args: { numero: '612345678', mensaje: 'Ya he salido', minutosEnElFuturo: 15 } }, { texto: 'Mensaje programado para tu madre en 15 minutos.' }],
     esperado: { invoca: ['programar_mensaje_whatsapp'], clasificador: false }
   },
   {
     id: 'R10-real-mensaje-ahora',
     entrada: 'dile a lucia ahora mismo que llego en 10',
-    pasos: [{ llama: 'programar_mensaje_whatsapp', args: { contacto: 'lucia' } }, { texto: 'Mensaje enviado a Lucia.' }],
-    esperado: { invoca: ['programar_mensaje_whatsapp'], clasificador: false }
+    pasos: [{ texto: 'Necesito el numero de telefono de Lucia para enviarle el mensaje.' }],
+    esperado: { sinHerramientas: true, clasificador: false, textoContiene: 'numero' }
   },
   {
     id: 'R11-real-hogar-encender-pc',
@@ -433,14 +439,14 @@ export const casosDorados = [
   {
     id: 'R18-real-mensaje-enviale',
     entrada: 'enviale un mensaje de amor a daniel',
-    pasos: [{ llama: 'programar_mensaje_whatsapp', args: { contacto: 'daniel' } }, { texto: 'Mensaje preparado para Daniel.' }],
-    esperado: { invoca: ['programar_mensaje_whatsapp'], clasificador: false }
+    pasos: [{ texto: 'Necesito el numero de telefono de Daniel para poder enviarselo.' }],
+    esperado: { sinHerramientas: true, clasificador: false, textoContiene: 'numero' }
   },
   {
     id: 'R19-real-mensaje-escribe-diferido',
     entrada: 'escribe a marcos en 10 minutos que baje la basura',
-    pasos: [{ llama: 'programar_mensaje_whatsapp', args: { contacto: 'marcos' } }, { texto: 'Se lo escribo en 10 minutos.' }],
-    esperado: { invoca: ['programar_mensaje_whatsapp'], clasificador: false }
+    pasos: [{ texto: 'Necesito el numero de telefono de Marcos para programar el mensaje.' }],
+    esperado: { sinHerramientas: true, clasificador: false, textoContiene: 'numero' }
   },
   {
     id: 'R20-real-modelo-novedades',
@@ -469,8 +475,8 @@ export const casosDorados = [
   {
     id: 'R23-real-mensaje-mama-diferido',
     entrada: 'dile a mama en 5 minutos que ya voy',
-    pasos: [{ llama: 'programar_mensaje_whatsapp', args: { contacto: 'mama' } }, { texto: 'Se lo digo en 5 minutos.' }],
-    esperado: { invoca: ['programar_mensaje_whatsapp'], clasificador: false }
+    pasos: [{ texto: 'Necesito el numero de telefono de mama para programarlo.' }],
+    esperado: { sinHerramientas: true, clasificador: false, textoContiene: 'numero' }
   },
   {
     id: 'R24-real-conversacion-saludo',

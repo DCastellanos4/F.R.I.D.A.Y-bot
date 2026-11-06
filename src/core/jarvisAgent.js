@@ -556,6 +556,55 @@ const HERRAMIENTAS_IDEMPOTENTES = new Set([
   'explicar_recorrido'
 ]);
 
+// Herramientas que envian contenido a terceros. Antes de ejecutarlas, el
+// numero de destino debe constar en fuentes confiables (un mensaje de David
+// en este chat o una ficha de contacto), nunca basta un numero generado por
+// el modelo. La memoria libre (guardar_memoria) NO es fuente confiable:
+// la puede escribir el propio modelo.
+const HERRAMIENTAS_ENVIO_TERCEROS = new Set([
+  'programar_mensaje_whatsapp'
+]);
+
+function extraerNumerosDeTexto(texto) {
+  const encontrados = new Set();
+  const re = /\+?[()\d][\d\s().-]{6,}\d/g;
+  for (const m of String(texto || '').matchAll(re)) {
+    const digitos = m[0].replace(/\D/g, '');
+    if (digitos.length >= 8 && digitos.length <= 15) encontrados.add(digitos);
+  }
+  return encontrados;
+}
+
+function numerosCoinciden(a, b) {
+  const da = String(a || '').replace(/\D/g, '');
+  const db = String(b || '').replace(/\D/g, '');
+  if (!da || !db) return false;
+  if (da === db) return true;
+  const corto = da.length <= db.length ? da : db;
+  const largo = da.length <= db.length ? db : da;
+  return corto.length >= 9 && largo.endsWith(corto);
+}
+
+function destinatarioVerificado(numero, mensajeUsuario, historial, opciones = {}) {
+  if (!numero) return false;
+  const candidatos = extraerNumerosDeTexto(mensajeUsuario);
+  for (const msg of Array.isArray(historial) ? historial : []) {
+    if (msg && msg.role === 'user') {
+      for (const n of extraerNumerosDeTexto(msg.content)) candidatos.add(n);
+    }
+  }
+  for (const n of candidatos) {
+    if (numerosCoinciden(n, numero)) return true;
+  }
+  try {
+    const contactos = listarContactos({ rutaArchivo: opciones.rutaArchivoContactos });
+    for (const c of contactos) {
+      if (c.telefono && numerosCoinciden(c.telefono, numero)) return true;
+    }
+  } catch { /* sin agenda disponible: no verifica */ }
+  return false;
+}
+
 
 /**
  * Ejecuta una llamada de herramienta del agente y devuelve el texto resultado.
@@ -1707,7 +1756,7 @@ Dispones de herramientas nativas para consultar datos externos y realizar accion
 
 Directrices de selección:
 1. CLIMA Y METEOROLOGÍA: Para consultar el tiempo, temperatura o lluvia de hoy o de mañana en cualquier ciudad o localidad (ej: Madrid), invoca "consultar_clima".
-2. MENSAJES PROGRAMADOS DE WHATSAPP: Para programar el envío de un mensaje de WhatsApp a un número de teléfono en una fecha u hora específica (o en X minutos), invoca "programar_mensaje_whatsapp". Para consultar los mensajes programados pendientes, "listar_mensajes_programados". Para cancelar uno, "cancelar_mensaje_programado".
+2. MENSAJES PROGRAMADOS DE WHATSAPP: Para programar el envío de un mensaje de WhatsApp a un número de teléfono en una fecha u hora específica (o en X minutos), invoca "programar_mensaje_whatsapp". El número de destino debe haberlo dado David en la conversación o constar en una ficha de contacto (búscalo antes con "buscar_contacto"); si no lo tienes, pídeselo a David. NUNCA inventes ni supongas un número de teléfono. Para consultar los mensajes programados pendientes, "listar_mensajes_programados". Para cancelar uno, "cancelar_mensaje_programado".
 3. RECORDATORIOS Y ALARMAS PERSONALES: Para programar avisos o alarmas personales de David, invoca "crear_recordatorio". Para consultarlos, "listar_recordatorios". Para cancelar, "cancelar_recordatorio".
 4. SECOND BRAIN (MEMORIA PERSONAL): Para guardar hechos o datos personales (claves, cumpleaños, tallas, correos), invoca "guardar_memoria". Para consultar datos del pasado, "buscar_memoria". Para borrar, "olvidar_memoria".
 5. SNIPER DE PRECIOS: Para vigilar un producto u oferta si baja de precio, invoca "vigilar_producto". Para listar, "listar_productos_vigilados".
@@ -1780,6 +1829,14 @@ Directrices de selección:
       const nombreFuncion = llamada.function.name;
       const args = llamada.function.arguments || {};
       console.log(`[J.A.R.V.I.S. Tool Call R${ronda}] Invocando: ${nombreFuncion} con argumentos:`, args);
+
+      if (HERRAMIENTAS_ENVIO_TERCEROS.has(nombreFuncion) && !destinatarioVerificado(args.numero, mensajeUsuario, historial, opciones)) {
+        const bloqueo = 'Bloqueado por seguridad, senor: el numero de destino no consta en este chat ni en sus contactos verificados, asi que no se programa ningun envio. Pida a David el numero de telefono del destinatario, o que lo registre como contacto, antes de programar el mensaje.';
+        console.warn(`[J.A.R.V.I.S. Guard Envio R${ronda}] Destinatario no verificado: envio bloqueado (${nombreFuncion}).`);
+        traza.llamadas.push({ nombre: nombreFuncion, ronda, resultado: 'destinatario_no_verificado' });
+        mensajes.push({ role: 'tool', content: bloqueo, tool_call_id: llamada.id });
+        continue;
+      }
 
       let resultadoTool;
       const claveAccion = `${nombreFuncion}:${JSON.stringify(args)}`;
