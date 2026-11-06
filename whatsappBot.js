@@ -1046,7 +1046,8 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         if (esAudio || /responde(me)?\s+(en|con)?\s*(audio|nota de voz|voz)/i.test(texto)) {
           console.log('[WhatsApp Voz PTT] Sintetizando respuesta de voz con Edge-TTS en OGG Opus...');
           try {
-            const oggBuffer = await synthesizeSpeech(respuesta, { voice: 'es-ES-AlvaroNeural' });
+            const sintetizar = deps.sintetizarVoz || synthesizeSpeech;
+            const oggBuffer = await sintetizar(respuesta, { voice: 'es-ES-AlvaroNeural' });
             await sendVoiceNote(sock, remoteJid, oggBuffer, msg);
             console.log(`[J.A.R.V.I.S. a David]: [Nota de voz PTT enviada con éxito]\n`);
           } catch (errTts) {

@@ -94,7 +94,10 @@ cd "$DESTINO"
 npm ci --no-audit --no-fund
 
 echo "== [4/7] Puerta en el servidor: criticos + suite aislados (fixtures temporales, sin datos reales ni sesion) =="
-export DAVIS_DATA_DIR=/tmp/cicd-data-$TS DAVIS_HISTORY_DIR=/tmp/cicd-history-$TS NODE_ENV=test
+# La carpeta de datos temporal termina en /data: varios tests comprueban la
+# forma de las rutas por defecto (.../data/<fichero>).
+mkdir -p /tmp/cicd-data-$TS/data
+export DAVIS_DATA_DIR=/tmp/cicd-data-$TS/data DAVIS_HISTORY_DIR=/tmp/cicd-history-$TS NODE_ENV=test
 CRITICOS="tests/sector2/task0_foundations.test.js tests/sector2/task0_challenge.test.js tests/sector2/integration.test.js tests/sector2/task12_bash_console.test.js tests/sector2/task15_github_webhook.test.js tests/sector2/task16_backup.test.js tests/sector2/task21_memory_encryption.test.js tests/sector2/deploy_aislamiento.test.js tests/sector3/safefetch_unit.test.js tests/sector3/process_watchdog.test.js"
 # Lista explicita de ficheros: 'node --test <directorio>' NO es portable
 # (algunas versiones lo tratan como modulo y fallan).

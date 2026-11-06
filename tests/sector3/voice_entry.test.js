@@ -59,7 +59,10 @@ test('Entrada voz: nota transcrita se procesa como peticion normal', async () =>
     chatCompletion: chatSimulado,
     carpetaTrazas,
     descargarMedia: descargarMediaSimulada,
-    transcribirAudio: async (buf) => { audioRecibido = buf; return { ok: true, texto: 'que tiempo hace en madrid?' }; }
+    transcribirAudio: async (buf) => { audioRecibido = buf; return { ok: true, texto: 'que tiempo hace en madrid?' }; },
+    // TTS fuera del alcance (depende de edge-tts/red del host): se fuerza el
+    // fallback a texto para que el cableado del pipeline sea determinista.
+    sintetizarVoz: async () => { throw new Error('TTS deshabilitado en test'); }
   });
   assert.ok(audioRecibido?.equals(Buffer.from('audio-simulado')), 'el buffer descargado llego al transcriptor');
   assert.ok(llamadasLlm >= 1, 'la transcripcion llego al agente');
