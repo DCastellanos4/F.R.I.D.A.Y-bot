@@ -36,6 +36,18 @@ const PAUSA_MS_ENTRE_CASOS = Number.parseInt(process.env.DAVIS_EVAL_PAUSA_MS || 
 // La evaluacion aborta al superar el techo y lo reporta.
 const MAX_LLAMADAS_GLOBAL = Number.parseInt(process.env.DAVIS_EVAL_MAX_LLAMADAS || '120', 10);
 let llamadasGlobales = 0;
+// Intentos HTTP reales al proveedor (incluye reintentos 429 fallidos): es la
+// metrica que consume la ventana de la cuenta; las "llamadas" cuentan turnos.
+let intentosHttpGlobal = 0;
+
+// Redacta credenciales si el proveedor las incluyera en un mensaje de error.
+// Los mensajes se guardan COMPLETOS (salvo esta redaccion) para diagnostico.
+function sanitizarErrorProveedor(msg) {
+  return String(msg || '')
+    .replace(/gsk_[A-Za-z0-9_-]+/g, '[clave redactada]')
+    .replace(/Bearer\s+\S+/gi, 'Bearer [redactado]')
+    .replace(/(api[_-]?key|authorization)("|'|=|:)\s*\S+/gi, '$1[redactada]');
+}
 
 const args = process.argv.slice(2);
 const optSolo = args.includes('--solo') ? args[args.indexOf('--solo') + 1].split(',') : null;
@@ -58,7 +70,7 @@ function dormir(ms) {
 }
 
 async function ejecutarCaso(caso) {
-  const obs = { invocadas: [], llamadasClasificador: 0, llamadasLlm: 0, argsVistos: [] };
+  const obs = { invocadas: [], llamadasClasificador: 0, llamadasLlm: 0, intentosHttp: 0, argsVistos: [] };
 
   // Intercepta CUALQUIER herramienta: sin efectos reales jamas, salvo las
   // consultas de SOLO LECTURA listadas, que se ejecutan de verdad contra el
@@ -93,12 +105,19 @@ async function ejecutarCaso(caso) {
     }
     for (let intento = 0; intento < 4; intento++) {
       try {
+        intentosHttpGlobal += 1;
+        obs.intentosHttp += 1;
         return await chatCompletion(peticion);
       } catch (err) {
         const msg = String(err?.message || err);
         // TPD (limite diario): reintentar es inutil y gasta la ventana; abortar toda la evaluacion.
         if (/tokens per day|TPD/i.test(msg)) {
           console.error('ABORTADO: limite diario de tokens (TPD) alcanzado; no se reintentan llamadas ni se ejecutan mas casos.');
+          console.error(`Error crudo del proveedor (sanitizado): ${sanitizarErrorProveedor(msg)}`);
+          if (optSalida) {
+            fs.writeFileSync(optSalida, JSON.stringify({ generado: new Date().toISOString(), abortado: 'TPD', errorProveedor: sanitizarErrorProveedor(msg), llamadasGlobales, intentosHttpGlobal, resultados }, null, 2));
+            console.error(`Resultados parciales en ${optSalida}`);
+          }
           process.exit(2);
         }
         const es429 = /429|rate.?limit/i.test(msg);
@@ -152,8 +171,9 @@ async function ejecutarCaso(caso) {
     invocadas: obs.invocadas,
     llamadasClasificador: obs.llamadasClasificador,
     llamadasLlm: obs.llamadasLlm,
+    intentosHttp: obs.intentosHttp,
     duracionMs,
-    respuesta: String(respuesta || '').slice(0, 220)
+    respuesta: String(respuesta || '')
   };
 }
 
@@ -169,7 +189,7 @@ for (const caso of casos) {
     console.log(`${r.ok ? 'OK ' : 'FALLO'} (${(r.duracionMs / 1000).toFixed(1)}s, llm:${r.llamadasLlm}, tools: ${r.invocadas.join(',') || 'ninguna'})`);
     if (!r.ok) for (const f of r.fallos) console.log(`   - ${f}`);
   } catch (err) {
-    resultados.push({ id: caso.id, entrada: caso.entrada, ok: false, fallos: [`error de ejecucion: ${err.message}`], invocadas: [], llamadasClasificador: 0, llamadasLlm: 0, duracionMs: 0, respuesta: '' });
+    resultados.push({ id: caso.id, entrada: caso.entrada, ok: false, fallos: [`error de ejecucion: ${sanitizarErrorProveedor(err?.message || err)}`], invocadas: [], llamadasClasificador: 0, llamadasLlm: 0, intentosHttp: 0, duracionMs: 0, respuesta: '' });
     console.log(`ERROR: ${err.message}`);
   }
   await dormir(PAUSA_MS_ENTRE_CASOS);
@@ -177,7 +197,7 @@ for (const caso of casos) {
 
 const okCount = resultados.filter((r) => r.ok).length;
 console.log(`\n===== EVAL MODELO REAL =====`);
-console.log(`Casos: ${resultados.length} | OK: ${okCount} | Fallos: ${resultados.length - okCount} | llamadas al modelo: ${llamadasGlobales} (techo ${MAX_LLAMADAS_GLOBAL})`);
+console.log(`Casos: ${resultados.length} | OK: ${okCount} | Fallos: ${resultados.length - okCount} | llamadas al modelo: ${llamadasGlobales} (techo ${MAX_LLAMADAS_GLOBAL}) | intentos HTTP: ${intentosHttpGlobal}`);
 for (const r of resultados.filter((r) => !r.ok)) console.log(`  FALLO ${r.id}: ${r.fallos.join(' | ')}`);
 console.log('============================\n');
 
