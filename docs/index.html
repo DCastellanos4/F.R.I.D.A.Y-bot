@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D.A.V.I.S. - Documentation</title>
+<style>
+  :root { --ink:#1c2024; --muted:#5b6470; --line:#e3e6ea; --accent:#2563eb; --bg:#ffffff; --soft:#f6f7f9; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--ink); background:var(--bg); line-height:1.6; }
+  .wrap { max-width:860px; margin:0 auto; padding:2rem 1.25rem 4rem; }
+  h1 { font-size:1.9rem; margin:0 0 .25rem; }
+  h2 { font-size:1.3rem; margin:2.5rem 0 .75rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
+  h3 { font-size:1.05rem; margin:1.5rem 0 .5rem; }
+  p { margin:.5rem 0; }
+  ul { margin:.5rem 0 .5rem 1.25rem; padding:0; }
+  li { margin:.4rem 0; }
+  code { background:var(--soft); padding:.1em .35em; border-radius:4px; font-size:.92em; }
+  pre { background:var(--soft); padding:1rem; border-radius:8px; overflow-x:auto; font-size:.85rem; }
+  table { border-collapse:collapse; width:100%; font-size:.92rem; margin:.75rem 0; }
+  th, td { text-align:left; padding:.45rem .6rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  .sub { color:var(--muted); margin-top:0; }
+  a { color:var(--accent); }
+  .mermaid { background:var(--soft); border-radius:8px; padding:1rem; overflow-x:auto; }
+  .back { display:inline-block; margin-bottom:1.5rem; font-size:.9rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<a class="back" href="https://github.com/DCastellanos4/F.R.I.D.A.Y-bot">&larr; Back to the repository</a>
+
+<h1>D.A.V.I.S. Documentation</h1>
+<p class="sub">Digital Autonomous Voice &amp; Intelligence System - self-hosted personal AI assistant over WhatsApp.</p>
+
+<h2>Why This Project Exists</h2>
+<p>The goal was to turn a single WhatsApp chat into the control surface for one person's entire digital operations: messaging, reminders, a personal knowledge base, media downloads, and the administration of a real Linux server. Building it end to end meant owning problems that tutorials skip: an unofficial protocol integration, LLM tool-calling reliability on small models, safe execution of privileged commands from a chat channel, long-running process supervision, and a test suite that can prove regressions instead of hoping.</p>
+<p>The persona layer (sober, dry-humored, zero-emoji Spanish) is deliberate: the assistant is a character with a consistent voice, defined in a single system prompt in <code>src/core/jarvisAgent.js</code>.</p>
+
+<h2>Technical Architecture</h2>
+<pre class="mermaid">
+flowchart TD
+    subgraph Ingestion ["Ingestion &amp; Security Gateways"]
+        WA["WhatsApp Multi-Device Socket (Baileys)"] --> Bot["whatsappBot.js"]
+        GH["GitHub Webhook (workflow_run)"] -->|"POST /api/webhook/github"| API["api.js"]
+        REST["REST API Clients"] --> API
+        Bot -->|"Auth &amp; LID Guard"| Guard{"Authorized User?"}
+        Guard -->|"No"| Drop["Drop Packet Silently"]
+        Guard -->|"Yes"| Router{"Audio PTT or Text?"}
+    end
+
+    subgraph AudioEngine ["Voice &amp; Media Pipeline"]
+        Router -->|"Audio PTT"| VoiceIn["voiceService.js (whisper.cpp local CLI)"]
+        VoiceIn -->|"Transcribed Command"| Agent["jarvisAgent.js"]
+        Agent -->|"Synthesize Voice Reply"| TTS["ttsService.js (Edge-TTS OGG Opus)"]
+        TTS -->|"PTT Audio Buffer"| Bot
+    end
+
+    subgraph Brain ["Reasoning &amp; Orchestration Engine"]
+        Router -->|"Text Command"| Agent
+        API --> Agent
+        Agent --> Prune["Dynamic Intent Router &amp; Tool Pruner"]
+        Prune --> LLM["llmService.js (Ollama / Groq / OpenAI)"]
+        LLM --> Decision{"Tool Call or Direct Text?"}
+        Decision -->|"Direct Response"| Bot
+        Decision -->|"Tool Invocations"| Executor["Tool Execution Loop"]
+    end
+
+    subgraph Sector1 ["Sector 1: Advanced WhatsApp &amp; Media"]
+        Executor --> Downloader["mediaDownloaderService.js (yt-dlp 16MB Ladder)"]
+        Executor --> Interactive["interactiveService.js (Polls &amp; vCards)"]
+        Executor --> VIP["vipFilterService.js (Do-Not-Disturb Guard)"]
+        Executor --> Summarizer["groupSummarizerService.js (Group Task Extractor)"]
+        Executor --> Notes["notesService.js (Capture &amp; Storage)"]
+    end
+
+    subgraph Sector2 ["Sector 2: DevOps, SysAdmin &amp; Cloud"]
+        Executor --> Docker["dockerMonitorService.js (Auto-Healing &amp; Circuit Breaker)"]
+        Executor --> Console["bashConsoleService.js (Remote Bash with 2FA OTP)"]
+        Executor --> Disk["diskStorageService.js (85% Storage Auto-Purge)"]
+        Executor --> SecLogs["fail2banMonitorService.js (SSH Ban Watcher)"]
+        Executor --> NetMon["networkMonitorService.js (Bandwidth Spike Detector)"]
+        Executor --> SSL["sslMonitorService.js (Proactive TLS Expiry Check)"]
+        Executor --> Tunnels["tunnelManagerService.js (Cloudflare &amp; Tailscale)"]
+        Executor --> Backup["backupService.js (AES-256-GCM Encrypted Container)"]
+        Executor --> Crypto["cryptoGeneratorService.js (CSPRNG Shannon Entropy)"]
+    end
+
+    subgraph Proactive ["Background Daemons &amp; Alert Queue"]
+        AlertQ["alertQueueService.js (Deduplicated Queue)"] -->|"Flush Every 5s"| Bot
+        DockerDaemon["Docker Health Watchdog"] --> AlertQ
+        DiskDaemon["Disk Storage Watchdog"] --> AlertQ
+        Fail2banDaemon["Fail2ban Log Watchdog"] --> AlertQ
+        NetDaemon["Network Traffic Watchdog"] --> AlertQ
+        GH --> AlertQ
+    end
+</pre>
+
+<h2>Engineering Decisions Worth Explaining</h2>
+<p>The choices a technical interview is likely to dig into, with their trade-offs:</p>
+<ul>
+<li><strong>Unofficial WhatsApp client (Baileys).</strong> Full multi-device protocol access with no Business API costs, including Linked Identity Device (LID) resolution and silent packet dropping for unauthorized senders. Trade-off: not an official API, so the project carries the platform risk documented in Known Limitations.</li>
+<li><strong>Multi-provider LLM abstraction.</strong> One <code>chatCompletion</code> interface over Ollama (local), Groq, OpenAI and DeepSeek, switchable via environment variables and injectable in tests, which keeps the whole reasoning engine testable offline.</li>
+<li><strong>Intent-based tool pruning.</strong> Before each LLM call, a lightweight router classifies the message and prunes the tool list, because small-parameter local models hallucinate tool calls when handed the full catalog.</li>
+<li><strong>Defense against duplicated side effects.</strong> Within a single request, the tool executor blocks an exact repeat of a side-effecting call, so a model retry cannot send the same WhatsApp message twice. It deliberately does not cover rephrased or later requests.</li>
+<li><strong>OTP interlock for dangerous commands.</strong> Remote bash works from chat, but destructive commands (<code>reboot</code>, <code>rm</code>, <code>kill</code>, <code>pm2</code>) require a temporary 6-digit OTP (120s TTL, 3 attempts) with secret scrubbing and brute-force lockout.</li>
+<li><strong>Bounded conversation memory.</strong> Long-term facts live in normalized JSON storage; conversation history is condensed on overflow with per-chat deduplication, and free-form memory never authorizes actions on its own: sends to third parties require a verified recipient in the current chat or a registered contact card.</li>
+<li><strong>Reusable procedures with explicit approval.</strong> The agent can propose reusable multi-step skills, but each one activates only after the owner approves the exact content in chat (hash-bound, 30-minute TTL, one-shot); every skill step passes the same guards as a direct request.</li>
+<li><strong>Self-healing watchdogs with circuit breakers.</strong> Docker auto-restart with flapping protection, disk auto-purge at 85%, fail2ban, SSL expiry and bandwidth monitors all flush through one deduplicated alert queue instead of spamming the chat.</li>
+<li><strong>Test strategy.</strong> 804 tests across the suite with the Node.js native runner (no test-framework dependency): 802 passing, 2 voice tests skipping explicitly with a printed reason when <code>edge-tts</code> is unavailable. Integration tests drive the real WhatsApp entry handler with a fake socket and a fake LLM, and key regressions were verified by mutation. CI gates every push and PR to main (critical battery 100%, full suite &gt;=95%) and deploys the tested SHA to the VPS over SSH as an isolated release.</li>
+</ul>
+
+<h2>Feature Matrix</h2>
+
+<h3>Core Capabilities</h3>
+<ul>
+<li><strong>WhatsApp Multi-Device Engine:</strong> native WebSocket implementation via Baileys with Linked Identity Device (LID) resolution and stealth silent packet dropping for unauthorized senders.</li>
+<li><strong>Multi-Provider LLM Orchestration:</strong> dynamic provider switching (Ollama, Groq, OpenAI, DeepSeek) with intent-based tool pruning to reduce hallucinations on smaller parameter models.</li>
+<li><strong>Whisper.cpp Voice Transcription:</strong> fully local transcription via the whisper.cpp CLI: OGG/Opus from WhatsApp converted in memory to 16kHz mono PCM WAV with ffmpeg, no cloud speech API.</li>
+<li><strong>Headless Web Browsing:</strong> Playwright Chromium automation with anti-detection flags, automated cookie banner removal, and content extraction fallback.</li>
+<li><strong>Persistent Second Brain:</strong> normalized JSON storage for facts and personal preferences, with indexed full-text history search (per-chat isolation) for context-injected retrieval.</li>
+</ul>
+
+<h3>Sector 1: Advanced WhatsApp, Audio &amp; Media</h3>
+<ul>
+<li><strong>Native PTT Voice Responses:</strong> generates audio responses via Edge-TTS encoded directly into native WhatsApp PTT voice notes (<code>audio/ogg; codecs=opus</code>).</li>
+<li><strong>Direct Media Downloader:</strong> downloads and post-processes video and audio from YouTube, Instagram, and TikTok with an automated multi-pass FFmpeg compression ladder (720p CRF 28 -&gt; 480p CRF 32) strictly enforcing WhatsApp 16MB inline limits.</li>
+<li><strong>Interactive Messaging:</strong> dispatches native interactive WhatsApp polls with real-time vote collection and vCard 3.0 digital business cards.</li>
+<li><strong>VIP Mode &amp; Do-Not-Disturb:</strong> filters external contacts with discreet auto-replies while whitelisting priority users and emergency keyword overrides (<code>urgente</code>, <code>socorro</code>, <code>hospital</code>).</li>
+<li><strong>Group Smart Summarizer:</strong> buffers high-volume group chats, tracks direct mentions, and synthesizes action items into structured bullet-point briefings.</li>
+<li><strong>Notes Capture:</strong> automatically transcribes and archives voice and text notes into categorized storage with timestamp metadata.</li>
+</ul>
+
+<h3>Sector 2: DevOps, SysAdmin &amp; Cloud Infrastructure</h3>
+<ul>
+<li><strong>Autonomous Docker Auto-Healing:</strong> continuously monitors container lifecycles (<code>running</code>, <code>exited</code>, <code>restarting</code>) and attempts automated recovery via <code>docker restart</code> with flapping circuit-breaker protection.</li>
+<li><strong>Secure Remote Bash Console (2FA OTP):</strong> executes shell commands securely from chat. Critical and mutating commands (<code>reboot</code>, <code>rm</code>, <code>kill</code>, <code>pm2</code>) require a temporary 6-digit OTP (120s TTL, 3 attempts), protected by secret scrubbing and brute-force lockout.</li>
+<li><strong>Disk Storage Watchdog &amp; Auto-Purge:</strong> monitors VPS filesystem capacity and triggers a multi-stage cleanup routine when storage exceeds 85% (<code>pm2 flush</code>, <code>apt-get clean</code>, <code>docker system prune -f</code>).</li>
+<li><strong>Fail2ban &amp; Security Log Watchdog:</strong> scans SSH authentication logs and Fail2ban state, alerting in real time on IP bans with automatic deduplication.</li>
+<li><strong>GitHub Webhook Alerts:</strong> hardened endpoint (<code>POST /api/webhook/github</code>) verifying raw HMAC-SHA256 signatures (<code>crypto.timingSafeEqual</code>), dispatching chat alerts when a <code>workflow_run</code> event reports failure. The endpoint is implemented and tested; connecting it to a GitHub workflow is a pending owner action (see Known Limitations).</li>
+<li><strong>Encrypted Automated Backups:</strong> generates AES-256-GCM encrypted backup containers (<code>DAVBAK01</code> binary format) with scrypt key derivation and tamper protection.</li>
+<li><strong>Proactive SSL Certificate Monitor:</strong> queries remote TLS sockets directly to extract x509 expiration dates, raising alerts 15 days before certificate expiry.</li>
+<li><strong>Network Traffic &amp; Bandwidth Monitor:</strong> reads <code>/proc/net/dev</code> to calculate directional throughput (RX/TX), identifying abnormal spikes (&gt;10 MB/s) with a 5-minute cooldown guard.</li>
+<li><strong>Dynamic Tunnel Manager:</strong> inspects telemetry and controls operational states for Cloudflare Tunnels (<code>cloudflared</code>) and Tailscale (<code>tailscale</code>).</li>
+<li><strong>High-Entropy Cryptographic Generator:</strong> CSPRNG generator producing Shannon entropy passwords (&gt;100 bits), numeric PINs, hex/base62 tokens, UUID v4, and raw AES keys with optional memory persistence.</li>
+</ul>
+
+<h2>Security &amp; Engineering Standards</h2>
+<ul>
+<li><strong>Strict zero-emoji policy</strong> across source code, comments, tests, logs and outgoing messages.</li>
+<li><strong>Defense in depth:</strong> constant-time HMAC comparison (<code>crypto.timingSafeEqual</code>), scrypt KDF for backups, ephemeral OTP for destructive commands, verified-recipient guard for outbound messages, chat-bound content-hashed approval for reusable skills.</li>
+<li><strong>Automated test coverage:</strong> 802 of 804 tests passing (2 explicit skips) with <code>node:test</code>; nothing passes silently.</li>
+</ul>
+
+<h2>Known Limitations</h2>
+<p>Written down because a portfolio should survive a skeptical read:</p>
+<ul>
+<li><strong>Voice path not covered in every environment.</strong> Whisper and Edge-TTS depend on local binaries; where <code>edge-tts</code> is unavailable the 2 voice tests skip explicitly.</li>
+<li><strong>Rollback after a deploy cutover is a manual, separately approved decision</strong> by design (reverting automatically could lose data written after the cutover), not an automated staged rollback.</li>
+<li><strong>GitHub failure alerts not yet wired.</strong> The webhook endpoint is implemented and tested (HMAC-SHA256 verified), but no workflow posts <code>workflow_run</code> events to it yet; connecting one is a pending owner action.</li>
+<li><strong>Unofficial WhatsApp client.</strong> Baileys carries an inherent risk of platform action; this is the accepted trade-off for full protocol access at zero API cost.</li>
+<li><strong>Single-operator design.</strong> The authorization model assumes exactly one owner; there is no multi-user permission system.</li>
+</ul>
+
+<h2>PM2 Process Architecture</h2>
+<table>
+<thead><tr><th>Process</th><th>Script</th><th>Role</th><th>Memory Cap</th></tr></thead>
+<tbody>
+<tr><td><code>jarvis-api</code></td><td><code>api.js</code></td><td>REST endpoints, GitHub webhook, system health</td><td>500M</td></tr>
+<tr><td><code>jarvis-whatsapp</code></td><td><code>whatsappBot.js</code></td><td>WebSocket gateway, LLM intent engine, watchdogs</td><td>800M</td></tr>
+</tbody>
+</table>
+
+<h2>Project Structure</h2>
+<pre>
+.
+├── api.js                  # REST API entry point (PM2: jarvis-api)
+├── whatsappBot.js          # WhatsApp bot entry point (PM2: jarvis-whatsapp)
+├── chat.js                 # Interactive terminal client entry point
+├── ecosystem.config.cjs    # PM2 process configuration
+├── src/
+│   ├── config/             # Environment loading and project path anchors
+│   ├── core/               # Agent orchestration: jarvisAgent, intent router, LLM service, tools
+│   ├── services/           # Application services (memory, history, notes, reminders, media, voice, TTS, ...)
+│   ├── system/             # System-level services (bash console, backups, disk, tunnels)
+│   └── monitors/           # Watchdogs (SSL, Docker, network, fail2ban, GitHub webhook)
+├── scripts/                # Ad-hoc development and diagnostic scripts
+└── tests/                  # Unified test suite (run_all.js) with harness and sector batteries
+</pre>
+<p>Data (<code>data/</code>) stays at the project root and is resolved through <code>src/config/paths.js</code>, so modules can live in subfolders without depending on their own location.</p>
+
+</div>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+</script>
+</body>
+</html>
