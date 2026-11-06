@@ -432,14 +432,14 @@ export const casosDorados = [
   },
   {
     id: 'R18-real-mensaje-enviale',
-    entrada: 'enviale un mensaje de amor a raul',
-    pasos: [{ llama: 'programar_mensaje_whatsapp', args: { contacto: 'raul' } }, { texto: 'Mensaje preparado para Raul.' }],
+    entrada: 'enviale un mensaje de amor a daniel',
+    pasos: [{ llama: 'programar_mensaje_whatsapp', args: { contacto: 'daniel' } }, { texto: 'Mensaje preparado para Daniel.' }],
     esperado: { invoca: ['programar_mensaje_whatsapp'], clasificador: false }
   },
   {
     id: 'R19-real-mensaje-escribe-diferido',
-    entrada: 'escribe a hugo en 10 minutos que baje la basura',
-    pasos: [{ llama: 'programar_mensaje_whatsapp', args: { contacto: 'hugo' } }, { texto: 'Se lo escribo en 10 minutos.' }],
+    entrada: 'escribe a marcos en 10 minutos que baje la basura',
+    pasos: [{ llama: 'programar_mensaje_whatsapp', args: { contacto: 'marcos' } }, { texto: 'Se lo escribo en 10 minutos.' }],
     esperado: { invoca: ['programar_mensaje_whatsapp'], clasificador: false }
   },
   {

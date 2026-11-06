@@ -34,6 +34,7 @@ const CARPETA_HISTORIAL = process.env.DAVIS_HISTORY_DIR
   : path.join(DATA_DIR, 'history');
 
 import { archivarEpisodios, limpiarEpisodios } from './episodicMemoryService.js';
+import { borrarTrazas } from './traceService.js';
 import { redactarSensibles } from './redaccionService.js';
 
 export const MAX_MENSAJES_VENTANA = 12;   // mensajes que se entregan al modelo
@@ -137,11 +138,14 @@ export function registrarIntercambio(chatId, textoUsuario, textoAsistente) {
 /**
  * Elimina por completo el historial de un chat (peticion explicita de David).
  */
-export function limpiarHistorial(chatId) {
+export function limpiarHistorial(chatId, deps = {}) {
   try {
     const ruta = rutaChat(chatId);
     if (fs.existsSync(ruta)) fs.unlinkSync(ruta);
     limpiarEpisodios(chatId);
+    // Las trazas del recorrido tambien son historial del chat: se borran
+    // siempre, haya o no mensajes guardados.
+    borrarTrazas(chatId, deps);
     return true;
   } catch (err) {
     console.error('[Historial] Error limpiando historial:', err.message);

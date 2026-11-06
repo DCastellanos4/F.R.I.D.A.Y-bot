@@ -135,3 +135,59 @@ test('Entrada real: una consulta deja traza y "como has llegado a esa respuesta?
   assert.match(texto, /consultar_clima/, 'la explicacion debia nombrar la herramienta usada antes');
   assert.match(texto, /Enrutado directo/, 'la explicacion debia describir la via de enrutado');
 });
+
+test('Traza: archivo con permisos 600 y nombre sin el chatId en claro', () => {
+  const chat = 'chat-privacidad-123456789@lid';
+  const traza = iniciarTraza(chat, 'hola');
+  traza.rondas = 0;
+  traza.duracionMs = 1;
+  guardarTraza(traza, { carpetaTrazas });
+  const archivos = fs.readdirSync(carpetaTrazas);
+  const propio = archivos.find((a) => ultimaTraza(chat, { carpetaTrazas }) && fs.existsSync(path.join(carpetaTrazas, a)) && fs.readFileSync(path.join(carpetaTrazas, a), 'utf8').includes('chat-privacidad-123456789@lid'));
+  assert.ok(propio, 'debio existir el archivo de trazas del chat');
+  assert.ok(!propio.includes('chat-privacidad-123456789'), 'el nombre de archivo no debe llevar el chatId en claro');
+  assert.match(propio, /^[0-9a-f]{24}\.jsonl$/, 'nombre = hash de 24 hex');
+  const modo = fs.statSync(path.join(carpetaTrazas, propio)).mode & 0o777;
+  assert.equal(modo, 0o600, 'permisos 600');
+});
+
+test('explicarUltimoRecorrido: introspeccion dos veces seguidas explica la ultima peticion real', () => {
+  const chat = 'chat-introspeccion@test';
+  // 1. Peticion real (clima)
+  const t1 = iniciarTraza(chat, 'que tiempo hace?');
+  t1.via = 'regex';
+  t1.intenciones = ['clima'];
+  t1.herramientasOfrecidas = 1;
+  t1.llamadas.push({ nombre: 'consultar_clima', ronda: 1, resultado: 'ok' });
+  t1.rondas = 1;
+  t1.duracionMs = 900;
+  guardarTraza(t1, { carpetaTrazas });
+  // 2. Primera introspeccion (deja traza con explicar_recorrido)
+  const t2 = iniciarTraza(chat, 'como has llegado a esa respuesta?');
+  t2.via = 'regex';
+  t2.intenciones = ['devtools'];
+  t2.herramientasOfrecidas = 7;
+  t2.llamadas.push({ nombre: 'explicar_recorrido', ronda: 1, resultado: 'ok' });
+  t2.rondas = 1;
+  t2.duracionMs = 300;
+  guardarTraza(t2, { carpetaTrazas });
+  // 3. Segunda introspeccion: debe explicar la del clima, no la suya propia
+  const texto = explicarUltimoRecorrido(chat, { carpetaTrazas });
+  assert.match(texto, /consultar_clima/, 'debio explicar la ultima peticion real (clima)');
+  assert.ok(!texto.includes('Recorrido de "como has llegado'), 'no debio explicar la propia introspeccion');
+});
+
+test('limpiarHistorial borra las trazas aunque no haya historial guardado', async () => {
+  const { limpiarHistorial } = await import('../../src/services/conversationHistoryService.js');
+  const chat = 'chat-limpieza@test';
+  const traza = iniciarTraza(chat, 'que tiempo hace?');
+  traza.via = 'regex';
+  traza.rondas = 0;
+  traza.duracionMs = 5;
+  guardarTraza(traza, { carpetaTrazas });
+  assert.ok(ultimaTraza(chat, { carpetaTrazas }), 'la traza existia antes de limpiar');
+  // Sin historial previo del chat: la limpieza debe borrar trazas igualmente.
+  assert.equal(limpiarHistorial(chat, { carpetaTrazas }), true);
+  assert.equal(ultimaTraza(chat, { carpetaTrazas }), null, 'las trazas debieron borrarse con el historial');
+  assert.match(explicarUltimoRecorrido(chat, { carpetaTrazas }), /No tengo registrado ningun recorrido/);
+});

@@ -78,20 +78,55 @@ export function guardarTraza(traza, deps = {}) {
   }
 }
 
+function leerTrazas(chatId, deps = {}) {
+  try {
+    const ruta = rutaChat(chatId, deps);
+    if (!fs.existsSync(ruta)) return [];
+    return fs.readFileSync(ruta, 'utf-8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  } catch (err) {
+    console.error('[Trazas] Error leyendo trazas:', err.message);
+    return [];
+  }
+}
+
 /**
  * Devuelve la ultima traza registrada del chat, o null si no hay.
  */
 export function ultimaTraza(chatId, deps = {}) {
+  const trazas = leerTrazas(chatId, deps);
+  return trazas.length > 0 ? trazas[trazas.length - 1] : null;
+}
+
+/**
+ * Elimina las trazas de un chat (peticion explicita de David, p. ej. al
+ * limpiar el historial). Misma guardia de tests que la escritura.
+ */
+export function borrarTrazas(chatId, deps = {}) {
+  if (!chatId) return false;
+  if (process.env.NODE_ENV === 'test' && !deps.carpetaTrazas && !process.env.DAVIS_DATA_DIR) return false;
   try {
     const ruta = rutaChat(chatId, deps);
-    if (!fs.existsSync(ruta)) return null;
-    const lineas = fs.readFileSync(ruta, 'utf-8').split('\n').filter(Boolean);
-    if (lineas.length === 0) return null;
-    return JSON.parse(lineas[lineas.length - 1]);
+    if (fs.existsSync(ruta)) fs.unlinkSync(ruta);
+    return true;
   } catch (err) {
-    console.error('[Trazas] Error leyendo traza:', err.message);
-    return null;
+    console.error('[Trazas] Error borrando trazas:', err.message);
+    return false;
   }
+}
+
+/**
+ * La ultima traza explicable: las peticiones de introspeccion ("como has
+ * llegado a esa respuesta?") tambien dejan traza; si David lo pregunta dos
+ * veces seguidas, la respuesta debe seguir refiriendose a la ultima
+ * peticion REAL, no a la propia introspeccion.
+ */
+function ultimaTrazaExplicable(chatId, deps = {}) {
+  const trazas = leerTrazas(chatId, deps);
+  for (let i = trazas.length - 1; i >= 0; i--) {
+    const llamadas = Array.isArray(trazas[i].llamadas) ? trazas[i].llamadas : [];
+    if (!llamadas.some((l) => l.nombre === 'explicar_recorrido')) return trazas[i];
+  }
+  return null;
 }
 
 const VIA_LLANO = {
@@ -106,7 +141,7 @@ const VIA_LLANO = {
  * modelo lo entregue tal cual o lo resuma sin perder los hechos.
  */
 export function explicarUltimoRecorrido(chatId, deps = {}) {
-  const traza = ultimaTraza(chatId, deps);
+  const traza = ultimaTrazaExplicable(chatId, deps);
   if (!traza) {
     return 'No tengo registrado ningun recorrido anterior en este chat. El registro de recorridos empezo el 6 de noviembre de 2026; preguntame despues de cualquier otra peticion.';
   }
