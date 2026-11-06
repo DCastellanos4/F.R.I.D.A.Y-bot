@@ -157,3 +157,47 @@ test('procesarMensajesEntrantes sin episodios relevantes no inyecta el bloque', 
   }, { chatCompletion: llm, skipPersistencia: true });
   assert.ok(!prompts.some((p) => p.includes('EPISODIOS ANTIGUOS')), 'sin episodios no hay bloque');
 });
+
+// ---------- Fronteras: aislamiento, redaccion, borrado y roles ----------
+
+test('aislamiento por chat: los episodios de un chat no aparecen en otro', async () => {
+  episodica.archivarEpisodios('chat-aisla-a', [{ role: 'user', content: 'la playa de Cadiz con Marta', ts: '2026-08-10T10:00:00Z' }]);
+  episodica.archivarEpisodios('chat-aisla-b', [{ role: 'user', content: 'ruta de montana en Navacerrada', ts: '2026-08-11T10:00:00Z' }]);
+  assert.deepEqual(await episodica.buscarEpisodios('chat-aisla-b', 'playa de Cadiz'), []);
+  assert.ok((await episodica.buscarEpisodios('chat-aisla-a', 'playa de Cadiz')).length > 0);
+});
+
+test('frontera de redaccion: un OTP archivado nunca se guarda literal', async () => {
+  const chat = 'chat-redaccion';
+  // Via directa (aunque el contenido llegue sin filtrar).
+  episodica.archivarEpisodios(chat, [{ role: 'user', content: 'confirmar otp 654321 del banco', ts: '2026-10-01T10:00:00Z' }]);
+  // Via real: registrado en el historial y empujado fuera por el recorte.
+  historial.registrarMensaje(chat, 'user', 'confirmar otp 123456 para acceder');
+  for (let i = 0; i < historial.MAX_MENSAJES_ARCHIVO; i++) {
+    historial.registrarMensaje(chat, 'assistant', `respuesta de relleno ${i}`);
+  }
+  const hits = await episodica.buscarEpisodios(chat, 'otp del banco');
+  assert.ok(hits.length > 0, 'el episodio existe');
+  assert.ok(hits.every((h) => !h.content.includes('654321') && !h.content.includes('123456')), 'ningun OTP literal en el archivo');
+  assert.ok(hits.some((h) => h.content.includes('[redactado: dato sensible]')));
+});
+
+test('limpiarHistorial borra los episodios aunque el historial actual este vacio', async () => {
+  const chat = 'chat-borrado';
+  episodica.archivarEpisodios(chat, [{ role: 'user', content: 'dato sobre el alquiler de septiembre', ts: '2026-09-01T10:00:00Z' }]);
+  assert.ok((await episodica.buscarEpisodios(chat, 'alquiler de septiembre')).length > 0);
+  // Sin historial activo (nunca se registro nada en historial para este chat).
+  historial.limpiarHistorial(chat);
+  assert.deepEqual(await episodica.buscarEpisodios(chat, 'alquiler de septiembre'), [], 'los episodios se borraron con el historial');
+});
+
+test('solo se archivan mensajes user/assistant: system y tool quedan fuera', async () => {
+  const chat = 'chat-roles';
+  episodica.archivarEpisodios(chat, [
+    { role: 'system', content: 'instrucciones internas del sistema neuronal', ts: '2026-10-01T10:00:00Z' },
+    { role: 'tool', content: 'salida de herramienta neuronal', ts: '2026-10-01T10:00:01Z' },
+    { role: 'user', content: 'pregunta sobre el viaje a Roma', ts: '2026-10-01T10:00:02Z' }
+  ]);
+  assert.deepEqual(await episodica.buscarEpisodios(chat, 'sistema neuronal'), [], 'contenido system/tool no indexable');
+  assert.ok((await episodica.buscarEpisodios(chat, 'viaje a Roma')).length === 1, 'el mensaje de usuario si se archiva');
+});

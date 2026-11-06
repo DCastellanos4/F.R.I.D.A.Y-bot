@@ -34,6 +34,7 @@ const CARPETA_HISTORIAL = process.env.DAVIS_HISTORY_DIR
   : path.join(DATA_DIR, 'history');
 
 import { archivarEpisodios, limpiarEpisodios } from './episodicMemoryService.js';
+import { redactarSensibles } from './redaccionService.js';
 
 export const MAX_MENSAJES_VENTANA = 12;   // mensajes que se entregan al modelo
 export const MAX_MENSAJES_ARCHIVO = 40;   // tope persistido antes de condensar
@@ -103,18 +104,7 @@ export function obtenerHistorial(chatId, limite = MAX_MENSAJES_VENTANA) {
  * Anade un mensaje (role user|assistant) al historial del chat.
  * Si el archivo supera el tope, recorta los mas antiguos conservando el resumen.
  */
-const REGEX_DATOS_SENSIBLES = /(confirmar\s+otp\s+\d{6}|codigo de autorizacion 2fa|\b\d{6}\b(?=.*otp)|contrasena\s*[:=]\s*\S+|password\s*[:=]\s*\S+)/i;
-
-/**
- * El historial nunca persiste codigos OTP ni credenciales literales: se
- * redactan antes de tocar el disco.
- */
-function redactarSensibles(texto) {
-  if (REGEX_DATOS_SENSIBLES.test(texto)) {
-    return texto.replace(REGEX_DATOS_SENSIBLES, '[redactado: dato sensible]');
-  }
-  return texto;
-}
+/* La redaccion de datos sensibles vive en redaccionService.js (fuente unica). */
 
 export function registrarMensaje(chatId, role, content) {
   if (!chatId || !content || typeof content !== 'string') return;

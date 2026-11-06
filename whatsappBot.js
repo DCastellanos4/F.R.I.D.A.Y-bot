@@ -142,6 +142,23 @@ let serviciosIniciados = false;
 /**
  * Envía un mensaje proactivo a David por WhatsApp (texto u objeto con imagen)
  */
+/**
+ * Resuelve el destino del aviso de salud del clasificador.
+ * La metrica siempre se registra; el aviso saliente por WhatsApp a David solo
+ * se activa con DAVIS_AVISO_SALUD_CLASIFICADOR=1 (aviso nuevo visible: exige
+ * luz verde explicita de David). Sin el flag, el aviso queda en el log del
+ * servidor (modo silencioso, no ciego). enviarFn inyectable para pruebas.
+ */
+export function resolverAvisoSaludClasificador(deps = {}, enviarFn = enviarMensajeADavid) {
+  if (typeof deps.avisarSaludClasificador === 'function') {
+    return { fn: deps.avisarSaludClasificador, destino: 'inyectado' };
+  }
+  if (process.env.DAVIS_AVISO_SALUD_CLASIFICADOR === '1') {
+    return { fn: (textoAviso) => enviarFn(textoAviso), destino: 'whatsapp-david' };
+  }
+  return { fn: async (textoAviso) => console.warn('[SaludClasificador] Clasificador degradado (aviso por WhatsApp desactivado):', textoAviso), destino: 'log' };
+}
+
 export async function enviarMensajeADavid(contenido) {
   if (!sock || !estaConectado) {
     console.warn('[WhatsApp] Intento de envío proactivo pero el cliente no está en línea.');
@@ -924,7 +941,7 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
           chatId: remoteJid,
           urgencyDirective,
           chatCompletion: deps.chatCompletion,
-          avisarSaludClasificador: deps.avisarSaludClasificador || (async (textoAviso) => enviarMensajeADavid(textoAviso)),
+          avisarSaludClasificador: resolverAvisoSaludClasificador(deps).fn,
           rutaArchivoMetricasClasificador: deps.rutaArchivoMetricasClasificador,
           rutaArchivoCandidaturas: deps.rutaArchivoCandidaturas,
           radarDeps: deps.radarDeps,

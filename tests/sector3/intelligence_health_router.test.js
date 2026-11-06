@@ -144,3 +144,112 @@ test('error de accion con efectos: prohibido reintentar a ciegas', () => {
   assert.ok(texto.includes('NO la reintentes automaticamente'));
   assert.ok(texto.includes('verifica primero el efecto real'));
 });
+
+// ---------- 4. Recuperacion de errores: reintento con argumentos corregidos ----------
+
+test('error de herramienta de solo lectura: el modelo recibe la pista y reintenta con argumentos corregidos', async () => {
+  const ejecutadas = [];
+  const llamadas = [];
+  const chatCompletion = async ({ messages }) => {
+    llamadas.push(messages);
+    if (llamadas.length === 1) {
+      // Ronda 1: el modelo llama mal (sin el parametro obligatorio).
+      return { message: { content: '', tool_calls: [{ id: 'c1', function: { name: 'buscar_memoria', arguments: {} } }] } };
+    }
+    if (llamadas.length === 2) {
+      const msgTool = messages.filter((m) => m.role === 'tool').pop();
+      assert.ok(msgTool.content.includes('reintentala con argumentos corregidos'), 'el error invita al reintento');
+      assert.ok(msgTool.content.includes('Parametros aceptados') && msgTool.content.includes('consulta'), 'el error lista los parametros aceptados');
+      // Ronda 2: el modelo corrige los argumentos.
+      return { message: { content: '', tool_calls: [{ id: 'c2', function: { name: 'buscar_memoria', arguments: { consulta: 'talla zapatillas' } } }] } };
+    }
+    return { message: { content: 'Tus zapatillas son talla 43, senor.' } };
+  };
+  const ejecutores = {
+    buscar_memoria: async (args) => {
+      ejecutadas.push(args);
+      if (!args || !args.consulta) throw new Error("falta el parametro obligatorio 'consulta'");
+      return 'Dato encontrado: talla 43';
+    }
+  };
+  const respuesta = await agente.consultarJarvis('cuando es el cumple de Marta?', [], { chatCompletion, ejecutores });
+  assert.equal(ejecutadas.length, 2, 'la herramienta se ejecuto dos veces (fallo + reintento)');
+  assert.deepEqual(ejecutadas[0], {});
+  assert.deepEqual(ejecutadas[1], { consulta: 'talla zapatillas' }, 'el reintento uso los argumentos corregidos');
+  assert.ok(respuesta.includes('talla 43'), 'la respuesta final usa el resultado del reintento');
+});
+
+// ---------- Cableado del aviso de salud: desactivado por defecto ----------
+
+const bot = await import('../../whatsappBot.js');
+const JID_DAVID = '149868706304033@lid';
+
+function sembrarMetricasFallidas(ruta, n = 10) {
+  fs.mkdirSync(path.dirname(ruta), { recursive: true });
+  const lineas = Array.from({ length: n }, () => JSON.stringify({ ts: new Date().toISOString(), tipo: 'clasificacion', resultado: 'error' }));
+  fs.writeFileSync(ruta, lineas.join('\n') + '\n', 'utf-8');
+}
+
+function sockSimulado(enviados) {
+  return {
+    readMessages: async () => {},
+    sendPresenceUpdate: async () => {},
+    sendMessage: async (jid, payload) => { enviados.push({ jid, payload }); return { key: { id: 'SIM-' + enviados.length } }; }
+  };
+}
+
+function entradaSeguridad(rutaMetricas, enviados) {
+  const llm = async ({ messages }) => {
+    const esClasificador = messages.some((m) => m.role === 'system' && typeof m.content === 'string' && m.content.startsWith('Clasifica la intencion'));
+    return { message: { content: esClasificador ? 'no sabria decirte' : 'respuesta simulada del asistente' } };
+  };
+  return bot.procesarMensajesEntrantes(sockSimulado(enviados), {
+    messages: [{
+      key: { remoteJid: JID_DAVID, fromMe: false, id: 'SIM-SALUD-' + Math.random().toString(36).slice(2) },
+      message: { conversation: 'zxqwv glorp fiudh' },
+      messageTimestamp: Math.floor(Date.now() / 1000)
+    }],
+    type: 'notify'
+  }, { chatCompletion: llm, rutaArchivoMetricasClasificador: rutaMetricas });
+}
+
+test('aviso de salud por WhatsApp desactivado por defecto: metrica registrada, cero mensajes salientes', async () => {
+  delete process.env.DAVIS_AVISO_SALUD_CLASIFICADOR;
+  const ruta = rutaMetricas('metricas_salud_off.jsonl');
+  sembrarMetricasFallidas(ruta);
+  const enviados = [];
+  await entradaSeguridad(ruta, enviados);
+  await new Promise((r) => setTimeout(r, 200)); // comprobarYAvisarSalud va en segundo plano
+  assert.ok(enviados.length > 0, 'el asistente respondio al mensaje');
+  assert.ok(!enviados.some((e) => (e.payload?.text || '').includes('SALUD DEL CLASIFICADOR')),
+    'sin el flag no sale ningun aviso de salud por WhatsApp');
+  // La metrica sigue registrandose (modo silencioso, no ciego).
+  const eventos = fs.readFileSync(ruta, 'utf-8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  assert.ok(eventos.some((e) => e.tipo === 'clasificacion' && e.resultado === 'parse_fail'), 'el intento fallido quedo medido');
+});
+
+test('resolver del aviso de salud: por defecto va al log y con el flag va al WhatsApp de David', async () => {
+  // Sin flag: destino log, y la funcion NO toca el canal de WhatsApp.
+  delete process.env.DAVIS_AVISO_SALUD_CLASIFICADOR;
+  let enviosWhatsapp = 0;
+  const enviarFalso = async () => { enviosWhatsapp++; return true; };
+  const sinFlag = bot.resolverAvisoSaludClasificador({}, enviarFalso);
+  assert.equal(sinFlag.destino, 'log');
+  await sinFlag.fn('[D.A.V.I.S. - SALUD DEL CLASIFICADOR] prueba');
+  assert.equal(enviosWhatsapp, 0, 'por defecto el aviso no sale por WhatsApp');
+
+  // Con flag: destino WhatsApp de David y la funcion envia exactamente una vez.
+  process.env.DAVIS_AVISO_SALUD_CLASIFICADOR = '1';
+  try {
+    const conFlag = bot.resolverAvisoSaludClasificador({}, enviarFalso);
+    assert.equal(conFlag.destino, 'whatsapp-david', 'el destino por defecto es el WhatsApp de David');
+    await conFlag.fn('[D.A.V.I.S. - SALUD DEL CLASIFICADOR] prueba');
+    assert.equal(enviosWhatsapp, 1, 'con el flag el aviso sale una vez por WhatsApp');
+  } finally {
+    delete process.env.DAVIS_AVISO_SALUD_CLASIFICADOR;
+  }
+
+  // Un avisar inyectado manda sobre el flag.
+  const inyectado = async () => {};
+  assert.equal(bot.resolverAvisoSaludClasificador({ avisarSaludClasificador: inyectado }).fn, inyectado);
+});

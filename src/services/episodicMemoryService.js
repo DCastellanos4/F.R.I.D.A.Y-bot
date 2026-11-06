@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { normalizarTexto } from './memoryService.js';
+import { redactarSensibles } from './redaccionService.js';
 
 const DATA_DIR = process.env.DAVIS_DATA_DIR || path.join(process.cwd(), 'data');
 const CARPETA_EPISODIOS_DEFECTO = path.join(DATA_DIR, 'episodios');
@@ -47,7 +48,9 @@ export function archivarEpisodios(chatId, mensajes, deps = {}) {
     fs.mkdirSync(path.dirname(ruta), { recursive: true });
     const lineas = mensajes
       .filter((m) => m && typeof m.content === 'string' && (m.role === 'user' || m.role === 'assistant'))
-      .map((m) => JSON.stringify({ role: m.role, content: m.content, ts: m.ts || new Date().toISOString() }));
+      // Doble red de seguridad: el contenido del historial ya viene redactado,
+      // pero el archivo nunca guarda sensibles aunque le lleguen sin filtrar.
+      .map((m) => JSON.stringify({ role: m.role, content: redactarSensibles(m.content), ts: m.ts || new Date().toISOString() }));
     if (lineas.length === 0) return false;
     fs.appendFileSync(ruta, lineas.join('\n') + '\n', { encoding: 'utf-8', mode: 0o600 });
     // Tope por chat: conserva los mas recientes.
