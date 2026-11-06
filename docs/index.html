@@ -22,7 +22,6 @@
   .sub { color:var(--muted); margin-top:0; }
   a { color:var(--accent); }
   .mermaid { background:var(--soft); border-radius:8px; padding:1rem; overflow-x:auto; }
-  .mermaid svg { min-width:1050px; }
   .pan-hint { color:var(--muted); font-size:.82rem; margin:.35rem 0 0; }
   .back { display:inline-block; margin-bottom:1.5rem; font-size:.9rem; }
 </style>
@@ -40,7 +39,7 @@
 <p>The persona layer (sober, dry-humored, zero-emoji Spanish) is deliberate: the assistant is a character with a consistent voice, defined in a single system prompt in <code>src/core/jarvisAgent.js</code>.</p>
 
 <h2>Technical Architecture</h2>
-<p class="pan-hint">Wide diagram - drag or scroll sideways inside the frame to see it full size.</p>
+<p class="pan-hint">Wide diagram shown at full size - scroll sideways inside the frame, or <a href="#" id="open-diagram">open it in a new tab</a> to zoom.</p>
 <pre class="mermaid">
 flowchart TD
     subgraph Ingestion ["Ingestion &amp; Security Gateways"]
@@ -196,7 +195,23 @@ flowchart TD
 <script type="module">
   import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
   mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
-  mermaid.run().then(() => { document.querySelectorAll('.mermaid svg').forEach(s => { s.style.maxWidth = 'none'; }); });
+  mermaid.run().then(() => {
+    document.querySelectorAll('.mermaid').forEach((container) => {
+      const s = container.querySelector('svg');
+      if (!s) return;
+      const vb = s.viewBox && s.viewBox.baseVal;
+      if (vb && vb.width) { s.style.maxWidth = 'none'; s.style.width = vb.width + 'px'; s.style.height = 'auto'; }
+    });
+    const link = document.getElementById('open-diagram');
+    const first = document.querySelector('.mermaid svg');
+    if (link && first) {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const blob = new Blob([new XMLSerializer().serializeToString(first)], { type: 'image/svg+xml' });
+        window.open(URL.createObjectURL(blob), '_blank');
+      });
+    }
+  });
 </script>
 </body>
 </html>
