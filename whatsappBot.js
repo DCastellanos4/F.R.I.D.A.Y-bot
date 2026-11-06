@@ -598,19 +598,24 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
       }
 
       // 4. Manejo de notas de voz con Whisper y Clasificador de Urgencia
+      //    (deps.descargarMedia / deps.transcribirAudio permiten probar el
+      //    flujo completo de entrada sin tocar la red de WhatsApp ni Whisper)
       if (msg.message.audioMessage) {
         console.log('[WhatsApp] Nota de voz recibida de David. Procesando audio con Whisper...');
         try {
           await sock.sendPresenceUpdate('recording', remoteJid);
 
-          const audioBuffer = await downloadMediaMessage(
-            msg,
+          const descargarMedia = deps.descargarMedia || ((m) => downloadMediaMessage(
+            m,
             'buffer',
             {},
             { logger: pino({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage }
-          );
+          ));
+          const transcribirAudio = deps.transcribirAudio || transcribirAudioBuffer;
 
-          const resVoz = await transcribirAudioBuffer(audioBuffer);
+          const audioBuffer = await descargarMedia(msg);
+
+          const resVoz = await transcribirAudio(audioBuffer);
 
           if (resVoz.ok && resVoz.texto && resVoz.texto.length > 1) {
             texto = resVoz.texto;
@@ -939,7 +944,10 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
       if (resVoz && resVoz.resultado === 'confirmado') {
         console.log('[WhatsApp Voz] Accion critica confirmada por David; se procesa la peticion original.');
         texto = resVoz.textoOriginal;
-      } else if (!resVoz && esAudio && esAccionCriticaPorVoz(texto)) {
+      } else if ((!resVoz || resVoz.resultado === 'nuevo') && esAudio && esAccionCriticaPorVoz(texto)) {
+        // 'nuevo' descarta la peticion pendiente anterior, pero si la nueva
+        // tambien es critica debe pedir su propia confirmacion: sin esto,
+        // repetir una accion critica por voz la ejecutaba sin confirmar.
         guardarPendienteVoz(remoteJid, texto);
         await sock.sendMessage(remoteJid, {
           text: `Antes de actuar, señor. He entendido: "${texto}". Es una accion con efectos externos o destructivos; confirme respondiendo "si" o "confirmo", o bien "no" para cancelarla.`
