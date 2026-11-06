@@ -941,6 +941,7 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
           chatId: remoteJid,
           urgencyDirective,
           chatCompletion: deps.chatCompletion,
+          carpetaTrazas: deps.carpetaTrazas,
           avisarSaludClasificador: resolverAvisoSaludClasificador(deps).fn,
           rutaArchivoMetricasClasificador: deps.rutaArchivoMetricasClasificador,
           rutaArchivoCandidaturas: deps.rutaArchivoCandidaturas,

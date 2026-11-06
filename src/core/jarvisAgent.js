@@ -1,5 +1,6 @@
 import { config } from '../config/config.js';
 import { herramientasJarvis, herramientasParaIntenciones, limitarHerramientasParaProveedor, LIMITE_HERRAMIENTAS_PROVEEDOR } from './tools.js';
+import { iniciarTraza, guardarTraza, explicarUltimoRecorrido } from '../services/traceService.js';
 import { obtenerNoticiasEstructuradas } from '../services/newsService.js';
 import {
   crearRecordatorio,
@@ -226,7 +227,7 @@ export function analizarIntencion(mensaje) {
     esHechoMemoria: /(recuerda que|apunta que|guarda que|anota que|no te olvides de que|apunta:|a partir de ahora|desde ahora|mi hermano|mi hermana|mi madre|mi padre|mi mama|mi papa|mi amigo|mi amiga|mi novia|mi novio|mi mujer|mi marido|mi hijo|mi hija|calza|talla|numero de pie|pie|zapatillas?|zapatos?|cumpleanos|cumple|clave|contrasena|password|pin|codigo|wifi|correo|email|mail|direccion|vive en|trabaja en|le gusta|favorit[ao]|preferencia|segunda memoria|segundo cerebro|que sabes de|que calza|que talla|cuando es el cumple|cual es la clave|cual es el wifi|cual es el codigo|cual es mi correo|cual es mi email|mis recuerdos|banco de memoria|olvida que|borra de tu memoria|elimina de tu memoria)/i,
     
     // Mensajes programados de WhatsApp a números externos
-    mensajeProgramado: /(programa(r)?\s+(un\s+)?mensaje|manda(r)?\s+(un\s+)?mensaje|envia(r)?\s+(un\s+)?mensaje|escribe(le)?\s+a\s+(\+?\d+|[a-zA-Z]+)|mandale\s+(un\s+)?mensaje|enviale\s+(un\s+)?mensaje|mensajes?\s+programados?|cancela(r)?\s+(el\s+)?mensaje\s+programado)/i,
+    mensajeProgramado: /(programa(r)?\s+(un\s+)?mensaje|manda(r)?\s+(un\s+)?mensaje|envia(r)?\s+(un\s+)?mensaje|escribe(le)?\s+a\s+(\+?\d+|[a-zA-Z]+)|mandale\s+(un\s+)?mensaje|enviale\s+(un\s+)?mensaje|mensajes?\s+programados?|cancela(r)?\s+(el\s+)?mensaje\s+programado|dile\s+a\s+(\+?\d{5,}|[a-zA-Z]+)(\s+[a-zA-Z]+){0,3}\s+(que|en\s+\d+\s*(min|hora|dia|seg)|ahora|esta\s+(noche|tarde|manana)))/i,
 
     // Recordatorios, avisos y alarmas temporales personales
     esRecordatorio: /(recuerda|record|acuerda|acord|avis|alarm|despiert|agend|cita|evento|tareas? pendientes?|que (tengo|hay) (pendiente|que hacer)|a las \d+|en \d+\s*(min|hora|dia|seg)|manana a las|pon (un )?(recordatorio|aviso|alarma)|cancela.*recordatorio|elimina.*recordatorio|borra.*recordatorio)/i,
@@ -279,7 +280,7 @@ export function analizarIntencion(mensaje) {
     hogar: /(enciende\s+(el|mi)\s+(pc|ordenador)|wake[ -]?on[ -]?lan|dispositivos\s+(conectados\s+)?(a|en|de)\s+(mi\s+|la\s+)?red|vigilancia\s+de\s+(mi\s+|la\s+)?red|dispositivos\s+desconocidos|qui[eé]n\s+(est[aá]|hay)\s+conectado|dom[oó]tica|home\s+assistant|enciende\s+(la\s+)?(luz|l[aá]mpara)|apaga\s+(la\s+)?(luz|l[aá]mpara)|panel\s+de\s+descargas|estado\s+de\s+(las\s+)?descargas|avisa(me)?\s+cuando\s+(termine|acabe|baje)\s+(la\s+)?descarga|aviso\s+de\s+descargas|factura\s+de\s+oracle|term[oó]metro\s+de\s+oracle|cu[aá]nto\s+(me\s+)?(cuesta|costar[aá]|gasta)\s+(el\s+)?(oracle|vps|servidor))/i,
     viajes: /(vigila(r)?\s+(el|un|mi)\s+(vuelo|tren)|vuelos?\s+(a|para|hacia)\s+\w|tren(es)?\s+(a|para|hacia)\s+\w|rutas?\s+(de\s+)?(vuelos?|tren(es)?)|avisa(me)?\s+si\s+baja\s+(el\s+)?(vuelo|tren|billete)|seguimiento\s+de\s+(vuelos|trenes)|billete(s)?\s+(de\s+)?(avion|tren|renfe)|escapada\s+(a|en)\s+\w|precio\s+del\s+(vuelo|tren|billete))/i,
     // DevTools (bloque 12): revisor PRs, changelog, pair programming, ideas
-    devtools: /(revisa(r)?\s+(la\s+|el\s+|esta\s+)?(pr|pull\s+request)|changelog|guia(r)?\s+(la\s+)?depuraci[oó]n|depura(r)?\s+(este|el|mi)\s+(fallo|error|c[oó]digo)|pair\s+programming|tengo\s+un\s+fallo|anota(r)?\s+(esta\s+|una\s+)?idea|mis\s+ideas|prioriza(r)?\s+(mis\s+)?ideas)/i,
+    devtools: /(revisa(r)?\s+(la\s+|el\s+|esta\s+)?(pr|pull\s+request)|changelog|guia(r)?\s+(la\s+)?depuraci[oó]n|depura(r)?\s+(este|el|mi)\s+(fallo|error|c[oó]digo)|pair\s+programming|tengo\s+un\s+fallo|anota(r)?\s+(esta\s+|una\s+)?idea|mis\s+ideas|prioriza(r)?\s+(mis\s+)?ideas|recorrido\s+de\s+(mi|tu|esa|esta|la|un)\s+(respuesta|peticion|mensaje)|como\s+has\s+llegado\s+a\s+(esa|esta|tu)\s+respuesta|explica(r|me)?\s+(el\s+)?recorrido|que\s+herramientas\s+has\s+usado)/i,
     // Compras bajo demanda (extra aprobado por David, 5 nov 2026): sin compras ni vigilancia
     compras: /(busca(r)?\s+(el\s+|la\+|un\s+|una\s+)?(producto|oferta|chollo)|compara(r)?\s+precios|d[oó]nde\s+(lo\s+|la\s+)?(compro|consigo)|precio\s+(de|del)\s+(producto|oferta)|verifica(r)?\s+(esta\s+|esa\s+)?(oferta|ficha|tienda)|est[aá]\s+(disponible|en\s+stock)|comprobar\s+(precio|stock|disponibilidad))/i,
     comunicacion: /(\btraduc|\btraductor|qu[eé]\s+le\s+respondo|sugier\w*\s+respuesta|busca(r)?\s+en\s+(el\s+)?historial|qu[eé]\s+te\s+dije|cumplea[nñ]os|\bcumple\b|fecha\s+se[nñ]alada|aniversario|\bsnooze\b|recu[eé]rdame\s+(este|el|lo de este)\s+(chat|grupo)|estad[ií]sticas?\s+(del|de este|de este grupo|grupo)|cu[aá]ndo\s+(llegue|llego)|av[ií]sa(me)?\s+cuando\s+llegue|aviso\s+de\s+llegada)/i,
@@ -457,7 +458,7 @@ export function analizarIntencion(mensaje) {
     tools.push(...herramientasJarvis.filter(h => ['buscar_producto', 'verificar_oferta'].includes(h.function.name)));
   }
   if (matchDevtools) {
-    tools.push(...herramientasJarvis.filter(h => ['anotar_idea', 'listar_ideas', 'priorizar_ideas', 'generar_changelog', 'guiar_depuracion', 'revisar_pr'].includes(h.function.name)));
+    tools.push(...herramientasJarvis.filter(h => ['anotar_idea', 'listar_ideas', 'priorizar_ideas', 'generar_changelog', 'guiar_depuracion', 'revisar_pr', 'explicar_recorrido'].includes(h.function.name)));
   }
   if (matchOps) {
     tools.push(...herramientasJarvis.filter(h => ['auditar_dependencias', 'configurar_vigilancia_dependencias', 'informe_metricas', 'configurar_informe_metricas', 'actividad_repos', 'configurar_alertas_repos', 'crear_backup_sesion', 'verificar_backup_sesion'].includes(h.function.name)));
@@ -551,7 +552,8 @@ const HERRAMIENTAS_IDEMPOTENTES = new Set([
   'estado_modo_vip',
   'resumir_grupo',
   'listar_notas_recientes',
-  'get_infrastructure_status'
+  'get_infrastructure_status',
+  'explicar_recorrido'
 ]);
 
 
@@ -1076,7 +1078,10 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
           lineas.push(res.nota);
           resultadoTool = lineas.join('\n');
         }
+      } else if (nombreFuncion === 'explicar_recorrido') {
+        resultadoTool = explicarUltimoRecorrido(opciones.chatId, opciones);
       } else if (nombreFuncion === 'anotar_idea') {
+
         const res = anotarIdea({ titulo: args.titulo, detalle: args.detalle }, { rutaArchivo: opciones.rutaArchivoIdeas });
         resultadoTool = res.ok ? `Anotada, David: "${res.idea.titulo}" (${res.total} idea(s) en total). Cuando quieras las revisamos: "prioriza mis ideas".` : res.error;
       } else if (nombreFuncion === 'listar_ideas') {
@@ -1596,6 +1601,11 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
   let herramientasActivas = analisis.herramientas;
   let directivaDesambiguacion = '';
 
+  // Traza del recorrido (traceService.js): se rellena por el camino y se
+  // guarda al final; la herramienta explicar_recorrido la expone a David.
+  const traza = iniciarTraza(opciones.chatId, mensajeUsuario);
+  traza.intenciones = analisis.intenciones;
+
   if (analisis.safetyNet) {
     const clasificacion = await clasificarIntencionConModelo(mensajeUsuario, { ...opciones, chatCompletion: chatImpl });
     // Vigilancia de salud del clasificador: aviso acotado (1/24h) si la
@@ -1603,9 +1613,12 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
     comprobarYAvisarSalud({ ...opciones, chatCompletion: chatImpl }).catch((e) => console.error('[SaludClasificador] aviso fallido:', e.message));
     if (clasificacion && clasificacion.confianza >= UMBRAL_CONFIANZA) {
       herramientasActivas = clasificacion.herramientas;
+      traza.via = 'clasificador';
+      traza.clasificacion = { intencion: clasificacion.intencion, confianza: clasificacion.confianza };
       console.log(`[RouterModelo] Intencion clasificada por modelo: ${clasificacion.intencion} (confianza ${clasificacion.confianza}, origen ${clasificacion.origen}).`);
     } else if (clasificacion) {
       herramientasActivas = [];
+      traza.via = 'desambiguacion';
       directivaDesambiguacion = '\n\n[DIRECTIVA DE DESAMBIGUACION: No esta claro que necesita David. NO inventes acciones, datos ni confirmaciones: pidele una aclaracion breve y concreta, ofreciendo como mucho dos opciones, antes de actuar.]';
       console.log(`[RouterModelo] Confianza insuficiente (${clasificacion.confianza}); se pide desambiguacion sin herramientas.`);
     } else {
@@ -1614,6 +1627,7 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
       // clasificador se aplica el mismo criterio honesto que con confianza
       // baja: ninguna herramienta y una aclaracion breve.
       herramientasActivas = [];
+      traza.via = 'desambiguacion';
       directivaDesambiguacion = '\n\n[DIRECTIVA DE DESAMBIGUACION: No esta claro que necesita David. NO inventes acciones, datos ni confirmaciones: pidele una aclaracion breve y concreta, ofreciendo como mucho dos opciones, antes de actuar.]';
       console.log('[RouterModelo] Clasificador no disponible; desambiguacion sin herramientas (el catalogo completo supera el limite 128 del proveedor).');
     }
@@ -1639,6 +1653,9 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
   if (resolucion.directiva) directivaDesambiguacion = resolucion.directiva;
 
   herramientasActivas = limitarHerramientasParaProveedor(herramientasActivas);
+
+  if (!traza.via) traza.via = analisis.esChitChat ? 'conversacion' : 'regex';
+  traza.herramientasOfrecidas = herramientasActivas.length;
 
   console.log(`[J.A.R.V.I.S.] Evaluando: "${mensajeUsuario}" [Herramientas: ${herramientasActivas.length > 0 ? herramientasActivas.map(h => h.function.name).join(', ') : 'Ninguna (Conversacional)'}]`);
 
@@ -1769,6 +1786,7 @@ Directrices de selección:
       if (!HERRAMIENTAS_IDEMPOTENTES.has(nombreFuncion) && accionesConEfectosEjecutadas.has(claveAccion)) {
         resultadoTool = `La accion ${nombreFuncion} con esos mismos argumentos ya se ejecuto en esta peticion. NO se duplica una accion con efectos externos: verifica su resultado e informa a David en lugar de repetirla.`;
         console.warn(`[J.A.R.V.I.S. Tool Dedup] Duplicado bloqueado: ${claveAccion}`);
+        traza.llamadas.push({ nombre: nombreFuncion, ronda, resultado: 'duplicado_bloqueado' });
         mensajes.push({ role: 'tool', content: resultadoTool, tool_call_id: llamada.id });
         continue;
       }
@@ -1779,12 +1797,14 @@ Directrices de selección:
         const salida = await ejecutarHerramientaJarvis(nombreFuncion, args, opciones);
         resultadoTool = salida.texto;
         if (salida.enlaces) enlacesParaAdjuntar = salida.enlaces;
+        traza.llamadas.push({ nombre: nombreFuncion, ronda, resultado: 'ok' });
       } catch (errTool) {
         // Recuperacion segura: solo las consultas idempotentes pueden
         // reintentarse (con pista de argumentos aceptados); escrituras,
         // envios y comandos exigen comprobar el efecto real y avisar a
         // David, nunca reintentar a ciegas.
         resultadoTool = describirErrorHerramienta(nombreFuncion, errTool, HERRAMIENTAS_IDEMPOTENTES.has(nombreFuncion));
+        traza.llamadas.push({ nombre: nombreFuncion, ronda, resultado: 'error', detalle: String(errTool.message || '').slice(0, 120) });
         console.error(`[J.A.R.V.I.S. Tool Error R${ronda}] ${nombreFuncion}:`, errTool.message);
       }
 
@@ -1838,6 +1858,9 @@ Directrices de selección:
   }
 
   const duracionSeg = ((Date.now() - tiempoInicio) / 1000).toFixed(2);
+  traza.rondas = ronda;
+  traza.duracionMs = Date.now() - traza.inicio;
+  guardarTraza(traza, opciones);
   console.log(`[J.A.R.V.I.S.] Peticion completada en ${duracionSeg}s (${ronda} ronda(s) de herramientas)`);
   return limpiarRespuestaJarvis(textoFinal);
 }

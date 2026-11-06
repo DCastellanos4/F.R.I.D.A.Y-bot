@@ -1985,6 +1985,14 @@ export const herramientasJarvis = [
         required: ['criterio', 'precio']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'explicar_recorrido',
+      description: 'Explica en llano como llego D.A.V.I.S. a su respuesta anterior en este chat: via de enrutado (reglas propias o clasificador), areas detectadas, herramientas usadas, rondas y duracion. Usala cuando David pregunte "como has llegado a esa respuesta", "que herramientas has usado" o "explica el recorrido".',
+      parameters: { type: 'object', properties: {}, required: [] }
+    }
   }
 ];
 
@@ -2054,7 +2062,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   cerebro: ['registrar_contacto', 'buscar_contacto', 'listar_contactos', 'buscar_recuerdo_semantico', 'generar_digest_cerebro', 'configurar_digest_semanal', 'generar_wiki', 'capturar_pagina', 'preguntar_documentos'],
   bienestar: ['escribir_diario', 'leer_diario', 'registrar_habito', 'marcar_habito', 'listar_habitos', 'poner_menu', 'ver_menu', 'sugerir_menu', 'anadir_compra', 'listar_compra', 'tachar_compra', 'vaciar_compra', 'recomendar_serie_pelicula', 'crear_quedada', 'listar_quedadas', 'redactar_invitacion', 'resumen_deportivo', 'configurar_modo_nocturno'],
   compras: ['buscar_producto', 'verificar_oferta'],
-  devtools: ['anotar_idea', 'listar_ideas', 'priorizar_ideas', 'generar_changelog', 'guiar_depuracion', 'revisar_pr'],
+  devtools: ['anotar_idea', 'listar_ideas', 'priorizar_ideas', 'generar_changelog', 'guiar_depuracion', 'revisar_pr', 'explicar_recorrido'],
   ops: ['auditar_dependencias', 'configurar_vigilancia_dependencias', 'informe_metricas', 'configurar_informe_metricas', 'actividad_repos', 'configurar_alertas_repos', 'crear_backup_sesion'],
   hogar: ['encender_pc', 'listar_dispositivos_red', 'configurar_vigilancia_red', 'controlar_domotica', 'estado_descargas', 'configurar_aviso_descargas', 'estimar_factura_oracle', 'verificar_backup_sesion'],
   viajes: ['vigilar_ruta', 'listar_rutas_vigiladas', 'cancelar_vigilancia_ruta', 'registrar_precio_ruta'],

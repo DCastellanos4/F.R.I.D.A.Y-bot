@@ -319,5 +319,163 @@ export const casosDorados = [
       { texto: 'El articulo sigue a 89 euros.' }
     ],
     esperado: { invoca: ['listar_productos_vigilados'], clasificador: false }
+  },
+
+  // --- Casos derivados de mensajes reales (R01-R24, 6 nov 2026) ---
+  // Derivados de mensajes reales de David tomados de los logs del servidor
+  // (5-6 nov 2026) y anonimizados: nombres propios, telefonos y cualquier
+  // dato personal se sustituyeron por valores ficticios. Como el resto de
+  // la bateria van guionizados: miden el comportamiento del orquestador
+  // (enrutado, contencion, bucle), NO la calidad del modelo real ni la
+  // entrega por WhatsApp.
+  {
+    id: 'R01-real-clima-manana',
+    entrada: 'que tiempo va a hacer manana en madrid?',
+    pasos: [{ llama: 'consultar_clima', args: { ubicacion: 'Madrid' } }, { texto: 'Manana soleado y 21 grados.' }],
+    esperado: { invoca: ['consultar_clima'], clasificador: false }
+  },
+  {
+    id: 'R02-real-memoria-guardar-wifi',
+    entrada: 'apunta que la wifi de casa es casa2026',
+    pasos: [{ llama: 'guardar_memoria', args: { contenido: 'wifi de casa: casa2026' } }, { texto: 'Anotado, David.' }],
+    esperado: { invoca: ['guardar_memoria'], clasificador: false }
+  },
+  {
+    id: 'R03-real-memoria-buscar-familiar',
+    entrada: 'que sabes de mi hermano?',
+    pasos: [{ llama: 'buscar_memoria', args: { consulta: 'hermano' } }, { texto: 'De tu hermano tengo guardado esto.' }],
+    esperado: { invoca: ['buscar_memoria'], clasificador: false }
+  },
+  {
+    id: 'R04-real-noticias-titulares',
+    entrada: 'ponme los titulares de tecnologia',
+    pasos: [{ llama: 'obtener_noticias_actuales', args: {} }, { texto: 'Titulares de tecnologia listos.' }],
+    esperado: { invoca: ['obtener_noticias_actuales'], clasificador: false }
+  },
+  {
+    id: 'R05-real-noticias-resume-primera',
+    entrada: 'resume la primera noticia',
+    pasos: [{ llama: 'navegar_y_leer_noticia', args: { id: 1 } }, { texto: 'La primera noticia trata de esto.' }],
+    esperado: { invoca: ['navegar_y_leer_noticia'], clasificador: false }
+  },
+  {
+    id: 'R06-real-recordatorio-avisame',
+    entrada: 'avisame en 20 minutos de que coja las llaves',
+    pasos: [{ llama: 'crear_recordatorio', args: { nota: 'coger las llaves' } }, { texto: 'Te aviso en 20 minutos.' }],
+    esperado: { invoca: ['crear_recordatorio'], clasificador: false }
+  },
+  {
+    id: 'R07-real-recordatorio-listar',
+    entrada: 'dime todos mis recordatorios',
+    pasos: [{ llama: 'listar_recordatorios', args: {} }, { texto: 'Tienes tres recordatorios activos.' }],
+    esperado: { invoca: ['listar_recordatorios'], clasificador: false }
+  },
+  {
+    id: 'R08-real-recordatorio-recuerdame',
+    entrada: 'recuerdame llamar al dentista a las 18:00',
+    pasos: [{ llama: 'crear_recordatorio', args: { nota: 'llamar al dentista' } }, { texto: 'Anotado para las 18:00.' }],
+    esperado: { invoca: ['crear_recordatorio'], clasificador: false }
+  },
+  {
+    id: 'R09-real-mensaje-madre-diferido',
+    entrada: 'dile a mi madre en 15 minutos que ya he salido',
+    pasos: [{ llama: 'programar_mensaje_whatsapp', args: { contacto: 'madre' } }, { texto: 'Se lo digo en 15 minutos.' }],
+    esperado: { invoca: ['programar_mensaje_whatsapp'], clasificador: false }
+  },
+  {
+    id: 'R10-real-mensaje-ahora',
+    entrada: 'dile a lucia ahora mismo que llego en 10',
+    pasos: [{ llama: 'programar_mensaje_whatsapp', args: { contacto: 'lucia' } }, { texto: 'Mensaje enviado a Lucia.' }],
+    esperado: { invoca: ['programar_mensaje_whatsapp'], clasificador: false }
+  },
+  {
+    id: 'R11-real-hogar-encender-pc',
+    entrada: 'enciende mi pc',
+    pasos: [{ llama: 'encender_pc', args: {} }, { texto: 'Ordenador encendiendose.' }],
+    esperado: { invoca: ['encender_pc'], clasificador: false }
+  },
+  {
+    id: 'R12-real-servidor-estado',
+    entrada: 'como va el servidor?',
+    pasos: [{ llama: 'consultar_estado_servidor', args: {} }, { texto: 'El servidor va fino.' }],
+    esperado: { invoca: ['consultar_estado_servidor'], clasificador: false }
+  },
+  {
+    id: 'R13-real-generativo-sin-herramienta',
+    entrada: 'generame una imagen de un atardecer',
+    pasos: [{ texto: 'No puedo generar imagenes, David: no tengo esa herramienta.' }],
+    esperado: { sinHerramientas: true, clasificador: false }
+  },
+  {
+    id: 'R14-real-sniper-listar',
+    entrada: 'que productos estas vigilando?',
+    pasos: [{ llama: 'listar_productos_vigilados', args: {} }, { texto: 'Vigilo dos productos.' }],
+    esperado: { invoca: ['listar_productos_vigilados'], clasificador: false }
+  },
+  {
+    id: 'R15-real-sniper-cancelar',
+    entrada: 'deja de vigilar las zapatillas',
+    pasos: [{ llama: 'cancelar_vigilancia', args: { producto: 'zapatillas' } }, { texto: 'Dejo de vigilarlas.' }],
+    esperado: { invoca: ['cancelar_vigilancia'], clasificador: false }
+  },
+  {
+    id: 'R16-real-conversacion-quien-eres',
+    entrada: 'quien eres?',
+    pasos: [{ texto: 'Soy D.A.V.I.S., tu copiloto digital.' }],
+    esperado: { sinHerramientas: true, clasificador: false }
+  },
+  {
+    id: 'R17-real-vip-activar',
+    entrada: 'activa el modo vip',
+    pasos: [{ llama: 'activar_modo_vip', args: {} }, { texto: 'Modo VIP activado.' }],
+    esperado: { invoca: ['activar_modo_vip'], clasificador: false }
+  },
+  {
+    id: 'R18-real-mensaje-enviale',
+    entrada: 'enviale un mensaje de amor a raul',
+    pasos: [{ llama: 'programar_mensaje_whatsapp', args: { contacto: 'raul' } }, { texto: 'Mensaje preparado para Raul.' }],
+    esperado: { invoca: ['programar_mensaje_whatsapp'], clasificador: false }
+  },
+  {
+    id: 'R19-real-mensaje-escribe-diferido',
+    entrada: 'escribe a hugo en 10 minutos que baje la basura',
+    pasos: [{ llama: 'programar_mensaje_whatsapp', args: { contacto: 'hugo' } }, { texto: 'Se lo escribo en 10 minutos.' }],
+    esperado: { invoca: ['programar_mensaje_whatsapp'], clasificador: false }
+  },
+  {
+    id: 'R20-real-modelo-novedades',
+    entrada: 'dime que cosas nuevas puedes hacer',
+    pasos: [
+      { clasifica: { intencion: 'conversacion', confianza: 0.9 } },
+      { texto: 'Lo ultimo: trazas del recorrido y memoria episodica.' }
+    ],
+    esperado: { sinHerramientas: true, clasificador: true }
+  },
+  {
+    id: 'R21-real-modelo-config-pendiente',
+    entrada: 'dime que cosas me faltan por configurar',
+    pasos: [
+      { clasifica: { intencion: 'conversacion', confianza: 0.85 } },
+      { texto: 'Te falta conectar la EMT y el modelo de vision.' }
+    ],
+    esperado: { sinHerramientas: true, clasificador: true }
+  },
+  {
+    id: 'R22-real-recorrido-directo',
+    entrada: 'como has llegado a esa respuesta?',
+    pasos: [{ llama: 'explicar_recorrido', args: {} }, { texto: 'Ahi va el recorrido completo.' }],
+    esperado: { invoca: ['explicar_recorrido'], clasificador: false }
+  },
+  {
+    id: 'R23-real-mensaje-mama-diferido',
+    entrada: 'dile a mama en 5 minutos que ya voy',
+    pasos: [{ llama: 'programar_mensaje_whatsapp', args: { contacto: 'mama' } }, { texto: 'Se lo digo en 5 minutos.' }],
+    esperado: { invoca: ['programar_mensaje_whatsapp'], clasificador: false }
+  },
+  {
+    id: 'R24-real-conversacion-saludo',
+    entrada: 'buenas noches, que tal?',
+    pasos: [{ texto: 'Buenas noches, David. Todo en orden.' }],
+    esperado: { sinHerramientas: true, clasificador: false }
   }
 ];
