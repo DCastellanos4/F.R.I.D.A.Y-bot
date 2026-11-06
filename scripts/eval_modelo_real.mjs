@@ -31,6 +31,12 @@ import { casosDorados } from '../tests/sector3/golden_dataset.js';
 const MARCA_CLASIFICADOR = 'Clasifica la intencion principal';
 const PAUSA_MS_ENTRE_CASOS = Number.parseInt(process.env.DAVIS_EVAL_PAUSA_MS || '3000', 10);
 
+// Techos GLOBALES (no por caso): consultarJarvis puede llamar al modelo
+// varias veces por caso (clasificador, rondas de herramientas, reintentos).
+// La evaluacion aborta al superar el techo y lo reporta.
+const MAX_LLAMADAS_GLOBAL = Number.parseInt(process.env.DAVIS_EVAL_MAX_LLAMADAS || '120', 10);
+let llamadasGlobales = 0;
+
 const args = process.argv.slice(2);
 const optSolo = args.includes('--solo') ? args[args.indexOf('--solo') + 1].split(',') : null;
 const optSalida = args.includes('--salida') ? args[args.indexOf('--salida') + 1] : null;
@@ -65,6 +71,10 @@ async function ejecutarCaso(caso) {
       obs.llamadasClasificador += 1;
     }
     obs.llamadasLlm += 1;
+    llamadasGlobales += 1;
+    if (llamadasGlobales > MAX_LLAMADAS_GLOBAL) {
+      throw new Error(`TECHO GLOBAL: ${MAX_LLAMADAS_GLOBAL} llamadas al modelo superadas; evaluacion abortada`);
+    }
     for (let intento = 0; intento < 4; intento++) {
       try {
         return await chatCompletion(peticion);
@@ -133,7 +143,7 @@ for (const caso of casos) {
 
 const okCount = resultados.filter((r) => r.ok).length;
 console.log(`\n===== EVAL MODELO REAL =====`);
-console.log(`Casos: ${resultados.length} | OK: ${okCount} | Fallos: ${resultados.length - okCount}`);
+console.log(`Casos: ${resultados.length} | OK: ${okCount} | Fallos: ${resultados.length - okCount} | llamadas al modelo: ${llamadasGlobales} (techo ${MAX_LLAMADAS_GLOBAL})`);
 for (const r of resultados.filter((r) => !r.ok)) console.log(`  FALLO ${r.id}: ${r.fallos.join(' | ')}`);
 console.log('============================\n');
 
