@@ -207,3 +207,106 @@ test('procesarMensajesEntrantes: "aprobar skill X" lo resuelve whatsappBot sin l
   assert.equal(llamadasLLM, 0, 'la aprobacion nunca pasa por el modelo');
   assert.ok(enviados.some((m) => String(m.payload.text || '').includes('aprobada')));
 });
+
+// ---------- Guardas: la aprobacion esta ligada al contenido exacto ----------
+
+test('si la definicion cambia tras la propuesta, la aprobacion ya no vale', () => {
+  const deps = depsSkills();
+  const chat = 'chat-skill-hash';
+  skills._reiniciarPendientes();
+  const ruta = deps.rutaSkills;
+  const prop = skills.proponerSkill({
+    nombre: 'skill_manipulable',
+    descripcion: 'inocua',
+    parametros: [],
+    pasos: [{ herramienta: 'consultar_estado_servidor', argumentos: {} }]
+  }, { chatId: chat }, { ...deps, herramientasConocidas: ['consultar_estado_servidor', 'programar_mensaje_whatsapp'] });
+  assert.ok(prop.ok);
+  // Alguien altera la definicion guardada (p. ej. un paso con envio).
+  const data = JSON.parse(fs.readFileSync(ruta, 'utf-8'));
+  data.skills.find((s) => s.nombre === 'skill_manipulable').pasos.push({ herramienta: 'programar_mensaje_whatsapp', argumentos: { numero: '600000000', mensaje: 'x' } });
+  fs.writeFileSync(ruta, JSON.stringify(data), 'utf-8');
+  const res = skills.resolverConfirmacionSkill(chat, 'aprobar skill skill_manipulable', deps);
+  assert.equal(res.confirmado, false, 'la mutacion invalida la aprobacion');
+  assert.ok(res.motivo.includes('cambio'));
+});
+
+// ---------- Guardas por paso: efectos externos exigen verificacion ----------
+
+test('verificarPaso bloquea un paso de envio sin destinatario verificado y deja pasar uno verificado', async () => {
+  const deps = depsSkills();
+  const chat = 'chat-skill-envio';
+  skills._reiniciarPendientes();
+  skills.proponerSkill({
+    nombre: 'aviso_a_marta',
+    descripcion: 'Manda un aviso',
+    parametros: [{ nombre: 'mensaje', requerido: true }],
+    pasos: [{ herramienta: 'programar_mensaje_whatsapp', argumentos: { numero: '600111222', mensaje: '{{mensaje}}' } }]
+  }, { chatId: chat }, { ...deps, herramientasConocidas: ['programar_mensaje_whatsapp'] });
+  skills.resolverConfirmacionSkill(chat, 'aprobar skill aviso_a_marta', deps);
+
+  let ejecutado = false;
+  const bloqueado = await skills.ejecutarSkill('aviso_a_marta', { mensaje: 'hola' }, {
+    ...deps,
+    verificarPaso: () => 'el numero de destino no consta en este chat ni en los contactos verificados',
+    ejecutor: async () => { ejecutado = true; return { texto: 'enviado' }; }
+  });
+  assert.equal(bloqueado.ok, false);
+  assert.equal(ejecutado, false, 'el paso bloqueado no se ejecuta');
+
+  const permitido = await skills.ejecutarSkill('aviso_a_marta', { mensaje: 'hola' }, {
+    ...deps,
+    verificarPaso: () => null,
+    ejecutor: async (h, a) => { ejecutado = true; return { texto: `ok:${a.mensaje}` }; }
+  });
+  assert.equal(permitido.ok, true);
+  assert.ok(permitido.texto.includes('ok:hola'));
+});
+
+// ---------- Confirmacion de voz: aprobar skills tambien es accion critica ----------
+
+test('esAccionCriticaPorVoz cubre aprobar/rechazar skills dictados por voz', async () => {
+  const voz = await import('../../src/services/voiceConfirmationService.js');
+  assert.equal(voz.esAccionCriticaPorVoz('aprobar skill diag_rapido'), true);
+  assert.equal(voz.esAccionCriticaPorVoz('rechazar skill aviso_a_marta'), true);
+  assert.equal(voz.esAccionCriticaPorVoz('que skills tengo'), false);
+});
+
+test('procesarMensajesEntrantes: "aprobar skill X" por AUDIO exige el si previo y no aprueba directamente', async () => {
+  skills._reiniciarPendientes();
+  const prop = skills.proponerSkill({
+    nombre: 'skill_por_voz',
+    descripcion: 'x',
+    parametros: [],
+    pasos: [{ herramienta: 'consultar_estado_servidor', argumentos: {} }]
+  }, { chatId: JID_DAVID }, { herramientasConocidas: ['consultar_estado_servidor'] });
+  assert.ok(prop.ok);
+
+  let llamadasLLM = 0;
+  const llm = async () => { llamadasLLM++; return { message: { content: 'no deberia llamarse' } }; };
+  const enviados = [];
+  const msgAudio = {
+    key: { remoteJid: JID_DAVID, fromMe: false, id: 'SIM-AUDIO-1' },
+    message: { audioMessage: { url: 'sim', mimetype: 'audio/ogg' } },
+    messageTimestamp: Math.floor(Date.now() / 1000)
+  };
+  await bot.procesarMensajesEntrantes(sockSimulado(enviados), {
+    messages: [msgAudio],
+    type: 'notify'
+  }, {
+    chatCompletion: llm,
+    skipPersistencia: true,
+    descargarMedia: async () => Buffer.from('sim'),
+    transcribirAudio: async () => ({ ok: true, texto: 'aprobar skill skill_por_voz' })
+  });
+  assert.equal(llamadasLLM, 0);
+  assert.ok(enviados.some((m) => String(m.payload.text || '').includes('Antes de actuar')), 'pide confirmacion de voz');
+  assert.ok(!enviados.some((m) => String(m.payload.text || '').includes('aprobada')), 'no aprueba por audio sin el si');
+
+  // Y un "si" textual confirma la accion original (que aprueba la skill).
+  await bot.procesarMensajesEntrantes(sockSimulado(enviados), {
+    messages: [mensajeEntrante('si', 'SIM-AUDIO-2')],
+    type: 'notify'
+  }, { chatCompletion: llm, skipPersistencia: true });
+  assert.ok(enviados.some((m) => String(m.payload.text || '').includes('aprobada')), 'el si textual aprueba');
+});

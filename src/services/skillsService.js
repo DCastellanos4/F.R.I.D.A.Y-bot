@@ -199,9 +199,10 @@ export function resolverConfirmacionSkill(chatId, texto, deps = {}) {
   if (!skill || skill.estado !== 'pendiente') {
     return { confirmado: false, motivo: 'Esa propuesta ya no existe o ya fue resuelta.' };
   }
-  // La aprobacion esta ligada al contenido exacto propuesto: si la
-  // definicion cambiara, el hash ya no coincide y hay que reproponer.
-  if (skill.hashContenido !== pend.hashContenido) {
+  // La aprobacion esta ligada al contenido exacto propuesto: se recalcula
+  // el hash de la definicion actual (no se confia en el guardado); si
+  // cambio, hay que reproponer.
+  if (hashContenido(skill) !== pend.hashContenido) {
     return { confirmado: false, motivo: 'La definicion cambio desde que se propuso; por seguridad hay que proponerla de nuevo.' };
   }
   skill.estado = accion === 'aprobar' ? 'aprobada' : 'rechazada';
@@ -255,6 +256,14 @@ export async function ejecutarSkill(criterio, args = {}, deps = {}) {
   const resultados = [];
   for (const [i, paso] of skill.pasos.entries()) {
     const argumentosPaso = sustituirPlaceholders(paso.argumentos || {}, argumentos);
+    // Guardas por paso (destinatario verificado, etc.): las decide el
+    // llamador con el contexto del chat; una skill nunca las salta.
+    if (typeof deps.verificarPaso === 'function') {
+      const bloqueo = deps.verificarPaso(paso.herramienta, argumentosPaso);
+      if (bloqueo) {
+        return { ok: false, skill: skill.nombre, resultados, error: `Paso ${i + 1} (${paso.herramienta}) bloqueado: ${bloqueo}` };
+      }
+    }
     try {
       const res = await deps.ejecutor(paso.herramienta, argumentosPaso);
       resultados.push({ paso: i + 1, herramienta: paso.herramienta, texto: res && res.texto ? res.texto : String(res) });

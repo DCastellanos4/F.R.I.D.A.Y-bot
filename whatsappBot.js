@@ -935,14 +935,6 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         continue;
       }
 
-      // Aprobacion/rechazo de skills (procedimientos reutilizables): fuera
-      // de banda, ligada al chat, TTL y un solo uso. Nunca pasa por el LLM.
-      const resSkill = resolverConfirmacionSkill(remoteJid, texto);
-      if (resSkill) {
-        console.log(`[Skills 2FA] ${resSkill.confirmado ? 'Confirmada' : 'Rechazada o invalida'} por David directamente, sin pasar por el LLM.`);
-        await sock.sendMessage(remoteJid, { text: resSkill.motivo }, { quoted: msg });
-        continue;
-      }
 
       // Confirmacion de acciones criticas dictadas por voz: la transcripcion
       // puede equivocarse, asi que envios a terceros, borrados y comandos
@@ -969,6 +961,17 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
       }
       // resVoz === 'nuevo': la peticion pendiente queda descartada y se
       // procesa el mensaje actual con normalidad.
+
+      // Aprobacion/rechazo de skills (procedimientos reutilizables): fuera
+      // de banda, ligada al chat, TTL y un solo uso. Nunca pasa por el LLM.
+      // Va DESPUES de la confirmacion de voz: una aprobacion dictada por
+      // audio exige antes el "si" explicito (accion critica por voz).
+      const resSkill = resolverConfirmacionSkill(remoteJid, texto);
+      if (resSkill) {
+        console.log(`[Skills 2FA] ${resSkill.confirmado ? 'Confirmada' : 'Rechazada o invalida'} por David directamente, sin pasar por el LLM.`);
+        await sock.sendMessage(remoteJid, { text: resSkill.motivo }, { quoted: msg });
+        continue;
+      }
 
       // Mantener el estado "escribiendo..." en WhatsApp mientras el LLM piensa
       const typingInterval = setInterval(() => {

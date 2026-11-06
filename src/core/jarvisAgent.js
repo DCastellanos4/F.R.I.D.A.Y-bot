@@ -1682,7 +1682,16 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
           : 'Skills registradas:\n' + lista.map((s, i) => `${i + 1}. ${s.nombre} [${s.estado}] - ${s.descripcion}${s.parametros.length ? ` (parametros: ${s.parametros.join(', ')})` : ''}`).join('\n');
       } else if (nombreFuncion === 'ejecutar_skill') {
         const res = await ejecutarSkill(args.nombre, args.argumentos || {}, {
-          ejecutor: (herramienta, argumentosPaso) => ejecutarHerramientaJarvis(herramienta, argumentosPaso, opciones)
+          ejecutor: (herramienta, argumentosPaso) => ejecutarHerramientaJarvis(herramienta, argumentosPaso, opciones),
+          // Las guardas de efectos se aplican a cada paso de la skill con el
+          // contexto del chat actual: un paso de envio a terceros exige el
+          // destinatario verificado igual que si el modelo lo invocara.
+          verificarPaso: (herramienta, argumentosPaso) => {
+            if (HERRAMIENTAS_ENVIO_TERCEROS.has(herramienta) && !destinatarioVerificado(argumentosPaso.numero, opciones.mensajeUsuario, opciones.historial, opciones)) {
+              return 'el numero de destino no consta en este chat ni en los contactos verificados';
+            }
+            return null;
+          }
         });
         resultadoTool = res.ok ? res.texto : `No se pudo ejecutar la skill: ${res.error}`;
       } else {
@@ -1941,7 +1950,7 @@ Directrices de selección:
         accionesConEfectosEjecutadas.add(claveAccion);
       }
       try {
-        const salida = await ejecutarHerramientaJarvis(nombreFuncion, args, opciones);
+        const salida = await ejecutarHerramientaJarvis(nombreFuncion, args, { ...opciones, mensajeUsuario, historial });
         resultadoTool = salida.texto;
         if (salida.enlaces) enlacesParaAdjuntar = salida.enlaces;
         traza.llamadas.push({ nombre: nombreFuncion, ronda, resultado: 'ok' });

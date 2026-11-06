@@ -30,8 +30,11 @@ export function esAccionCriticaPorVoz(texto) {
   const borradoMemoria = /\b(olvida|olvidar|borra|borrar|elimina|eliminar)\b[\s\S]{0,40}\b(memoria|recuerdo|recuerdos|todo|todos|todas|clave|contrasena|password|pin)\b/.test(t);
   const cancelacionMasiva = /\bcancela(r)?\b[\s\S]{0,30}\b(todo|todos|todas)\b/.test(t);
   const comandosTerminal = /\b(ejecuta|ejecutar|lanza|lanzar|corre)\b[\s\S]{0,30}\b(comando|bash|terminal|consola|shell|script)\b/.test(t);
+  // Aprobar o rechazar una skill activa/descarta un procedimiento: por voz
+  // exige confirmacion como cualquier otra accion critica.
+  const aprobacionSkill = /\b(aprobar|aprueba|rechazar|rechaza|confirmar)\b[\s\S]{0,20}\bskill\b/.test(t);
 
-  return envioMensajes || borradoMemoria || cancelacionMasiva || comandosTerminal;
+  return envioMensajes || borradoMemoria || cancelacionMasiva || comandosTerminal || aprobacionSkill;
 }
 
 /**
