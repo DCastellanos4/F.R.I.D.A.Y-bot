@@ -34,6 +34,50 @@ function rutaChat(chatId, deps = {}) {
   return path.join(carpeta(deps), `${hash}.jsonl`);
 }
 
+// ---- Indice full-text por chat (recomendacion Hermes n.2, aprobada por
+// David el 6 nov 2026): indice invertido token -> lineas del JSONL para no
+// rescanear todo el archivo en cada busqueda. Se deriva SIEMPRE del
+// contenido ya redactado, se borra con el (limpiarEpisodios) y se reconstruye
+// si queda desincronizado: no retiene nada que el archivo no retenga.
+function rutaIndice(chatId, deps = {}) {
+  const hash = crypto.createHash('sha256').update(String(chatId)).digest('hex').slice(0, 24);
+  const base = deps.carpetaIndices || path.join(carpeta(deps), 'indices');
+  return path.join(base, `${hash}.json`);
+}
+
+function tokenizar(texto) {
+  return [...new Set(normalizarTexto(texto).split(' ').filter((w) => w.length > 2))];
+}
+
+function construirIndice(episodios) {
+  const tokens = {};
+  episodios.forEach((e, i) => {
+    for (const t of tokenizar(e.content || '')) {
+      (tokens[t] || (tokens[t] = [])).push(i);
+    }
+  });
+  return { totalLineas: episodios.length, tokens };
+}
+
+function leerIndice(chatId, deps = {}) {
+  try {
+    const data = JSON.parse(fs.readFileSync(rutaIndice(chatId, deps), 'utf-8'));
+    if (data && typeof data.totalLineas === 'number' && data.tokens) return data;
+  } catch { /* sin indice o corrupto: se reconstruye */ }
+  return null;
+}
+
+function escribirIndice(chatId, indice, deps = {}) {
+  if (process.env.NODE_ENV === 'test' && !deps.carpetaEpisodios && !process.env.DAVIS_DATA_DIR) return;
+  try {
+    const ruta = rutaIndice(chatId, deps);
+    fs.mkdirSync(path.dirname(ruta), { recursive: true });
+    fs.writeFileSync(ruta, JSON.stringify(indice), { encoding: 'utf-8', mode: 0o600 });
+  } catch (err) {
+    console.error('[MemoriaEpisodica] Error escribiendo indice:', err.message);
+  }
+}
+
 /**
  * Archiva mensajes que salen del historial activo. Cada episodio:
  * { role: 'user'|'assistant', content, ts }.
@@ -54,9 +98,28 @@ export function archivarEpisodios(chatId, mensajes, deps = {}) {
     if (lineas.length === 0) return false;
     fs.appendFileSync(ruta, lineas.join('\n') + '\n', { encoding: 'utf-8', mode: 0o600 });
     // Tope por chat: conserva los mas recientes.
-    const todas = fs.readFileSync(ruta, 'utf-8').split('\n').filter(Boolean);
+    let todas = fs.readFileSync(ruta, 'utf-8').split('\n').filter(Boolean);
+    let truncado = false;
     if (todas.length > MAX_EPISODIOS_ARCHIVO + 100) {
-      fs.writeFileSync(ruta, todas.slice(-MAX_EPISODIOS_ARCHIVO).join('\n') + '\n', { encoding: 'utf-8', mode: 0o600 });
+      todas = todas.slice(-MAX_EPISODIOS_ARCHIVO);
+      fs.writeFileSync(ruta, todas.join('\n') + '\n', { encoding: 'utf-8', mode: 0o600 });
+      truncado = true;
+    }
+    // Indice full-text: incremental si esta sincronizado; reconstruccion
+    // completa si hubo truncado o desfase de lineas.
+    const episodiosActuales = todas.map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    const indicePrevio = leerIndice(chatId, deps);
+    if (!truncado && indicePrevio && indicePrevio.totalLineas === episodiosActuales.length - lineas.length) {
+      episodiosActuales.slice(indicePrevio.totalLineas).forEach((e, k) => {
+        const i = indicePrevio.totalLineas + k;
+        for (const t of tokenizar(e.content || '')) {
+          (indicePrevio.tokens[t] || (indicePrevio.tokens[t] = [])).push(i);
+        }
+      });
+      indicePrevio.totalLineas = episodiosActuales.length;
+      escribirIndice(chatId, indicePrevio, deps);
+    } else {
+      escribirIndice(chatId, construirIndice(episodiosActuales), deps);
     }
     return true;
   } catch (err) {
@@ -90,7 +153,21 @@ export async function buscarEpisodios(chatId, consulta, deps = {}) {
   const palabras = normalizarTexto(consulta).split(' ').filter((w) => w.length > 2);
   if (palabras.length === 0) return [];
 
-  const puntuados = episodios.map((e, idx) => {
+  // Candidatos via indice full-text si esta sincronizado con el archivo;
+  // si no, barrido clasico y se reconstruye el indice para la proxima.
+  let base = episodios.map((e, idx) => ({ e, idx }));
+  const indice = leerIndice(chatId, deps);
+  if (indice && indice.totalLineas === episodios.length) {
+    const vistos = new Map();
+    for (const w of palabras) {
+      for (const i of indice.tokens[w] || []) vistos.set(i, (vistos.get(i) || 0) + 1);
+    }
+    base = [...vistos.entries()].map(([idx, puntos]) => ({ e: episodios[idx], idx, puntosIndex: puntos }));
+  } else if (episodios.length > 0) {
+    escribirIndice(chatId, construirIndice(episodios), deps);
+  }
+
+  const puntuados = base.map(({ e, idx }) => {
     const texto = normalizarTexto(e.content);
     let puntos = 0;
     for (const w of palabras) if (texto.includes(w)) puntos++;
@@ -132,6 +209,8 @@ export function limpiarEpisodios(chatId, deps = {}) {
   try {
     const ruta = rutaChat(chatId, deps);
     if (fs.existsSync(ruta)) fs.unlinkSync(ruta);
+    const rutaIdx = rutaIndice(chatId, deps);
+    if (fs.existsSync(rutaIdx)) fs.unlinkSync(rutaIdx);
     return true;
   } catch {
     return false;

@@ -19,6 +19,7 @@ import { iniciarMonitorMensajesProgramados, registrarIdWhatsApp, procesarActuali
 import { obtenerHistorial, registrarIntercambio, programarCondensacionSiNecesario, limpiarHistorial } from './src/services/conversationHistoryService.js';
 import { esAccionCriticaPorVoz, guardarPendienteVoz, resolverConfirmacionVoz } from './src/services/voiceConfirmationService.js';
 import { resolverConfirmacionBorrado, resolverCancelacionBorrado, registrarBorradoConversacionPendiente, esPeticionBorradoConversacion } from './src/services/destructiveActionService.js';
+import { resolverConfirmacionSkill } from './src/services/skillsService.js';
 import { olvidarMemoria } from './src/services/memoryService.js';
 import { iniciarVigilanteProactivo } from './src/monitors/proactiveAlerts.js';
 import { iniciarSniperWatchdog } from './src/monitors/sniperService.js';
@@ -931,6 +932,15 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
           textoBorrado = resBorrado.motivo;
         }
         await sock.sendMessage(remoteJid, { text: textoBorrado }, { quoted: msg });
+        continue;
+      }
+
+      // Aprobacion/rechazo de skills (procedimientos reutilizables): fuera
+      // de banda, ligada al chat, TTL y un solo uso. Nunca pasa por el LLM.
+      const resSkill = resolverConfirmacionSkill(remoteJid, texto);
+      if (resSkill) {
+        console.log(`[Skills 2FA] ${resSkill.confirmado ? 'Confirmada' : 'Rechazada o invalida'} por David directamente, sin pasar por el LLM.`);
+        await sock.sendMessage(remoteJid, { text: resSkill.motivo }, { quoted: msg });
         continue;
       }
 

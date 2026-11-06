@@ -1993,6 +1993,69 @@ export const herramientasJarvis = [
       description: 'Explica en llano como llego D.A.V.I.S. a su respuesta anterior en este chat: via de enrutado (reglas propias o clasificador), areas detectadas, herramientas usadas, rondas y duracion. Usala cuando David pregunte "como has llegado a esa respuesta", "que herramientas has usado" o "explica el recorrido".',
       parameters: { type: 'object', properties: {}, required: [] }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'proponer_skill',
+      description: 'Propone un procedimiento reutilizable (skill): una secuencia de pasos que usan herramientas ya existentes. NUNCA se activa sola: David la aprueba o rechaza escribiendo "aprobar skill <nombre>" o "rechazar skill <nombre>". Los pasos no conceden permisos nuevos; cada uno pasa por las guardas habituales.',
+      parameters: {
+        type: 'object',
+        properties: {
+          nombre: { type: 'string', description: 'Nombre unico en minusculas_con_guiones_bajos (3-41 caracteres).' },
+          descripcion: { type: 'string', description: 'Que hace el procedimiento y cuando conviene usarlo.' },
+          parametros: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                nombre: { type: 'string', description: 'Nombre del parametro (minusculas_con_guiones_bajos).' },
+                descripcion: { type: 'string', description: 'Que significa el parametro.' },
+                requerido: { type: 'boolean', description: 'Si es obligatorio al ejecutar la skill.' }
+              },
+              required: ['nombre']
+            },
+            description: 'Parametros que acepta la skill. En los argumentos de los pasos se referencian como {{nombre}}.'
+          },
+          pasos: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                herramienta: { type: 'string', description: 'Nombre de una herramienta existente (nunca otra skill).' },
+                argumentos: { type: 'object', description: 'Argumentos fijos del paso; pueden incluir {{parametro}}.' }
+              },
+              required: ['herramienta']
+            },
+            description: 'Secuencia ordenada de llamadas a herramientas existentes.'
+          }
+        },
+        required: ['nombre', 'descripcion', 'pasos']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_skills',
+      description: 'Lista los procedimientos reutilizables (skills) con su estado (pendiente, aprobada o rechazada) y sus parametros.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'ejecutar_skill',
+      description: 'Ejecuta una skill APROBADA por David, paso a paso y con las guardas habituales en cada paso. Si esta pendiente o rechazada, lo dice y no hace nada.',
+      parameters: {
+        type: 'object',
+        properties: {
+          nombre: { type: 'string', description: 'Nombre de la skill aprobada.' },
+          argumentos: { type: 'object', description: 'Valores de los parametros declarados en la skill.' }
+        },
+        required: ['nombre']
+      }
+    }
   }
 ];
 
@@ -2069,6 +2132,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   carrera: ['iniciar_simulacro_entrevista', 'analizar_cv_oferta', 'resumir_apuntes', 'registrar_entrega', 'listar_entregas', 'eliminar_entrega'],
   procesos: ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'],
   finanzas: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'],
+  skills: ['proponer_skill', 'listar_skills', 'ejecutar_skill'],
   conversacion: []
 };
 

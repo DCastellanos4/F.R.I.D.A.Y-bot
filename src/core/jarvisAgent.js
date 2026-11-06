@@ -26,6 +26,7 @@ import {
   normalizarTexto
 } from '../services/memoryService.js';
 import { registrarBorradoMasivoPendiente } from '../services/destructiveActionService.js';
+import { proponerSkill, listarSkills, ejecutarSkill } from '../services/skillsService.js';
 import { NUM_CTX_DEFECTO, NUM_PREDICT_DEFECTO } from './llmService.js';
 import {
   vigilarProducto,
@@ -304,7 +305,10 @@ export function analizarIntencion(mensaje) {
     generativo: /(genera(r|me)?|crea(r|me)?|haz(me)?|dibuja(r|me)?|pinta(r|me)?|hacer)\s+(una?\s+|un\s+)?(imagen|im[aá]genes|foto|dibujo|logo|ilustraci[oó]n|v[ií]deo|canci[oó]n|melod[ií]a|m[uú]sica)\b/i,
 
     // Copias de seguridad cifradas DAVBAK (Sector 2)
-    backup: /(backup|copia\s+de\s+seguridad|respaldo|hacer\s+backup|crear\s+backup|backup\s+cifrado|davbak|restaurar\s+backup)/i
+    backup: /(backup|copia\s+de\s+seguridad|respaldo|hacer\s+backup|crear\s+backup|backup\s+cifrado|davbak|restaurar\s+backup)/i,
+
+    // Procedimientos reutilizables (skills aprobadas por David)
+    skills: /(procedimiento|skill|rutina\s+guardada|pasos\s+guardados|diagn[oó]stico)/i
   };
 
   let matchClima = intents.clima.test(sinNombre);
@@ -343,6 +347,7 @@ export function analizarIntencion(mensaje) {
   let matchHogar = intents.hogar.test(sinNombre);
   let matchViajes = intents.viajes.test(sinNombre);
   let matchGenerativo = intents.generativo.test(sinNombre);
+  let matchSkills = intents.skills.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
   if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro && !matchBienestar && !matchCarrera && !matchCompras && !matchDevtools && !matchOps && !matchHogar && !matchViajes && !matchGenerativo) {
@@ -425,6 +430,10 @@ export function analizarIntencion(mensaje) {
 
   if (matchBackup) {
     tools.push(...herramientasJarvis.filter(h => h.function.name === 'trigger_encrypted_backup'));
+  }
+
+  if (matchSkills) {
+    tools.push(...herramientasJarvis.filter(h => h.function.name === 'proponer_skill' || h.function.name === 'listar_skills' || h.function.name === 'ejecutar_skill'));
   }
 
   if (matchEmpleo) {
@@ -1653,6 +1662,29 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
         } catch (errBak) {
           resultadoTool = `Error al generar la copia de seguridad cifrada: ${errBak.message}`;
         }
+      } else if (nombreFuncion === 'proponer_skill') {
+        const res = proponerSkill({
+          nombre: args.nombre,
+          descripcion: args.descripcion,
+          parametros: args.parametros || [],
+          pasos: args.pasos || []
+        }, { chatId: opciones.chatId }, { herramientasConocidas: [...MAPA_DEFINICION_HERRAMIENTA.keys()] });
+        if (res.ok) {
+          const params = res.skill.parametros.map((p) => p.nombre);
+          resultadoTool = `Propuesta registrada, señor. Skill "${res.skill.nombre}": ${res.skill.descripcion} Pasos: ${res.skill.pasos.map((p) => p.herramienta).join(' -> ')}${params.length ? `. Parametros: ${params.join(', ')}` : ''}. Para activarla escriba "aprobar skill ${res.skill.nombre}"; para descartarla, "rechazar skill ${res.skill.nombre}".`;
+        } else {
+          resultadoTool = `No se pudo registrar la propuesta: ${res.error}`;
+        }
+      } else if (nombreFuncion === 'listar_skills') {
+        const lista = listarSkills();
+        resultadoTool = lista.length === 0
+          ? 'No hay ninguna skill registrada.'
+          : 'Skills registradas:\n' + lista.map((s, i) => `${i + 1}. ${s.nombre} [${s.estado}] - ${s.descripcion}${s.parametros.length ? ` (parametros: ${s.parametros.join(', ')})` : ''}`).join('\n');
+      } else if (nombreFuncion === 'ejecutar_skill') {
+        const res = await ejecutarSkill(args.nombre, args.argumentos || {}, {
+          ejecutor: (herramienta, argumentosPaso) => ejecutarHerramientaJarvis(herramienta, argumentosPaso, opciones)
+        });
+        resultadoTool = res.ok ? res.texto : `No se pudo ejecutar la skill: ${res.error}`;
       } else {
         resultadoTool = 'Función no reconocida.';
       }
