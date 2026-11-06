@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { normalizarTexto } from '../services/memoryService.js';
 import { herramientasParaIntenciones, MAPA_INTENCION_HERRAMIENTAS } from './tools.js';
 
@@ -26,6 +28,106 @@ import { herramientasParaIntenciones, MAPA_INTENCION_HERRAMIENTAS } from './tool
 export const UMBRAL_CONFIANZA = 0.6;
 const MAX_CACHE = 100;
 const cacheClasificaciones = new Map();
+
+// ---------------- Salud del clasificador (metrica + aviso acotado) ----------------
+// El clasificador estuvo caido en produccion sin que nadie lo supiera hasta
+// que el catalogo crecio y el volcado rompio todo con el 400. Cada intento
+// de clasificacion queda registrado en un JSONL local; si la tasa de fallo
+// reciente es alta se avisa a David UNA vez cada 24 h como maximo.
+
+const DATA_DIR = process.env.DAVIS_DATA_DIR || path.join(process.cwd(), 'data');
+const RUTA_METRICAS_DEFECTO = path.join(DATA_DIR, 'metricas_clasificador.jsonl');
+const VENTANA_SALUD = 10;        // clasificaciones recientes evaluadas
+const UMBRAL_TASA_FALLO = 0.8;   // >=80% de fallos = no saludable
+const COOLDOWN_AVISO_MS = 24 * 60 * 60 * 1000;
+
+function rutaMetricas(deps = {}) {
+  return deps.rutaArchivoMetricasClasificador || RUTA_METRICAS_DEFECTO;
+}
+
+function registrarEvento(deps, evento) {
+  // En pruebas nunca se escribe en data/ del repo: solo con ruta inyectada.
+  if (process.env.NODE_ENV === 'test' && !deps.rutaArchivoMetricasClasificador) return;
+  try {
+    const ruta = rutaMetricas(deps);
+    fs.mkdirSync(path.dirname(ruta), { recursive: true });
+    fs.appendFileSync(ruta, JSON.stringify({ ts: new Date().toISOString(), ...evento }) + '\n', 'utf-8');
+  } catch (err) {
+    console.error('[SaludClasificador] No se pudo registrar la metrica:', err.message);
+  }
+}
+
+function leerEventos(deps) {
+  try {
+    const ruta = rutaMetricas(deps);
+    if (!fs.existsSync(ruta)) return [];
+    return fs.readFileSync(ruta, 'utf-8').split('\n').filter(Boolean)
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Salud reciente del clasificador: sobre las ultimas VENTANA_SALUD
+ * clasificaciones reales (sin cache), no saludable si la tasa de
+ * parse_fail|error llega al umbral.
+ */
+export function evaluarSaludClasificador(deps = {}) {
+  const reales = leerEventos(deps).filter((e) => e.tipo === 'clasificacion' && e.resultado !== 'cache');
+  const ventana = reales.slice(-VENTANA_SALUD);
+  if (ventana.length < VENTANA_SALUD) return { saludable: true, muestras: ventana.length, tasaFallo: 0 };
+  const fallos = ventana.filter((e) => e.resultado === 'parse_fail' || e.resultado === 'error').length;
+  const tasaFallo = fallos / ventana.length;
+  return { saludable: tasaFallo < UMBRAL_TASA_FALLO, muestras: ventana.length, tasaFallo };
+}
+
+/**
+ * Avisa a David a traves de deps.avisarSaludClasificador si el clasificador
+ * no esta saludable y no se aviso en las ultimas 24 h. Devuelve true si aviso.
+ */
+export async function comprobarYAvisarSalud(deps = {}) {
+  if (typeof deps.avisarSaludClasificador !== 'function') return false;
+  const salud = evaluarSaludClasificador(deps);
+  if (salud.saludable) return false;
+  const ultimosAvisos = leerEventos(deps).filter((e) => e.tipo === 'aviso_salud');
+  const ultimo = ultimosAvisos[ultimosAvisos.length - 1];
+  if (ultimo && Date.now() - new Date(ultimo.ts).getTime() < COOLDOWN_AVISO_MS) return false;
+  const pct = Math.round(salud.tasaFallo * 100);
+  await deps.avisarSaludClasificador(
+    `[D.A.V.I.S. - SALUD DEL CLASIFICADOR]\n\nEl clasificador de intenciones falla en el ${pct}% de sus ultimas ${salud.muestras} clasificaciones. Mientras tanto respondo en modo degradado (sin seleccion de herramientas por modelo); conviene revisar el proveedor del clasificador.`
+  );
+  registrarEvento(deps, { tipo: 'aviso_salud', tasaFallo: salud.tasaFallo });
+  return true;
+}
+
+/**
+ * Segundo nivel del enrutador: cuando la seleccion por regex supera el
+ * limite del proveedor (mensaje multi-area), el modelo elige las areas
+ * dominantes ENTRE las ya detectadas y se ofrecen solo sus herramientas.
+ * Devuelve [] si el modelo no responde algo aprovechable.
+ */
+export async function seleccionarDominiosConModelo(mensaje, dominios, deps = {}) {
+  if (!Array.isArray(dominios) || dominios.length === 0) return [];
+  const chatCompletion = deps.chatCompletion;
+  if (typeof chatCompletion !== 'function') return [];
+  try {
+    const res = await chatCompletion({
+      messages: [
+        { role: 'system', content: `El mensaje de David toca estas areas de su asistente: ${dominios.join(', ')}. Elige como mucho DOS areas dominantes para responder bien su mensaje. Responde SOLO con las etiquetas separadas por comas, sin explicaciones ni emojis.` },
+        { role: 'user', content: mensaje }
+      ],
+      options: { temperature: 0, num_predict: 40, num_ctx: 4096 }
+    });
+    const texto = (res?.message?.content || '').toLowerCase();
+    const elegidos = dominios.filter((d) => new RegExp(`\\b${d.toLowerCase()}\\b`).test(texto));
+    return elegidos.slice(0, 2);
+  } catch (err) {
+    console.error('[RouterDosNiveles] Error seleccionando dominios:', err.message);
+    return [];
+  }
+}
 
 const ETIQUETAS = Object.keys(MAPA_INTENCION_HERRAMIENTAS);
 
@@ -121,7 +223,10 @@ export async function clasificarIntencionConModelo(mensaje, deps = {}) {
     });
 
     const clasificacion = parsearClasificacion(res?.message?.content || '');
-    if (!clasificacion) return null;
+    if (!clasificacion) {
+      registrarEvento(deps, { tipo: 'clasificacion', resultado: 'parse_fail' });
+      return null;
+    }
 
     const resultado = {
       ...clasificacion,
@@ -137,9 +242,17 @@ export async function clasificarIntencionConModelo(mensaje, deps = {}) {
       herramientas: resultado.herramientas
     });
 
+    registrarEvento(deps, {
+      tipo: 'clasificacion',
+      resultado: clasificacion.confianza >= UMBRAL_CONFIANZA ? 'ok' : 'baja_confianza',
+      intencion: clasificacion.intencion,
+      confianza: clasificacion.confianza
+    });
+
     return resultado;
   } catch (err) {
     console.error('[RouterModelo] Error clasificando intencion:', err.message);
+    registrarEvento(deps, { tipo: 'clasificacion', resultado: 'error', detalle: String(err.message || err).slice(0, 200) });
     return null;
   }
 }

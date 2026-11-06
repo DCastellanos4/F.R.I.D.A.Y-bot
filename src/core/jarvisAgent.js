@@ -1,5 +1,5 @@
 import { config } from '../config/config.js';
-import { herramientasJarvis, limitarHerramientasParaProveedor, LIMITE_HERRAMIENTAS_PROVEEDOR } from './tools.js';
+import { herramientasJarvis, herramientasParaIntenciones, limitarHerramientasParaProveedor, LIMITE_HERRAMIENTAS_PROVEEDOR } from './tools.js';
 import { obtenerNoticiasEstructuradas } from '../services/newsService.js';
 import {
   crearRecordatorio,
@@ -33,7 +33,7 @@ import {
 } from '../monitors/sniperService.js';
 import { consultarClima } from '../services/weatherService.js';
 import { chatCompletion, esRespuestaTruncada } from './llmService.js';
-import { clasificarIntencionConModelo, UMBRAL_CONFIANZA } from './intentRouterService.js';
+import { clasificarIntencionConModelo, seleccionarDominiosConModelo, comprobarYAvisarSalud, UMBRAL_CONFIANZA } from './intentRouterService.js';
 import { registrarCandidatura, listarCandidaturas, actualizarCandidatura, resumenCandidaturas } from '../services/applicationTrackerService.js';
 import { crearPlanEstudio, listarPlanes, registrarAvance, resumenPlan, programarRecordatoriosPlan } from '../services/studyPlannerService.js';
 import { agregarFlashcard, pendientesDeRepaso, registrarRespuesta, listarFlashcards, resumenFlashcards, configurarRepaso, iniciarMonitorFlashcards } from '../services/flashcardService.js';
@@ -141,6 +141,22 @@ export function limpiarRespuestaJarvis(texto) {
  * Enrutador de herramientas de alta precisión (Dynamic Tool Pruning):
  * Inyecta las herramientas requeridas según la intención de David.
  */
+const MAPA_DEFINICION_HERRAMIENTA = new Map(herramientasJarvis.map((h) => [h.function.name, h]));
+
+/**
+ * Texto honesto de error de herramienta (recuperacion de errores):
+ * - Solo lectura: se invita a reintentar con argumentos corregidos y se
+ *   lista el esquema aceptado para que el modelo no repita el mismo fallo.
+ * - Con efectos: prohibido reintentar a ciegas; comprobar el efecto real.
+ */
+export function describirErrorHerramienta(nombreFuncion, errTool, esIdempotente) {
+  const props = Object.keys(MAPA_DEFINICION_HERRAMIENTA.get(nombreFuncion)?.function?.parameters?.properties || {});
+  const pista = props.length > 0 ? ` Parametros aceptados: ${props.join(', ')}.` : '';
+  return esIdempotente
+    ? `Error temporal ejecutando la consulta ${nombreFuncion}: ${errTool.message}. Es una operacion de solo lectura; si procede, reintentala con argumentos corregidos.${pista}`
+    : `La accion ${nombreFuncion} ha fallado: ${errTool.message}. NO la reintentes automaticamente porque escribe, envia o ejecuta cambios: verifica primero el efecto real e informa a David del fallo.`;
+}
+
 /**
  * Politica de alcance honesto ante una seleccion que supera el limite del
  * proveedor: NO se trunca en silencio fingiendo cubrir toda la intencion.
@@ -160,6 +176,25 @@ export function aplicarPoliticaLimiteSeleccion(seleccion) {
 
 export function seleccionarHerramientasPorIntencion(mensaje) {
   return analizarIntencion(mensaje).herramientas;
+}
+
+/**
+ * Enrutador en dos niveles (exportado para prueba directa): si la seleccion
+ * cabe en el limite del proveedor, pasa tal cual; si la supera, el modelo
+ * elige las areas dominantes entre las detectadas y se ofrecen solo sus
+ * herramientas; si el modelo no responde, politica honesta de alcance
+ * (0 herramientas + directiva de dividir la peticion).
+ */
+export async function resolverSeleccionConDosNiveles({ seleccion, intenciones, mensaje, deps = {} }) {
+  const politica = aplicarPoliticaLimiteSeleccion(seleccion);
+  if (!politica.directiva) return politica;
+  const dominios = await seleccionarDominiosConModelo(mensaje, intenciones, deps);
+  if (dominios.length > 0) {
+    const herramientas = herramientasParaIntenciones(dominios);
+    console.log(`[RouterDosNiveles] Seleccion reducida a las areas ${dominios.join(', ')} (${herramientas.length} herramientas).`);
+    return { herramientas, directiva: '' };
+  }
+  return politica;
 }
 
 /**
@@ -1550,7 +1585,10 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
   let directivaDesambiguacion = '';
 
   if (analisis.safetyNet) {
-    const clasificacion = await clasificarIntencionConModelo(mensajeUsuario, { chatCompletion: chatImpl });
+    const clasificacion = await clasificarIntencionConModelo(mensajeUsuario, { ...opciones, chatCompletion: chatImpl });
+    // Vigilancia de salud del clasificador: aviso acotado (1/24h) si la
+    // tasa de fallo reciente es alta. No bloquea la respuesta.
+    comprobarYAvisarSalud({ ...opciones, chatCompletion: chatImpl }).catch((e) => console.error('[SaludClasificador] aviso fallido:', e.message));
     if (clasificacion && clasificacion.confianza >= UMBRAL_CONFIANZA) {
       herramientasActivas = clasificacion.herramientas;
       console.log(`[RouterModelo] Intencion clasificada por modelo: ${clasificacion.intencion} (confianza ${clasificacion.confianza}, origen ${clasificacion.origen}).`);
@@ -1578,10 +1616,15 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
     directivaDesambiguacion += '\n\n[DIRECTIVA DE CAPACIDAD: David pide generar contenido multimedia (imagen, foto, video, cancion o similar). NO tienes ninguna herramienta de generacion de imagenes, video ni audio: no esta implementada. Dile claro y en una frase que no puedes generarlo; NO finjas haberlo creado, NO inventes un enlace y NO respondas con datos de otra herramienta. Ofrece como mucho una alternativa real de tus capacidades si encaja.]';
   }
 
-  // Politica de alcance honesto (ver aplicarPoliticaLimiteSeleccion)
-  const politica = aplicarPoliticaLimiteSeleccion(herramientasActivas);
-  herramientasActivas = politica.herramientas;
-  if (politica.directiva) directivaDesambiguacion = politica.directiva;
+  // Enrutador en dos niveles (ver resolverSeleccionConDosNiveles)
+  const resolucion = await resolverSeleccionConDosNiveles({
+    seleccion: herramientasActivas,
+    intenciones: analisis.intenciones,
+    mensaje: mensajeUsuario,
+    deps: { ...opciones, chatCompletion: chatImpl }
+  });
+  herramientasActivas = resolucion.herramientas;
+  if (resolucion.directiva) directivaDesambiguacion = resolucion.directiva;
 
   herramientasActivas = limitarHerramientasParaProveedor(herramientasActivas);
 
@@ -1720,11 +1763,10 @@ Directrices de selección:
         if (salida.enlaces) enlacesParaAdjuntar = salida.enlaces;
       } catch (errTool) {
         // Recuperacion segura: solo las consultas idempotentes pueden
-        // reintentarse; escrituras, envios y comandos exigen comprobar el
-        // efecto real y avisar a David, nunca reintentar a ciegas.
-        resultadoTool = HERRAMIENTAS_IDEMPOTENTES.has(nombreFuncion)
-          ? `Error temporal ejecutando la consulta ${nombreFuncion}: ${errTool.message}. Es una operacion de solo lectura; si procede, reintentala con argumentos corregidos.`
-          : `La accion ${nombreFuncion} ha fallado: ${errTool.message}. NO la reintentes automaticamente porque escribe, envia o ejecuta cambios: verifica primero el efecto real e informa a David del fallo.`;
+        // reintentarse (con pista de argumentos aceptados); escrituras,
+        // envios y comandos exigen comprobar el efecto real y avisar a
+        // David, nunca reintentar a ciegas.
+        resultadoTool = describirErrorHerramienta(nombreFuncion, errTool, HERRAMIENTAS_IDEMPOTENTES.has(nombreFuncion));
         console.error(`[J.A.R.V.I.S. Tool Error R${ronda}] ${nombreFuncion}:`, errTool.message);
       }
 

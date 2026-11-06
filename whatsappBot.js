@@ -48,7 +48,7 @@ import { synthesizeSpeech, sendVoiceNote } from './src/services/ttsService.js';
 import { classifyUrgency, getUrgencyPromptDirective } from './src/services/urgencyService.js';
 import { parseInteractiveResponse, parsePollVote } from './src/core/interactiveService.js';
 import { drainAlerts, formatAlertText } from './src/services/alertQueueService.js';
-import { checkAndHealContainers } from './src/monitors/dockerMonitorService.js';
+import { checkAndHealContainers, inspectContainers } from './src/monitors/dockerMonitorService.js';
 import { checkAndPurgeIfExceeded } from './src/system/diskStorageService.js';
 import { scanFail2banLog } from './src/monitors/fail2banMonitorService.js';
 import { checkBandwidthSpike } from './src/monitors/networkMonitorService.js';
@@ -367,14 +367,31 @@ function inicializarServiciosProactivos() {
     console.error('Error iniciando monitor del digest:', errDigest.message);
   }
 
-  // 7. Watchdog de Docker y Auto-Healing (cada 60 segundos)
-  setInterval(async () => {
+  // 7. Watchdog de Docker y Auto-Healing (cada 60 segundos). Higiene de
+  // monitores: sondeo previo; si Docker no esta instalado en este host el
+  // watchdog se apaga con UN solo aviso en el log en lugar de ensuciarlo
+  // cada minuto con ENOENT.
+  (async () => {
+    let dockerDisponible = true;
     try {
-      await checkAndHealContainers();
-    } catch (errDocker) {
-      console.error('Error en watchdog de Docker:', errDocker.message);
+      await inspectContainers();
+    } catch (errSondeo) {
+      if (/ENOENT|not found|no such file/i.test(errSondeo.message || '')) {
+        dockerDisponible = false;
+        console.log('[Watchdog Docker] Docker no instalado en este host; vigilancia desactivada (sin ruido en logs).');
+      } else {
+        console.error('Error en sondeo inicial de Docker:', errSondeo.message);
+      }
     }
-  }, 60 * 1000);
+    if (!dockerDisponible) return;
+    setInterval(async () => {
+      try {
+        await checkAndHealContainers();
+      } catch (errDocker) {
+        console.error('Error en watchdog de Docker:', errDocker.message);
+      }
+    }, 60 * 1000);
+  })();
 
   // 8. Vigilante de almacenamiento en disco con purga automatica al superar el 85% (cada 5 minutos)
   setInterval(async () => {
@@ -907,6 +924,8 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
           chatId: remoteJid,
           urgencyDirective,
           chatCompletion: deps.chatCompletion,
+          avisarSaludClasificador: deps.avisarSaludClasificador || (async (textoAviso) => enviarMensajeADavid(textoAviso)),
+          rutaArchivoMetricasClasificador: deps.rutaArchivoMetricasClasificador,
           rutaArchivoCandidaturas: deps.rutaArchivoCandidaturas,
           radarDeps: deps.radarDeps,
           rutaPlanesEstudio: deps.rutaPlanesEstudio,
