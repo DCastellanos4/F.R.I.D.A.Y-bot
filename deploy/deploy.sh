@@ -119,6 +119,10 @@ tar -czf - -C "$ESTADO" . | PASS="$PASS" node /tmp/snapshot.js > "$BACKUPS/pre-d
 chmod 600 "$BACKUPS/pre-deploy-$TS.dbk1"
 echo "snapshot cifrado verificado: $BACKUPS/pre-deploy-$TS.dbk1"
 
+# Higiene de entorno ANTES del corte: DAVIS_DATA_DIR/DAVIS_HISTORY_DIR se
+# exportaron para aislar la suite; si quedan en el entorno, pm2 las hereda
+# y el bot arrancaria contra el temporal borrado (sin sesion ni datos).
+unset DAVIS_DATA_DIR DAVIS_HISTORY_DIR
 echo "== [6/7] Corte controlado (punto a partir del cual NO hay vuelta atras automatica) =="
 ANTERIOR=$(readlink -f "$ENLACE" 2>/dev/null || true)
 # Si ENLACE es todavia un DIRECTORIO REAL (despliegue pre-CI/CD), se aparta
