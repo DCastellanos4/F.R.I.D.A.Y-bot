@@ -11,6 +11,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 import { config } from './src/config/config.js';
+import { DATA_DIR } from './src/config/paths.js';
 import { consultarJarvis } from './src/core/jarvisAgent.js';
 import { confirmAndExecute } from './src/system/bashConsoleService.js';
 import { iniciarMonitorRecordatorios } from './src/services/reminderService.js';
@@ -54,7 +55,9 @@ import { scanFail2banLog } from './src/monitors/fail2banMonitorService.js';
 import { checkBandwidthSpike } from './src/monitors/networkMonitorService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CARPETA_AUTH = path.join(__dirname, 'data', 'auth_info_baileys');
+// La sesion vive bajo DATA_DIR (respeta DAVIS_DATA_DIR en tests/CI/deploy;
+// en produccion es el mismo <repo>/data enlazado al estado compartido).
+const CARPETA_AUTH = path.join(DATA_DIR, 'auth_info_baileys');
 const RUTA_IMAGEN_CACHIMBA = path.join(__dirname, 'assets', 'tony_cachimba.png');
 
 if (!fs.existsSync(CARPETA_AUTH)) {

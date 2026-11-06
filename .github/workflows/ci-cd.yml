@@ -38,6 +38,7 @@ jobs:
             tests/sector2/task15_github_webhook.test.js
             tests/sector2/task16_backup.test.js
             tests/sector2/task21_memory_encryption.test.js
+            tests/sector2/deploy_aislamiento.test.js
             tests/sector3/safefetch_unit.test.js
             tests/sector3/process_watchdog.test.js
             api.js whatsappBot.js chat.js ecosystem.config.cjs package.json
@@ -58,6 +59,7 @@ jobs:
             tests/sector2/task15_github_webhook.test.js \
             tests/sector2/task16_backup.test.js \
             tests/sector2/task21_memory_encryption.test.js \
+            tests/sector2/deploy_aislamiento.test.js \
             tests/sector3/safefetch_unit.test.js \
             tests/sector3/process_watchdog.test.js | tee criticos.tap
       - name: Suite completa (TAP a fichero)

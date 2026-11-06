@@ -5,6 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EMOJI_REGEX } from './harness/validators.js';
+// Aislamiento duro ANTES de lanzar ningun subproceso de tests: fija y
+// valida DAVIS_DATA_DIR/HISTORY_DIR fuera del repo (aborta si es enlace o
+// resuelve al data/ de produccion).
+import './sector2/setup_aislamiento.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
