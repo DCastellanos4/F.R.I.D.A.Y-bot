@@ -48,7 +48,7 @@ The choices a technical interview is likely to dig into, with their trade-offs:
 - **Bounded conversation memory.** Long-term facts live in normalized JSON storage; conversation history is condensed on overflow with per-chat deduplication, and free-form memory never authorizes actions on its own: sends to third parties require a verified recipient in the current chat or a registered contact card.
 - **Reusable procedures with explicit approval.** The agent can propose reusable multi-step skills, but each one activates only after the owner approves the exact content in chat (hash-bound, 30-minute TTL, one-shot); every skill step passes the same guards as a direct request.
 - **Self-healing watchdogs with circuit breakers.** Docker auto-restart with flapping protection, disk auto-purge at 85%, fail2ban, SSL expiry and bandwidth monitors all flush through one deduplicated alert queue instead of spamming the chat.
-- **Test strategy.** 804 tests across the suite with the Node.js native runner (no test-framework dependency): 802 passing, 2 voice tests skipping explicitly with a printed reason when `edge-tts` is unavailable. Integration tests drive the real WhatsApp entry handler with a fake socket and a fake LLM, and key regressions were verified by mutation.
+- **Test strategy.** 804 tests across the suite with the Node.js native runner (no test-framework dependency): 802 passing, 2 voice tests skipping explicitly with a printed reason when `edge-tts` is unavailable. Integration tests drive the real WhatsApp entry handler with a fake socket and a fake LLM, and key regressions were verified by mutation. CI gates every push and PR to main (critical battery 100%, full suite >=95%) and deploys the tested SHA to the VPS over SSH as an isolated release.
 
 ---
 
@@ -74,9 +74,9 @@ The choices a technical interview is likely to dig into, with their trade-offs:
 
 Written down because a portfolio should survive a skeptical read:
 
-- **No CI yet.** The suite runs on demand (`node tests/run_all.js`); nothing gates merges automatically.
 - **Voice path not covered in every environment.** Whisper and Edge-TTS depend on local binaries; where `edge-tts` is unavailable the 2 voice tests skip explicitly.
-- **Manual deployment.** Shipping to the VPS is a manual `git pull` + `pm2 restart`; no automated pipeline or staged rollback.
+- **Rollback after a deploy cutover is a manual, separately approved decision** by design (reverting automatically could lose data written after the cutover), not an automated staged rollback.
+- **GitHub failure alerts not yet wired.** The webhook endpoint is implemented and tested (HMAC-SHA256 verified), but no workflow posts `workflow_run` events to it yet; connecting one is a pending owner action.
 - **Unofficial WhatsApp client.** Baileys carries an inherent risk of platform action; this is the accepted trade-off for full protocol access at zero API cost.
 - **Single-operator design.** The authorization model assumes exactly one owner; there is no multi-user permission system.
 
