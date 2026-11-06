@@ -95,7 +95,13 @@ async function ejecutarCaso(caso) {
       try {
         return await chatCompletion(peticion);
       } catch (err) {
-        const es429 = /429|rate.?limit/i.test(String(err?.message || err));
+        const msg = String(err?.message || err);
+        // TPD (limite diario): reintentar es inutil y gasta la ventana; abortar toda la evaluacion.
+        if (/tokens per day|TPD/i.test(msg)) {
+          console.error('ABORTADO: limite diario de tokens (TPD) alcanzado; no se reintentan llamadas ni se ejecutan mas casos.');
+          process.exit(2);
+        }
+        const es429 = /429|rate.?limit/i.test(msg);
         if (!es429 || intento === 3) throw err;
         const espera = 20000 * (intento + 1);
         console.log(`   [429] limite de cuenta; espero ${espera / 1000}s y reintento...`);
