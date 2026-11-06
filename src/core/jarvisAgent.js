@@ -585,6 +585,37 @@ function numerosCoinciden(a, b) {
   return corto.length >= 9 && largo.endsWith(corto);
 }
 
+function esError400ValidacionHerramientas(err) {
+  const txt = String((err && err.message) || err || '');
+  return /\b400\b/.test(txt) && /tool.?call validation|did not match schema/i.test(txt);
+}
+
+// Un 400 de validacion de tool-call significa que el provider RECHAZO la
+// peticion antes de ejecutar nada: reintentar es seguro (no hay efectos que
+// duplicar). Un unico reintento con pista de esquema; si el provider vuelve
+// a rechazar, una ultima llamada degradada SIN herramientas para no dejar a
+// David sin respuesta. Nunca se reintentan 2xx ambiguos ni timeouts
+// posteriores a una posible ejecucion.
+async function chatConRecuperacion400(chatImpl, peticion, etiqueta) {
+  try {
+    return await chatImpl(peticion);
+  } catch (err) {
+    if (!esError400ValidacionHerramientas(err)) throw err;
+    console.warn(`[J.A.R.V.I.S.] 400 de validacion de tool-call en ${etiqueta}; el provider no ejecuto nada, 1 reintento con pista de esquema.`);
+    const pista = {
+      role: 'system',
+      content: `Tu llamada a herramienta anterior fue rechazada por argumentos invalidos (${String((err && err.message) || err).slice(0, 300)}). Si necesitas una herramienta, genera argumentos que cumplan exactamente su esquema (tipos correctos y campos requeridos sin null). Si no tienes datos para argumentos validos, responde en texto pidiendo a David lo que falte, sin llamar a la herramienta.`
+    };
+    try {
+      return await chatImpl({ ...peticion, messages: [...peticion.messages, pista] });
+    } catch (err2) {
+      if (!esError400ValidacionHerramientas(err2)) throw err2;
+      console.warn(`[J.A.R.V.I.S.] Segundo 400 de validacion en ${etiqueta}; respuesta degradada sin herramientas.`);
+      return await chatImpl({ messages: peticion.messages, options: peticion.options });
+    }
+  }
+}
+
 function destinatarioVerificado(numero, mensajeUsuario, historial, opciones = {}) {
   if (!numero) return false;
   const candidatos = extraerNumerosDeTexto(mensajeUsuario);
@@ -1793,7 +1824,7 @@ Directrices de selección:
     { role: 'user', content: mensajeUsuario }
   ];
 
-  let respuesta = await chatImpl({
+  let respuesta = await chatConRecuperacion400(chatImpl, {
     messages: mensajes,
     tools: herramientasActivas.length > 0 ? herramientasActivas : undefined,
     options: {
@@ -1801,7 +1832,7 @@ Directrices de selección:
       num_ctx: NUM_CTX_DEFECTO,
       num_thread: 4
     }
-  });
+  }, 'primera llamada');
 
   const MAX_RONDAS_HERRAMIENTAS = opciones.maxRondasHerramientas ?? 3;
   let ronda = 0;
@@ -1873,7 +1904,7 @@ Directrices de selección:
     }
 
     console.log(`[J.A.R.V.I.S.] Sintetizando (ronda ${ronda}/${MAX_RONDAS_HERRAMIENTAS})...`);
-    respuesta = await chatImpl({
+    respuesta = await chatConRecuperacion400(chatImpl, {
       messages: mensajes,
       tools: herramientasActivas.length > 0 ? herramientasActivas : undefined,
       options: {
@@ -1882,7 +1913,7 @@ Directrices de selección:
         num_thread: 4,
         temperature: 0.1
       }
-    });
+    }, `sintesis ronda ${ronda}`);
   }
 
   let textoFinal = (respuesta.message.content || '').trim();
