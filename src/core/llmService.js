@@ -160,6 +160,26 @@ export function prepareMessagesForProvider(messages = [], isOllama = false) {
   return messages.map(msg => {
     const formatted = { ...msg };
 
+    // Contenido multimodal estilo OpenAI (array de partes con image_url):
+    // Ollama espera el texto plano y las imagenes base64 en el campo
+    // "images" del mensaje (sin prefijo data:). En la ruta cloud el array
+    // viaja tal cual, que es lo que esperan los proveedores OpenAI-compat.
+    if (isOllama && Array.isArray(msg.content)) {
+      const textos = [];
+      const imagenes = [];
+      for (const parte of msg.content) {
+        if (parte?.type === 'text' && typeof parte.text === 'string') {
+          textos.push(parte.text);
+        } else if (parte?.type === 'image_url') {
+          const url = typeof parte.image_url === 'string' ? parte.image_url : parte.image_url?.url;
+          const m = String(url || '').match(/^data:[^;]+;base64,(.+)$/);
+          if (m) imagenes.push(m[1]);
+        }
+      }
+      formatted.content = textos.join('\n');
+      if (imagenes.length > 0) formatted.images = imagenes;
+    }
+
     if (msg.role === 'assistant' && msg.tool_calls) {
       formatted.tool_calls = msg.tool_calls.map((tc, idx) => {
         let args = tc.function?.arguments;
@@ -281,7 +301,10 @@ export async function chatCompletion({
     const payload = {
       model,
       messages: preparedMessages,
-      keep_alive: -1,
+      // Por defecto el modelo queda cargado (-1). Una llamada puntual que no
+      // debe dejar nada residente (p.ej. lectura de un ticket) pasa
+      // options.keep_alive = 0 y Ollama descarga el modelo al terminar.
+      keep_alive: options.keep_alive ?? -1,
       options: {
         num_ctx: options.num_ctx || NUM_CTX_DEFECTO,
         temperature: options.temperature ?? 0.1,

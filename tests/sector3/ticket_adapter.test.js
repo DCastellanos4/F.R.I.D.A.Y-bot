@@ -12,6 +12,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const { crearAnalizadorTicket } = await import('../../src/services/ticketVisionAdapter.js');
+const { prepareMessagesForProvider } = await import('../../src/core/llmService.js');
 
 test('sin modelo configurado el adaptador no se crea (funcion desactivada)', () => {
   const prev = process.env.DAVIS_TICKET_VISION_MODEL;
@@ -47,4 +48,93 @@ test('respuesta sin JSON devuelve objeto vacio (el pipeline pedira el importe a 
   const chatFalso = async () => ({ message: { content: 'no veo ningun ticket' } });
   const analizar = crearAnalizadorTicket({ modelo: 'x', chatCompletion: chatFalso });
   assert.deepEqual(await analizar(Buffer.from('f')), {});
+});
+
+// ---------------------------------------------------------------------------
+// Ciclo de vida local (aprobado por David, 7 nov 2026): la vision arranca
+// solo cuando llega un ticket y no deja nada residente al terminar.
+// ---------------------------------------------------------------------------
+
+test('la llamada pide keep_alive 0 y respeta proveedor/baseUrl opcionales', async () => {
+  let llamada = null;
+  const chatFalso = async (args) => { llamada = args; return { message: { content: '{}' } }; };
+  const analizar = crearAnalizadorTicket({ modelo: 'llama3.2-vision:11b', provider: 'ollama', baseUrl: 'http://127.0.0.1:11434', chatCompletion: chatFalso });
+  await analizar(Buffer.from('foto'));
+  assert.equal(llamada.provider, 'ollama');
+  assert.equal(llamada.baseUrl, 'http://127.0.0.1:11434');
+  assert.equal(llamada.options.keep_alive, 0, 'keep_alive 0: el modelo local se descarga al terminar');
+});
+
+test('las lecturas se serializan: nunca hay dos inferencias en vuelo', async () => {
+  const orden = [];
+  let liberar;
+  const primera = new Promise((resolve) => { liberar = resolve; });
+  let llamadas = 0;
+  const chatFalso = async () => {
+    llamadas++;
+    orden.push(`inicio${llamadas}`);
+    if (llamadas === 1) await primera;
+    orden.push(`fin${llamadas}`);
+    return { message: { content: '{}' } };
+  };
+  const analizar = crearAnalizadorTicket({ modelo: 'x', chatCompletion: chatFalso });
+  const p1 = analizar(Buffer.from('a'));
+  const p2 = analizar(Buffer.from('b'));
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(llamadas, 1, 'la segunda lectura espera a la primera');
+  liberar();
+  await Promise.all([p1, p2]);
+  assert.deepEqual(orden, ['inicio1', 'fin1', 'inicio2', 'fin2']);
+});
+
+test('una lectura que agota su tiempo falla honesta y NO rompe la cola', async () => {
+  let llamadas = 0;
+  const chatFalso = async () => {
+    llamadas++;
+    if (llamadas === 1) return new Promise(() => {}); // cuelgue simulado
+    return { message: { content: '{"importe": 5, "camposDudosos": []}' } };
+  };
+  const analizar = crearAnalizadorTicket({ modelo: 'x', timeoutMs: 40, chatCompletion: chatFalso });
+  await assert.rejects(analizar(Buffer.from('a')), /agoto su tiempo/);
+  const lectura = await analizar(Buffer.from('b'));
+  assert.equal(lectura.importe, 5, 'la siguiente foto se procesa con normalidad');
+});
+
+test('un error del proveedor se propaga (el bot avisa honesto) y la cola sigue viva', async () => {
+  let llamadas = 0;
+  const chatFalso = async () => {
+    llamadas++;
+    if (llamadas === 1) throw new Error('modelo no encontrado');
+    return { message: { content: '{"importe": 1, "camposDudosos": []}' } };
+  };
+  const analizar = crearAnalizadorTicket({ modelo: 'x', chatCompletion: chatFalso });
+  await assert.rejects(analizar(Buffer.from('a')), /modelo no encontrado/);
+  assert.equal((await analizar(Buffer.from('b'))).importe, 1);
+});
+
+// ---------------------------------------------------------------------------
+// Conversion de imagenes para la ruta local de llmService (image_url -> images)
+// ---------------------------------------------------------------------------
+
+test('prepareMessagesForProvider convierte image_url al array images de Ollama', () => {
+  const b64 = Buffer.from('foto').toString('base64');
+  const [prep] = prepareMessagesForProvider([{
+    role: 'user',
+    content: [
+      { type: 'text', text: 'lee este ticket' },
+      { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } }
+    ]
+  }], true);
+  assert.equal(prep.content, 'lee este ticket');
+  assert.deepEqual(prep.images, [b64], 'base64 sin prefijo data:');
+});
+
+test('prepareMessagesForProvider NO toca el formato OpenAI en la ruta cloud', () => {
+  const contenido = [
+    { type: 'text', text: 'lee' },
+    { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,AAAA' } }
+  ];
+  const [prep] = prepareMessagesForProvider([{ role: 'user', content: contenido }], false);
+  assert.deepEqual(prep.content, contenido, 'la ruta cloud conserva las partes tal cual');
+  assert.equal(prep.images, undefined);
 });
