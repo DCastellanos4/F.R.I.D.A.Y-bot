@@ -759,6 +759,20 @@ export function guardHallucinations(texto, contexto = {}) {
       enmienda: 'no se ha realizado ninguna transferencia de fondos dado que el sistema carece de herramientas de emision financiera'
     },
     {
+      // Confirmacion de guardado en el Second Brain sin guardar_memoria
+      // exitoso: con modelo real se observo "Guardado..." sin que se
+      // ofreciera ni ejecutara ninguna herramienta. Consume la frase entera
+      // para no dejar restos rotos y respeta las negaciones
+      // ("no he guardado nada"). Otras herramientas de guardado legitimas
+      // (contacto, nota, idea) tambien sirven de respaldo.
+      nombre: 'guardado_memoria',
+      patron: /(^|(?<=[.!?])\s+)(?:(?:guardado|anotado|apuntado|memorizado)\b(?:\s+en\s+(?:tu\s+)?(?:memoria|el\s+second\s+brain|tu\s+segundo\s+cerebro))?[^\n.!?:;]*|[^\n.!?]*?(?:(?<!no\s)(?<!no lo\s)(?<!no la\s)\bhe\s+(?:guardado|anotado|apuntado|memorizado)\b[^\n.!?]*?\ben\s+(?:tu\s+|la\s+)?(?:memoria|second\s+brain|segundo\s+cerebro)\b|(?<!no\s)\bqueda(?:do)?\s+guardado\s+en\s+(?:tu\s+)?(?:memoria|second\s+brain|segundo\s+cerebro)\b|(?<!no\s)\blo\s+recordar[eé]\b|\bme\s+lo\s+apunto\b)[^\n.!?]*)(?:[.!?]|$)/gi,
+      herramientas: ['guardar_memoria', 'guardar_nota_personal'],
+      enmienda: (m, sep) => /recordar[eé]|apunto/i.test(m)
+        ? sep // promesa futura falsa ("lo recordare"): se elimina la frase
+        : `${sep}No he podido guardarlo en el Second Brain porque la herramienta de guardado no se ejecuto con exito; dimelo de nuevo y lo guardo.`
+    },
+    {
       nombre: 'backup_cifrado',
       patron: /(?:he\s+creado\s+el\s+backup\s+cifrado|backup\s+cifrado\s+completado\s+con\s+[eé]xito|copia\s+de\s+seguridad\s+cifrada\s+creada)/i,
       herramientas: ['trigger_encrypted_backup', 'crear_backup_sesion', 'createEncryptedBackup'],

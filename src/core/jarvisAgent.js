@@ -229,6 +229,22 @@ export function analizarIntencion(mensaje) {
   const esRecuerdaQueDato = /(recuerda que|apunta que|guarda que|anota que|no te olvides de que|apunta:|a partir de ahora|desde ahora)/i.test(sinNombre) && 
                             !/(a las \d+|en \d+\s*(min|hora)|manana)/i.test(sinNombre);
 
+  // Lenguaje natural de guardado en el Second Brain que el patron anterior
+  // no cubria (fallo observado en vivo con modelo real: "guarda en memoria
+  // que..." no ofrecia ninguna herramienta y el modelo fingia haberlo
+  // guardado). Cubre verbos de apunte dirigidos a la memoria (con mencion
+  // explicita de memoria/segundo cerebro, o seguidos de "que <dato>").
+  // La exclusion temporal evita robar recordatorios ("a las 5", "manana").
+  const sinHorario = !/(a las \d+|en \d+\s*(min|hora)|manana)/i.test(sinNombre);
+  const esGuardadoMemoriaNatural = sinHorario && (
+    /(guarda|graba|anota|apunta|memoriza|recuerda|almacena|agnadelo|agrega|quedate)\b[^.!?]*\ben\s+(tu\s+|mi\s+)?(memoria|segundo\s+cerebro|second\s+brain|banco\s+de\s+memoria)/i.test(sinNombre) ||
+    /(memoriza|graba|anota|apunta)\w*\s+que\s+\S/i.test(sinNombre)
+  );
+
+  // Consulta natural de lo guardado ("que sabes de la tia Pili", "te
+  // acuerdas de la talla", "busca en tu memoria lo de Renfe").
+  const esConsultaMemoriaNatural = /(que\s+(sabes|tienes\s+(guardado|apuntado|anotado)|recuerdas)\s+(de|sobre|del)|te\s+acuerdas\s+de|busca\w*\s+en\s+(tu\s+)?(memoria|segundo\s+cerebro|second\s+brain)|consulta\w*\s+(tu\s+)?(memoria|segundo\s+cerebro|second\s+brain)|que\s+hay\s+(guardado\s+)?en\s+(tu\s+)?memoria|mis\s+memorias|mis\s+recuerdos)/i.test(sinNombre);
+
   const esClaveAlarma = /(codigo|clave|contrasena|pin)\s+(de\s+la\s+)?alarma/i.test(sinNombre);
 
   const intents = {
@@ -323,9 +339,9 @@ export function analizarIntencion(mensaje) {
   };
 
   let matchClima = intents.clima.test(sinNombre);
-  let matchMemoria = intents.esHechoMemoria.test(sinNombre) || esClaveAlarma || esRecuerdaQueDato;
+  let matchMemoria = intents.esHechoMemoria.test(sinNombre) || esClaveAlarma || esRecuerdaQueDato || esGuardadoMemoriaNatural || esConsultaMemoriaNatural;
   let matchMensajeProgramado = intents.mensajeProgramado.test(sinNombre) || (/(programa|manda|envia|escribe).*(mensaje|whatsapp)/i.test(sinNombre) && /\d{6,}/.test(sinNombre));
-  let matchRecordatorio = (intents.esRecordatorio.test(sinNombre) && !esClaveAlarma && !esRecuerdaQueDato && !matchMensajeProgramado);
+  let matchRecordatorio = (intents.esRecordatorio.test(sinNombre) && !esClaveAlarma && !esRecuerdaQueDato && !esGuardadoMemoriaNatural && !matchMensajeProgramado);
   let matchSniper = intents.sniper.test(sinNombre);
   let matchNoticias = intents.noticias.test(sinNombre);
   let matchNavegacion = intents.navegacion.test(sinNombre) || tieneUrl;
