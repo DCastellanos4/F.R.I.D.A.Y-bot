@@ -14,8 +14,6 @@ data/auth_info_baileys/
 data/*.json
 data/*.log
 !data/.gitkeep
-!data/brain_memory.json
-!data/knowledge_vectors.json
 
 # Archivos de briefing matutino generados
 briefings/*.txt
