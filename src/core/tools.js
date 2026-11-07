@@ -1189,12 +1189,12 @@ export const herramientasJarvis = [
     type: 'function',
     function: {
       name: 'registrar_parada_favorita',
-      description: 'Guarda una parada de bus EMT o una estacion de Cercanias como favorita (ej: "mi parada de casa es la EMT 1234"). El Metro no tiene fuente publica de llegadas en vivo.',
+      description: 'Guarda una parada de bus EMT o una estacion de tren (Cercanias o AVE/LD/MD) como favorita (ej: "mi parada de casa es la EMT 1234"). El Metro no tiene fuente publica de llegadas en vivo.',
       parameters: {
         type: 'object',
         properties: {
           nombre: { type: 'string', description: 'Nombre de la parada (ej: "casa").' },
-          tipo: { type: 'string', enum: ['emt', 'cercanias'], description: 'emt (bus) o cercanias.' },
+          tipo: { type: 'string', enum: ['emt', 'cercanias', 'tren'], description: 'emt (bus), cercanias o tren (AVE/LD/MD).' },
           codigo: { type: 'string', description: 'Numero de parada EMT (marquesina) o codigo de estacion de Cercanias.' }
         },
         required: ['nombre', 'tipo', 'codigo']
@@ -1227,12 +1227,12 @@ export const herramientasJarvis = [
     type: 'function',
     function: {
       name: 'proximas_llegadas_transporte',
-      description: 'Consulta bajo demanda las proximas llegadas de una parada favorita (o de un codigo con tipo). Sin avisos automaticos: solo responde cuando David pregunta.',
+      description: 'Consulta bajo demanda las proximas llegadas de una parada favorita, de una estacion por su nombre (Cercanias o AVE/LD/MD, se resuelve con el indice oficial de Renfe) o de un codigo con tipo. Sin avisos automaticos: solo responde cuando David pregunta.',
       parameters: {
         type: 'object',
         properties: {
           parada: { type: 'string', description: 'Nombre o id de la parada favorita.' },
-          tipo: { type: 'string', enum: ['emt', 'cercanias'], description: 'Tipo si se pasa un codigo directo.' },
+          tipo: { type: 'string', enum: ['emt', 'cercanias', 'tren'], description: 'Tipo si se pasa un codigo directo.' },
           codigo: { type: 'string', description: 'Codigo directo si no es favorita.' }
         }
       }

@@ -15,20 +15,16 @@
  */
 
 const URL_FEED = 'https://gtfsrt.renfe.com/trip_updates.json';
+const URL_FEED_LD = 'https://gtfsrt.renfe.com/trip_updates_LD.json';
 const MAX_BYTES = 4 * 1024 * 1024;
 
-/**
- * Llegadas con informacion en vivo para una estacion (stopId GTFS, ej "17000").
- * Devuelve { ok:true, llegadas:[{viaje, segundos, retrasoSegundos}], nota } o
- * { ok:false, error }.
- */
-export async function llegadasCercanias(stopId, deps = {}) {
+async function llegadasFeedRenfe(stopId, urlFeed, deps = {}) {
   const estacion = String(stopId || '').replace(/\D/g, '');
   if (!estacion) return { ok: false, error: 'Estacion invalida.' };
   const ahora = deps.ahora ? new Date(deps.ahora) : new Date();
   try {
     const fetchFn = deps.fetchFn || fetch;
-    const resp = await fetchFn(URL_FEED, { signal: AbortSignal.timeout(deps.timeoutMs || 15000) });
+    const resp = await fetchFn(urlFeed, { signal: AbortSignal.timeout(deps.timeoutMs || 15000) });
     const texto = await resp.text();
     if (texto.length > MAX_BYTES) return { ok: false, error: 'El feed de Renfe ha superado el tamano maximo admitido.' };
     const feed = JSON.parse(texto);
@@ -65,4 +61,20 @@ export async function llegadasCercanias(stopId, deps = {}) {
   } catch (err) {
     return { ok: false, error: `No he podido consultar el feed de Renfe: ${err.message}` };
   }
+}
+
+/**
+ * Llegadas con informacion en vivo para una estacion de Cercanias
+ * (stopId GTFS, ej "17000").
+ */
+export function llegadasCercanias(stopId, deps = {}) {
+  return llegadasFeedRenfe(stopId, URL_FEED, deps);
+}
+
+/**
+ * Llegadas con informacion en vivo para una estacion de Alta Velocidad,
+ * Larga o Media Distancia (feed GTFS-RT LD de Renfe, actualizacion ~30 s).
+ */
+export function llegadasTrenLD(stopId, deps = {}) {
+  return llegadasFeedRenfe(stopId, URL_FEED_LD, deps);
 }

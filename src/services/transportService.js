@@ -18,10 +18,11 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { DATA_DIR } from '../config/paths.js';
 import { llegadasEmt } from './emtAdapter.js';
-import { llegadasCercanias } from './cercaniasAdapter.js';
+import { llegadasCercanias, llegadasTrenLD } from './cercaniasAdapter.js';
+import { resolverEstaciones } from './renfeGtfsService.js';
 
 export const ARCHIVO_DEFECTO = path.join(DATA_DIR, 'transporte.json');
-export const TIPOS = ['emt', 'cercanias'];
+export const TIPOS = ['emt', 'cercanias', 'tren'];
 
 function rutaArchivo(deps = {}) {
   return deps.rutaArchivo || ARCHIVO_DEFECTO;
@@ -49,7 +50,7 @@ export function registrarParadaFavorita({ nombre, tipo, codigo } = {}, deps = {}
   if (!n) return { ok: false, error: 'Ponle un nombre a la parada (por ejemplo: "casa" o "tajamar").' };
   if (n.length > 60) return { ok: false, error: 'Nombre demasiado largo.' };
   const t = String(tipo || '').trim().toLowerCase();
-  if (!TIPOS.includes(t)) return { ok: false, error: 'Tipo invalido: usa "emt" (bus) o "cercanias". El Metro no tiene fuente publica de llegadas en vivo.' };
+  if (!TIPOS.includes(t)) return { ok: false, error: 'Tipo invalido: usa "emt" (bus), "cercanias" o "tren" (AVE/larga/media distancia). El Metro no tiene fuente publica de llegadas en vivo.' };
   const c = String(codigo || '').replace(/\D/g, '');
   if (!c) return { ok: false, error: t === 'emt' ? 'Dime el numero de la parada EMT (esta en la marquesina).' : 'Dime el codigo de la estacion de Cercanias.' };
   const estado = leerEstado(deps);
@@ -81,22 +82,44 @@ export function eliminarParadaFavorita(criterio, deps = {}) {
  */
 export async function proximasLlegadas({ parada, tipo, codigo } = {}, deps = {}) {
   let objetivo = null;
+  let resuelta = null;
   if (parada) {
     const c = String(parada).trim().toLowerCase();
     objetivo = leerEstado(deps).paradas.find((p) => p.id === parada || p.nombre.toLowerCase().includes(c)) || null;
     if (!objetivo && !codigo) {
-      return { ok: false, error: `No tengo ninguna parada favorita que encaje con "${parada}". Registrala primero (por ejemplo: "mi parada de casa es la EMT 1234").` };
+      // Sin favorita ni codigo: intentar resolver el NOMBRE de la estacion
+      // contra el indice GTFS oficial de Renfe (cache local, TTL 7 dias).
+      try {
+        let candidatas = await resolverEstaciones(parada, deps);
+        if (tipo) {
+          const t = String(tipo).trim().toLowerCase();
+          candidatas = candidatas.filter((e2) => e2.tipo === t);
+        }
+        if (candidatas.length === 1) {
+          resuelta = candidatas[0];
+        } else if (candidatas.length > 1) {
+          const lista = candidatas.map((e2) => `- ${e2.nombre} (${e2.tipo === 'tren' ? 'AVE/LD/MD' : 'Cercanias'})`).join('\n');
+          return { ok: false, error: `"${parada}" puede ser varias estaciones:\n${lista}\nDime cual.` };
+        }
+      } catch { /* sin indice disponible: se informa abajo */ }
+      if (!resuelta) {
+        return { ok: false, error: `No tengo ninguna parada favorita que encaje con "${parada}" y no encuentro esa estacion. Registrala primero (por ejemplo: "mi parada de casa es la EMT 1234") o dime su codigo.` };
+      }
     }
   }
-  const tipoFinal = (objetivo && objetivo.tipo) || String(tipo || '').toLowerCase();
-  const codigoFinal = (objetivo && objetivo.codigo) || String(codigo || '').replace(/\D/g, '');
+  const tipoFinal = (objetivo && objetivo.tipo) || (resuelta && resuelta.tipo) || String(tipo || '').toLowerCase();
+  const codigoFinal = (objetivo && objetivo.codigo) || (resuelta && resuelta.id) || String(codigo || '').replace(/\D/g, '');
   if (!TIPOS.includes(tipoFinal) || !codigoFinal) {
-    return { ok: false, error: 'Dime la parada (favorita o codigo) y si es EMT o Cercanias. El Metro no tiene fuente publica de llegadas en vivo.' };
+    return { ok: false, error: 'Dime la parada (favorita, nombre de estacion o codigo) y si es EMT, Cercanias o tren (AVE/LD/MD). El Metro no tiene fuente publica de llegadas en vivo.' };
   }
   if (tipoFinal === 'emt') {
     const r = await llegadasEmt(codigoFinal, { fetchFn: deps.fetchFnEmt, clientId: deps.clientIdEmt, passKey: deps.passKeyEmt });
     return { ...r, parada: objetivo ? objetivo.nombre : `EMT ${codigoFinal}`, tipo: 'emt' };
   }
+  if (tipoFinal === 'tren') {
+    const r = await llegadasTrenLD(codigoFinal, { fetchFn: deps.fetchFnCercanias, ahora: deps.ahora });
+    return { ...r, parada: (objetivo && objetivo.nombre) || (resuelta && resuelta.nombre) || `Tren ${codigoFinal}`, tipo: 'tren' };
+  }
   const r = await llegadasCercanias(codigoFinal, { fetchFn: deps.fetchFnCercanias, ahora: deps.ahora });
-  return { ...r, parada: objetivo ? objetivo.nombre : `Cercanias ${codigoFinal}`, tipo: 'cercanias' };
+  return { ...r, parada: (objetivo && objetivo.nombre) || (resuelta && resuelta.nombre) || `Cercanias ${codigoFinal}`, tipo: 'cercanias' };
 }
