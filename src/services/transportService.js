@@ -105,6 +105,14 @@ export async function proximasLlegadas({ parada, tipo, codigo } = {}, deps = {})
           const t = String(tipo).trim().toLowerCase();
           candidatas = candidatas.filter((e2) => e2.tipo === t);
         }
+        // La misma estacion puede salir en el indice de Cercanias y en el de
+        // LD con el mismo id: no tiene sentido preguntar por duplicados.
+        const vistos = new Set();
+        candidatas = candidatas.filter((e2) => {
+          if (vistos.has(e2.id)) return false;
+          vistos.add(e2.id);
+          return true;
+        });
         if (candidatas.length === 1) {
           resuelta = candidatas[0];
         } else if (candidatas.length > 1) {

@@ -127,3 +127,35 @@ try { fs.unlinkSync('/tmp/test-transporte-renfe2.json'); } catch { /* nada */ }
 try { fs.unlinkSync(cacheReg); } catch { /* nada */ }
 
 console.log('renfe_tren.test.js OK');
+
+// 6) intencion de transporte con lenguaje natural plural ("proximos trenes
+// de Aranjuez" no activaba la herramienta: regresion del 7 nov 2026)
+const { analizarIntencion } = await import('../../src/core/jarvisAgent.js');
+for (const frase of ['proximos trenes de aranjuez', 'cuando sale el proximo tren de atocha', 'trenes a sevilla', 'proximo cercanias']) {
+  const r = analizarIntencion(frase);
+  assert.ok(r.intenciones.includes('transporte'), `intencion transporte detectada en "${frase}"`);
+  assert.ok(r.herramientas.some((h) => h.function && h.function.name === 'proximas_llegadas_transporte'), `herramienta ofrecida para "${frase}"`);
+}
+
+// 7) estacion duplicada en ambos indices (mismo id): se resuelve sin preguntar
+const STOPS_LD_DUP = 'stop_id,stop_code,stop_name,stop_desc,stop_lat,stop_lon,zone_id,stop_url,location_type,parent_station,stop_timezone,wheelchair_boarding\n17000,,Madrid-Chamartin-Clara Campoamor,,40.4,-3.6,,,,,Europe/Madrid,1\n';
+const zipLdDup = zipDePrueba([{ nombre: 'stops.txt', datos: STOPS_LD_DUP, metodo: 8 }]);
+const depsDup = {
+  rutaArchivo: '/tmp/test-transporte-renfe3.json',
+  rutaCache: '/tmp/test-estaciones-renfe-dup.json',
+  ahora: ahora * 1000,
+  fetchFn: async (url) => {
+    if (url.includes('google_transit')) return { arrayBuffer: async () => zipLdDup.buffer.slice(zipLdDup.byteOffset, zipLdDup.byteOffset + zipLdDup.length) };
+    if (url.includes('fomento_transit')) return { arrayBuffer: async () => zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.length) };
+    return { text: async () => feedLd };
+  },
+  fetchFnCercanias: async () => ({ text: async () => feedLd })
+};
+try { fs.unlinkSync(depsDup.rutaCache); } catch { /* nada */ }
+try { fs.unlinkSync(depsDup.rutaArchivo); } catch { /* nada */ }
+const rDup = await proximasLlegadas({ parada: 'chamartin' }, depsDup);
+assert.ok(rDup.ok, 'misma estacion en ambos indices no pregunta');
+assert.strictEqual(rDup.tipo, 'cercanias', 'prefiere el feed de Cercanias (mismo id)');
+try { fs.unlinkSync(depsDup.rutaArchivo); } catch { /* nada */ }
+
+console.log('renfe_tren.test.js OK (ampliado)');
