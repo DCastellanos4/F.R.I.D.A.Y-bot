@@ -381,6 +381,9 @@ export async function despacharMensajesPendientes() {
   let huboCambios = false;
   const despachados = [];
   const fallidos = [];
+  // Registros que ESTA pasada muta; el guardado final los fusiona sobre una
+  // lectura fresca en vez de volcar el snapshot antiguo (ver nota al final).
+  const modificados = new Map();
 
   for (const m of lista) {
     if (!m.enviado && m.timestamp <= ahora) {
@@ -418,6 +421,7 @@ export async function despacharMensajesPendientes() {
         m.ultimoError = 'El canal no confirmo la transmision; no se reintenta para evitar duplicados.';
         fallidos.push(m);
         huboCambios = true;
+        modificados.set(m.id, m);
         console.error(`[ENTREGA INCIERTA] Mensaje para +${m.numero} en estado desconocido; requiere revision manual.`);
         continue;
       }
@@ -430,6 +434,7 @@ export async function despacharMensajesPendientes() {
         m.estado = 'enviado';
         m.ultimoError = null;
         despachados.push(m);
+        modificados.set(m.id, m);
 
         const entradaLog = `[${new Date().toISOString()}] Para: +${m.numero} | Mensaje: "${m.mensaje}" | Programado: ${m.fechaHoraLocal}\n`;
         try {
@@ -452,6 +457,7 @@ export async function despacharMensajesPendientes() {
         } else {
           console.warn(`[REINTENTO PENDIENTE] Envío a +${m.numero} falló (intento ${m.intentos}/${MAX_INTENTOS_ENVIO}): ${m.ultimoError}`);
         }
+        modificados.set(m.id, m);
       }
     }
   }
@@ -467,13 +473,32 @@ export async function despacharMensajesPendientes() {
         m.ultimoError = `Sin acuse de recibo tras ${Math.round(TIMEOUT_ACUSE_MS / 60000)} minutos; no se reintenta para evitar duplicados.`;
         huboCambios = true;
         fallidos.push(m);
+        modificados.set(m.id, m);
         console.error(`[ACUSE PERDIDO] Mensaje para +${m.numero} sin acuse tras ${Math.round(esperaMs / 60000)} min; marcado como incierto para revision manual.`);
       }
     }
   }
 
   if (huboCambios) {
-    guardarMensajesProgramados(lista);
+    // Persistencia por fusion, NO por volcado del snapshot: `lista` se leyo
+    // ANTES de enviar y cualquier escritura concurrente durante el await del
+    // envio se perderia al guardar. Fallos del volcado observados o posibles:
+    // el whatsappId registrado por el callback (sin el los acuses nunca
+    // reconcilian), un acuse entregado/leido llegado durante el envio, una
+    // cancelacion hecha mientras se despachaba (resucitaria y se reenviaria)
+    // o un mensaje programado nuevo (se borraria sin enviarse jamas).
+    const fresca = leerMensajesProgramados();
+    const fusionada = fresca.map(reg => {
+      const mod = modificados.get(reg.id);
+      if (!mod) return reg; // esta pasada no lo toco: se conserva lo fresco
+      // Un acuse entregado/leido llegado DURANTE el envio es la verdad mas
+      // avanzada: nunca se pisa con nuestro 'enviado' o 'incierto'.
+      const estado = (reg.estado === 'entregado' || reg.estado === 'leido') ? reg.estado : mod.estado;
+      return { ...mod, estado, whatsappId: mod.whatsappId || reg.whatsappId || null };
+    });
+    // Un registro modificado que ya no existe en disco (cancelado durante el
+    // despacho) no resucita: el envio ya ocurrio, pero la ficha no vuelve.
+    guardarMensajesProgramados(fusionada);
   }
 
   // Compatibilidad: el valor devuelto sigue siendo el array de despachados
@@ -536,7 +561,10 @@ export function procesarActualizacionEntrega(actualizaciones = []) {
     const idWa = upd?.key?.id;
     if (!idWa) continue;
     const m = lista.find(x => x.whatsappId === idWa);
-    if (!m || !m.enviado) continue;
+    // Solo fichas con whatsappId (o sea, ya transmitidas); no se exige
+    // enviado=true: el acuse puede llegar DURANTE el despacho, antes de que
+    // el flag se escriba, y ese acuse no puede perderse.
+    if (!m) continue;
 
     const estado = upd?.update?.status;
     if (upd?.update?.error) {
@@ -550,7 +578,7 @@ export function procesarActualizacionEntrega(actualizaciones = []) {
       m.estado = 'leido';
       transiciones.push({ id: m.id, numero: m.numero, estado: 'leido' });
       huboCambios = true;
-    } else if (typeof estado === 'number' && estado >= 3 && m.estado === 'enviado') {
+    } else if (typeof estado === 'number' && estado >= 3 && (m.estado === 'enviado' || m.estado === 'programado')) {
       m.estado = 'entregado';
       transiciones.push({ id: m.id, numero: m.numero, estado: 'entregado' });
       huboCambios = true;
