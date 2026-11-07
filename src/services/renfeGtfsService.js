@@ -262,8 +262,10 @@ export async function horariosProgramados(paradaId, tipo, deps = {}) {
   const estacion = String(paradaId || '').replace(/\D/g, '');
   if (!estacion) return { ok: false, error: 'Estacion invalida.' };
   const ahora = deps.ahora ? new Date(deps.ahora) : new Date();
-  const { fecha, diaSemana, segundosDia } = partesMadrid(ahora);
-  const ruta = rutaCacheHorarios(deps, estacion, fecha);
+  const hoy = partesMadrid(ahora);
+  const ayer = partesMadrid(new Date(ahora.getTime() - 86400000));
+  const medianocheHoy = Math.floor(ahora.getTime() / 1000) - hoy.segundosDia;
+  const ruta = rutaCacheHorarios(deps, estacion, hoy.fecha);
   let cache = null;
   try { cache = JSON.parse(fs.readFileSync(ruta, 'utf-8')); } catch { /* sin cache */ }
   let filas = cache && Array.isArray(cache.horarios) ? cache.horarios : null;
@@ -281,34 +283,48 @@ export async function horariosProgramados(paradaId, tipo, deps = {}) {
     const iTrip = cabT.indexOf('trip_id'), iServ = cabT.indexOf('service_id'), iHead = cabT.indexOf('trip_headsign');
     const viajeInfo = new Map();
     for (const f of filasT) viajeInfo.set((f[iTrip] || '').trim(), { servicio: (f[iServ] || '').trim(), destino: iHead !== -1 ? (f[iHead] || '').trim() : '' });
-    const activos = serviciosActivos(
+    const activosHoy = serviciosActivos(
       calendarTxt ? calendarTxt.toString('utf-8') : null,
       calendarDatesTxt ? calendarDatesTxt.toString('utf-8') : null,
-      fecha, diaSemana
+      hoy.fecha, hoy.diaSemana
+    );
+    const activosAyer = serviciosActivos(
+      calendarTxt ? calendarTxt.toString('utf-8') : null,
+      calendarDatesTxt ? calendarDatesTxt.toString('utf-8') : null,
+      ayer.fecha, ayer.diaSemana
     );
     const encontradas = await filtrarLineasZip(buf, 'stop_times.txt', (l) => {
       const cols = l.split(',');
       const info = viajeInfo.get((cols[0] || '').trim());
-      return (cols[3] || '').trim() === estacion && !!info && activos.has(info.servicio);
+      return (cols[3] || '').trim() === estacion && !!info && (activosHoy.has(info.servicio) || activosAyer.has(info.servicio));
     });
     if (!encontradas) return { ok: false, error: 'El GTFS no contiene stop_times.txt.' };
-    filas = encontradas.map((l) => {
+    const ahoraEpoch = Math.floor(ahora.getTime() / 1000);
+    const medianocheAyerReal = ahoraEpoch - 86400 - ayer.segundosDia;
+    filas = [];
+    for (const l of encontradas) {
       const cols = l.split(',');
       const horaTxt = (cols[2] || cols[1] || '').trim();
       const [h, m, s] = horaTxt.split(':').map((x) => Number(x));
+      const segundosDia = (h || 0) * 3600 + (m || 0) * 60 + (s || 0);
       const info = viajeInfo.get((cols[0] || '').trim()) || {};
-      return { viaje: (cols[0] || '').trim(), segundosDia: (h || 0) * 3600 + (m || 0) * 60 + (s || 0), hora: horaTxt.slice(0, 5), destino: info.destino || '' };
-    }).sort((a, b) => a.segundosDia - b.segundosDia);
+      const horaFmt = `${String(Math.floor(segundosDia / 3600) % 24).padStart(2, '0')}:${String(Math.floor((segundosDia % 3600) / 60)).padStart(2, '0')}`;
+      // GTFS: horas >= 24:00 pertenecen al dia de servicio (puede ser ayer).
+      if (activosHoy.has(info.servicio)) filas.push({ viaje: (cols[0] || '').trim(), epoch: medianocheHoy + segundosDia, hora: horaFmt, destino: info.destino || '' });
+      if (activosAyer.has(info.servicio) && segundosDia >= 86400) filas.push({ viaje: (cols[0] || '').trim(), epoch: medianocheAyerReal + segundosDia, hora: horaFmt, destino: info.destino || '' });
+    }
+    filas.sort((a, b) => a.epoch - b.epoch);
     try {
       fs.mkdirSync(path.dirname(ruta), { recursive: true });
       const tmp = `${ruta}.tmp.${process.pid}`;
-      fs.writeFileSync(tmp, JSON.stringify({ generadoEn: ahora.toISOString(), fecha, estacion, horarios: filas }), 'utf-8');
+      fs.writeFileSync(tmp, JSON.stringify({ generadoEn: ahora.toISOString(), fecha: hoy.fecha, estacion, horarios: filas }), 'utf-8');
       fs.renameSync(tmp, ruta);
     } catch { /* sin cache no pasa nada */ }
   }
+  const ahoraEpoch = Math.floor(ahora.getTime() / 1000);
   const programadas = filas
-    .filter((f) => f.segundosDia >= segundosDia - 60)
+    .filter((f) => f.epoch >= ahoraEpoch - 60)
     .slice(0, 5)
-    .map((f) => ({ viaje: f.viaje, segundos: f.segundosDia - segundosDia, hora: f.hora, destino: f.destino, programado: true }));
+    .map((f) => ({ viaje: f.viaje, segundos: f.epoch - ahoraEpoch, hora: f.hora, destino: f.destino, programado: true }));
   return { ok: true, programadas };
 }

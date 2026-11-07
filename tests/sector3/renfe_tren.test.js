@@ -201,3 +201,44 @@ fs.rmSync(depsProg.rutaCacheHorarios, { recursive: true, force: true });
 try { fs.unlinkSync(depsProg.rutaArchivo); } catch { /* nada */ }
 
 console.log('renfe_tren.test.js OK (final)');
+
+// 9) horario GTFS >= 24:00 pertenece al dia de servicio: un tren "25:30" del
+// servicio de ayer aparece a las 00:30 de hoy (no como hora futura del dia)
+const STOP_TIMES_NOCHE = 'trip_id,arrival_time,departure_time,stop_id,stop_sequence\nC3-101,25:30:00,25:30:00,60200,11\nC3-102,23:30:00,23:30:00,60200,11\nC3-900,17:00:00,17:00:00,60200,5\n';
+const zipNoche = zipDePrueba([
+  { nombre: 'stops.txt', datos: STOPS_PROG, metodo: 8 },
+  { nombre: 'trips.txt', datos: TRIPS_PROG, metodo: 8 },
+  { nombre: 'calendar.txt', datos: CAL_PROG, metodo: 8 },
+  { nombre: 'stop_times.txt', datos: STOP_TIMES_NOCHE, metodo: 8 }
+]);
+// sabado 7 nov 2026 00:30 Madrid = viernes 6 nov 23:30 UTC
+const ahoraNoche = new Date('2026-11-06T23:30:00Z').getTime();
+const depsNoche = {
+  rutaArchivo: '/tmp/test-transporte-renfe5.json',
+  rutaCache: '/tmp/test-estaciones-renfe-noche.json',
+  rutaCacheHorarios: '/tmp/test-horarios-renfe-noche',
+  ahora: ahoraNoche,
+  fetchFn: async (url) => {
+    if (url.includes('fomento_transit')) return { arrayBuffer: async () => zipNoche.buffer.slice(zipNoche.byteOffset, zipNoche.byteOffset + zipNoche.length) };
+    if (url.includes('google_transit')) return { arrayBuffer: async () => zipLd.buffer.slice(zipLd.byteOffset, zipLd.byteOffset + zipLd.length) };
+    return { text: async () => feedVacio };
+  },
+  fetchFnCercanias: async () => ({ text: async () => feedVacio })
+};
+try { fs.unlinkSync(depsNoche.rutaCache); } catch { /* nada */ }
+try { fs.unlinkSync(depsNoche.rutaArchivo); } catch { /* nada */ }
+fs.rmSync(depsNoche.rutaCacheHorarios, { recursive: true, force: true });
+const rNoche = await proximasLlegadas({ parada: 'aranjuez' }, depsNoche);
+assert.ok(rNoche.ok, 'resuelve de madrugada');
+assert.ok(Array.isArray(rNoche.programadas), 'ofrece programadas de madrugada');
+// servicios activos HOY sabado: FES (17:00 ya paso). AYER viernes: LAB
+// (23:30 ya paso; 25:30 = 01:30 de hoy, en una hora). Ademas el FES de las
+// 17:00 de hoy sabado sigue por venir a las 00:30.
+assert.strictEqual(rNoche.programadas.length, 2, 'quedan el 25:30 de ayer (01:30 hoy) y el 17:00 de hoy');
+assert.strictEqual(rNoche.programadas[0].hora, '01:30', 'hora normalizada (no 25:30)');
+assert.strictEqual(rNoche.programadas[0].viaje, 'C3-101', 'servicio de ayer correcto');
+assert.strictEqual(rNoche.programadas[1].hora, '17:00');
+assert.strictEqual(rNoche.programadas[0].viaje, 'C3-101');
+try { fs.unlinkSync(depsNoche.rutaArchivo); } catch { /* nada */ }
+
+console.log('renfe_tren.test.js OK (definitivo)');
