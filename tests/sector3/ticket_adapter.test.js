@@ -87,17 +87,28 @@ test('las lecturas se serializan: nunca hay dos inferencias en vuelo', async () 
   assert.deepEqual(orden, ['inicio1', 'fin1', 'inicio2', 'fin2']);
 });
 
-test('una lectura que agota su tiempo falla honesta y NO rompe la cola', async () => {
+test('timeout del cliente: aviso honesto, pero la cola espera al FIN REAL de la inferencia', async () => {
+  // Si la foto A agota el timeout del cliente pero la inferencia sigue
+  // viva en el servidor, la foto B NO arranca hasta que A termina de
+  // verdad: nunca hay dos inferencias en vuelo.
+  let liberarColgada;
+  const colgada = new Promise((resolve) => { liberarColgada = resolve; });
   let llamadas = 0;
   const chatFalso = async () => {
     llamadas++;
-    if (llamadas === 1) return new Promise(() => {}); // cuelgue simulado
+    if (llamadas === 1) return colgada; // inferencia lenta/colgada
     return { message: { content: '{"importe": 5, "camposDudosos": []}' } };
   };
   const analizar = crearAnalizadorTicket({ modelo: 'x', timeoutMs: 40, chatCompletion: chatFalso });
-  await assert.rejects(analizar(Buffer.from('a')), /agoto su tiempo/);
-  const lectura = await analizar(Buffer.from('b'));
-  assert.equal(lectura.importe, 5, 'la siguiente foto se procesa con normalidad');
+  const pA = analizar(Buffer.from('a')).catch((e) => e);
+  const pB = analizar(Buffer.from('b')).catch((e) => e);
+  const [rA, rB] = await Promise.all([pA, pB]);
+  assert.match(rA.message, /agoto su tiempo/, 'A recibe aviso honesto');
+  assert.match(rB.message, /agoto su tiempo/, 'B tambien: su espera cuenta desde que llego');
+  assert.equal(llamadas, 1, 'B nunca arranco: la inferencia de A seguia viva');
+  liberarColgada({ message: { content: '{}' } });
+  const lectura = await analizar(Buffer.from('c'));
+  assert.equal(lectura.importe, 5, 'cuando A termina de verdad, la cola vuelve a fluir');
 });
 
 test('un error del proveedor se propaga (el bot avisa honesto) y la cola sigue viva', async () => {

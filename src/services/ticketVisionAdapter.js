@@ -15,10 +15,12 @@
  * Ciclo de vida (pedido por David, 7 nov 2026): el trabajo de vision arranca
  * SOLO cuando llega un ticket y no deja nada residente al terminar: la
  * llamada viaja con keep_alive = 0 para que Ollama descargue el modelo al
- * acabar, tambien si la lectura falla o agota su tiempo (la descarga la
- * hace el propio Ollama al cerrar la peticion; nosotros no dejamos ningun
- * proceso ni worker). Las lecturas se SERIALIZAN (una foto cada vez) para
- * acotar CPU/RAM en el VPS.
+ * cerrar la peticion. Si el cliente agota antes su espera, la inferencia
+ * continua en el servidor hasta terminar y la descarga ocurre entonces;
+ * la salida real del proceso la mide el executor, no la da por hecha este
+ * codigo. Las lecturas se SERIALIZAN SOBRE EL FIN REAL de la inferencia
+ * (no sobre el timeout del cliente), asi nunca hay dos en vuelo aunque la
+ * anterior siga cocinando tras un timeout.
  *
  * El parser envia la foto al modelo con un prompt estricto y devuelve solo
  * datos estructurados {importe, comercio, moneda, fecha, camposDudosos};
@@ -43,7 +45,8 @@ function conLimiteDeTiempo(promesa, ms) {
   let temporizador;
   const limite = new Promise((_, reject) => {
     temporizador = setTimeout(() => {
-      reject(new Error(`La lectura del ticket agoto su tiempo (${Math.round(ms / 1000)} s)`));
+      const legible = ms < 1000 ? `${ms} ms` : `${Math.round(ms / 1000)} s`;
+      reject(new Error(`La lectura del ticket agoto su tiempo (${legible})`));
     }, ms);
   });
   return Promise.race([promesa, limite]).finally(() => clearTimeout(temporizador));
@@ -91,11 +94,18 @@ export function crearAnalizadorTicket({ modelo, provider, baseUrl, timeoutMs, ch
     }
   }
 
-  // Serializa las lecturas y acota cada una en el tiempo; un fallo o un
-  // timeout no rompe la cola para la foto siguiente.
+  // Serializa las lecturas sobre el FIN REAL de la inferencia: la cola
+  // encadena la promesa cruda de analizar (que solo se resuelve cuando la
+  // inferencia termina de verdad, con exito o error), mientras el llamador
+  // recibe la version con techo de espera. Si una foto agota el timeout
+  // del cliente pero sigue cocinando en el servidor, la siguiente NO
+  // arranca hasta que aquella termina: nunca hay dos inferencias en vuelo.
+  // Coste honesto: una inferencia colgada de verdad bloquea las siguientes
+  // hasta que el servidor la cierre; cada llamador agota su propio timeout
+  // y recibe el aviso honesto mientras tanto.
   return (buffer) => {
-    const tarea = colaAnalisis.then(() => conLimiteDeTiempo(analizar(buffer), limiteMs));
-    colaAnalisis = tarea.catch(() => {});
-    return tarea;
+    const inferencia = colaAnalisis.then(() => analizar(buffer));
+    colaAnalisis = inferencia.catch(() => {});
+    return conLimiteDeTiempo(inferencia, limiteMs);
   };
 }
