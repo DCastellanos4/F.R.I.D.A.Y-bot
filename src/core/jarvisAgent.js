@@ -1827,12 +1827,13 @@ REGLAS CRÍTICAS DE COMUNICACIÓN:
 
   // Estado de configuracion de integraciones, derivado del entorno en runtime
   // (hechos, no suposiciones): responde con esto si David pregunta que le falta por configurar.
+  // Nivel capacidad, sin nombres de variables ni rutas: el prompt no debe filtrar infraestructura.
   const faltan = [];
-  if (!process.env.DAVIS_EMT_CLIENT_ID || !process.env.DAVIS_EMT_PASS_KEY) faltan.push('EMT de Madrid (alta gratuita en MobilityLabs: DAVIS_EMT_CLIENT_ID y DAVIS_EMT_PASS_KEY)');
-  if (!process.env.DAVIS_HA_URL || !process.env.DAVIS_HA_TOKEN) faltan.push('domotica Home Assistant (DAVIS_HA_URL y DAVIS_HA_TOKEN)');
-  if (!process.env.DAVIS_QBIT_URL || !process.env.DAVIS_QBIT_PASS) faltan.push('panel de descargas qBittorrent (DAVIS_QBIT_URL y DAVIS_QBIT_PASS)');
-  if (!process.env.DAVIS_WOL_MAC) faltan.push('Wake-on-LAN para encender el PC (DAVIS_WOL_MAC)');
-  if (!process.env.DAVIS_TICKET_VISION_MODEL) faltan.push('lector de tickets por foto (DAVIS_TICKET_VISION_MODEL)');
+  if (!process.env.DAVIS_EMT_CLIENT_ID || !process.env.DAVIS_EMT_PASS_KEY) faltan.push('bus de Madrid en vivo con la EMT (alta gratuita en MobilityLabs)');
+  if (!process.env.DAVIS_HA_URL || !process.env.DAVIS_HA_TOKEN) faltan.push('domotica con Home Assistant');
+  if (!process.env.DAVIS_QBIT_URL || !process.env.DAVIS_QBIT_PASS) faltan.push('panel de descargas qBittorrent');
+  if (!process.env.DAVIS_WOL_MAC) faltan.push('encendido remoto del PC (Wake-on-LAN)');
+  if (!process.env.DAVIS_TICKET_VISION_MODEL) faltan.push('lectura de tickets por foto');
   systemPrompt += `\n\nCONFIGURACION PENDIENTE (hechos del entorno actual, no suposiciones):
 ${faltan.length === 0 ? '- Ninguna: todas las integraciones opcionales estan configuradas.' : faltan.map((f) => `- Pendiente: ${f}`).join('\n')}
 (DIRECTIVA: Si David pregunta que le falta por configurar, responde DIRECTAMENTE con esta lista y ofrece guiarle en el alta que elija; no pidas aclaraciones sobre a que configuracion se refiere.)`;

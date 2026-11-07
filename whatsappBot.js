@@ -13,6 +13,7 @@ import { fileURLToPath } from 'url';
 import { config } from './src/config/config.js';
 import { DATA_DIR } from './src/config/paths.js';
 import { consultarJarvis } from './src/core/jarvisAgent.js';
+import { normalizarMarkdownWhatsApp } from './src/services/textFormatService.js';
 import { confirmAndExecute } from './src/system/bashConsoleService.js';
 import { iniciarMonitorRecordatorios } from './src/services/reminderService.js';
 import { iniciarMonitorMensajesProgramados, registrarIdWhatsApp, procesarActualizacionEntrega } from './src/services/scheduledMessageService.js';
@@ -1058,7 +1059,7 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         // WhatsApp solo interpreta *negrita* con un asterisco: el modelo suele
         // emitir **doble** (markdown), que se veria literal. Se normaliza aqui,
         // unico punto de envio de la respuesta del agente.
-        if (typeof respuesta === 'string') respuesta = respuesta.replace(/\*\*([^*]+)\*\*/g, '*$1*');
+        respuesta = normalizarMarkdownWhatsApp(respuesta);
 
         // 7. Respuesta en Nota de Voz Nativa PTT (si David envió audio o solicitó voz)
         if (esAudio || /responde(me)?\s+(en|con)?\s*(audio|nota de voz|voz)/i.test(texto)) {
