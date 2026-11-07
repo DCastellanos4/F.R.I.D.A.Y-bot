@@ -31,7 +31,7 @@ function rutaCache(deps = {}) {
  * Extrae un fichero concreto de un buffer ZIP (metodo Stored o Deflate) sin
  * dependencias externas. Devuelve Buffer o null si no existe la entrada.
  */
-export function extraerFicheroZip(bufferZip, nombreBuscado) {
+function localizarEntradaZip(bufferZip, nombreBuscado) {
   const buf = Buffer.isBuffer(bufferZip) ? bufferZip : Buffer.from(bufferZip);
   // End of Central Directory: buscar firma 0x06054b50 en los ultimos 64 KB.
   const inicio = Math.max(0, buf.length - 65536 - 22);
@@ -56,14 +56,60 @@ export function extraerFicheroZip(bufferZip, nombreBuscado) {
       const nombreLocal = buf.readUInt16LE(offsetLocal + 26);
       const extraLocal = buf.readUInt16LE(offsetLocal + 28);
       const inicioDatos = offsetLocal + 30 + nombreLocal + extraLocal;
-      const datos = buf.subarray(inicioDatos, inicioDatos + tamComprimido);
-      if (metodo === 0) return Buffer.from(datos);
-      if (metodo === 8) return zlib.inflateRawSync(datos);
-      return null;
+      return { metodo, datos: buf.subarray(inicioDatos, inicioDatos + tamComprimido) };
     }
     pos += 46 + largoNombre + largoExtra + largoComentario;
   }
   return null;
+}
+
+export function extraerFicheroZip(bufferZip, nombreBuscado) {
+  const entrada = localizarEntradaZip(bufferZip, nombreBuscado);
+  if (!entrada) return null;
+  if (entrada.metodo === 0) return Buffer.from(entrada.datos);
+  if (entrada.metodo === 8) return zlib.inflateRawSync(entrada.datos);
+  return null;
+}
+
+/**
+ * Recorre una entrada ZIP (Deflate o Stored) linea a linea SIN cargar el
+ * fichero entero en memoria (stop_times.txt supera los 250 MB). onLinea
+ * recibe cada linea; si devuelve true se conserva en el resultado.
+ */
+async function filtrarLineasZip(bufferZip, nombreBuscado, onLinea) {
+  const entrada = localizarEntradaZip(bufferZip, nombreBuscado);
+  if (!entrada) return null;
+  const fuera = [];
+  let resto = '';
+  const procesar = (texto, final) => {
+    const trozos = (resto + texto).split(/\r?\n/);
+    resto = final ? '' : trozos.pop();
+    for (const l of trozos) {
+      if (!l) continue;
+      if (onLinea(l)) fuera.push(l);
+    }
+    if (final && resto && onLinea(resto)) fuera.push(resto);
+  };
+  if (entrada.metodo === 0) {
+    procesar(entrada.datos.toString('utf-8'), true);
+    return fuera;
+  }
+  if (entrada.metodo !== 8) return null;
+  const inflador = zlib.createInflateRaw();
+  inflador.write(entrada.datos);
+  inflador.end();
+  let buf = '';
+  for await (const chunk of inflador) {
+    buf += chunk.toString('utf-8');
+    const trozos = buf.split(/\r?\n/);
+    buf = trozos.pop();
+    for (const l of trozos) {
+      if (!l) continue;
+      if (onLinea(l)) fuera.push(l);
+    }
+  }
+  if (buf && onLinea(buf)) fuera.push(buf);
+  return fuera;
 }
 
 function parsearStops(txt, tipo) {
@@ -146,4 +192,123 @@ export async function resolverEstaciones(texto, deps = {}) {
   if (mejores.length === 0) mejores = conNorm.filter((e) => e.norm.split(' ').some((p) => p === q) || e.norm.startsWith(q + ' '));
   if (mejores.length === 0) mejores = conNorm.filter((e) => e.norm.includes(q));
   return mejores.slice(0, 5).map(({ norm, ...resto }) => resto);
+}
+
+// --- Horario programado (stop_times/trips/calendar del GTFS estatico) ---
+// El feed GTFS-RT de Renfe solo difunde la PROXIMA parada de los trenes en
+// curso, asi que en estaciones con pocos trenes puede no salir nada en vivo.
+// Este fallback lista las siguientes salidas PROGRAMADAS del dia (sin info
+// en vivo), cacheadas por estacion y fecha.
+
+function rutaCacheHorarios(deps = {}, paradaId, fecha) {
+  const base = deps.rutaCacheHorarios || path.join(DATA_DIR, 'horarios-renfe');
+  return path.join(base, `${paradaId}-${fecha}.json`);
+}
+
+function partesMadrid(ahora) {
+  const partes = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).formatToParts(ahora);
+  const g = (t) => (partes.find((p) => p.type === t) || {}).value;
+  const fecha = `${g('year')}${g('month')}${g('day')}`;
+  const diaUtc = new Date(Date.UTC(Number(g('year')), Number(g('month')) - 1, Number(g('day')))).getUTCDay();
+  return {
+    fecha,
+    diaSemana: diaUtc === 0 ? 7 : diaUtc, // 1=lunes .. 7=domingo
+    segundosDia: (Number(g('hour')) % 24) * 3600 + Number(g('minute')) * 60 + Number(g('second'))
+  };
+}
+
+function parseCsvSimple(txt) {
+  const lineas = txt.split(/\r?\n/);
+  const cab = (lineas[0] || '').split(',').map((s) => s.trim());
+  const filas = [];
+  for (let i = 1; i < lineas.length; i++) {
+    if (!lineas[i] || !lineas[i].trim()) continue;
+    filas.push(lineas[i].split(','));
+  }
+  return { cab, filas };
+}
+
+function serviciosActivos(calendarTxt, calendarDatesTxt, fecha, diaSemana) {
+  const activos = new Set();
+  if (calendarTxt) {
+    const { cab, filas } = parseCsvSimple(calendarTxt);
+    const iS = cab.indexOf('service_id'), iIni = cab.indexOf('start_date'), iFin = cab.indexOf('end_date');
+    const diasCab = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const iDia = cab.indexOf(diasCab[diaSemana - 1] || 'monday');
+    for (const f of filas) {
+      if (iS === -1) continue;
+      const enRango = (f[iIni] || '') <= fecha && fecha <= (f[iFin] || '');
+      if (enRango && iDia !== -1 && (f[iDia] || '').trim() === '1') activos.add((f[iS] || '').trim());
+    }
+  }
+  if (calendarDatesTxt) {
+    const { cab, filas } = parseCsvSimple(calendarDatesTxt);
+    const iS = cab.indexOf('service_id'), iF = cab.indexOf('date'), iT = cab.indexOf('exception_type');
+    for (const f of filas) {
+      if ((f[iF] || '').trim() !== fecha) continue;
+      if ((f[iT] || '').trim() === '1') activos.add((f[iS] || '').trim());
+      if ((f[iT] || '').trim() === '2') activos.delete((f[iS] || '').trim());
+    }
+  }
+  return activos;
+}
+
+/**
+ * Siguientes salidas PROGRAMADAS de hoy en una estacion (sin info en vivo).
+ * Devuelve { ok, programadas: [{ viaje, segundos, hora, destino }] } o
+ * { ok:false, error } si el GTFS no tiene horarios para esa estacion hoy.
+ */
+export async function horariosProgramados(paradaId, tipo, deps = {}) {
+  const estacion = String(paradaId || '').replace(/\D/g, '');
+  if (!estacion) return { ok: false, error: 'Estacion invalida.' };
+  const ahora = deps.ahora ? new Date(deps.ahora) : new Date();
+  const { fecha, diaSemana, segundosDia } = partesMadrid(ahora);
+  const ruta = rutaCacheHorarios(deps, estacion, fecha);
+  let cache = null;
+  try { cache = JSON.parse(fs.readFileSync(ruta, 'utf-8')); } catch { /* sin cache */ }
+  let filas = cache && Array.isArray(cache.horarios) ? cache.horarios : null;
+  if (!filas) {
+    const url = tipo === 'tren' ? URL_GTFS_LD : URL_GTFS_CERCANIAS;
+    const fetchFn = deps.fetchFn || fetch;
+    const resp = await fetchFn(url, { signal: AbortSignal.timeout(deps.timeoutMs || 60000) });
+    const buf = Buffer.from(await resp.arrayBuffer());
+    if (buf.length > MAX_BYTES) throw new Error('El GTFS supera el tamano maximo admitido.');
+    const tripsTxt = extraerFicheroZip(buf, 'trips.txt');
+    const calendarTxt = extraerFicheroZip(buf, 'calendar.txt');
+    const calendarDatesTxt = extraerFicheroZip(buf, 'calendar_dates.txt');
+    if (!tripsTxt) return { ok: false, error: 'El GTFS no contiene trips.txt.' };
+    const { cab: cabT, filas: filasT } = parseCsvSimple(tripsTxt.toString('utf-8'));
+    const iTrip = cabT.indexOf('trip_id'), iServ = cabT.indexOf('service_id'), iHead = cabT.indexOf('trip_headsign');
+    const viajeInfo = new Map();
+    for (const f of filasT) viajeInfo.set((f[iTrip] || '').trim(), { servicio: (f[iServ] || '').trim(), destino: iHead !== -1 ? (f[iHead] || '').trim() : '' });
+    const activos = serviciosActivos(
+      calendarTxt ? calendarTxt.toString('utf-8') : null,
+      calendarDatesTxt ? calendarDatesTxt.toString('utf-8') : null,
+      fecha, diaSemana
+    );
+    const encontradas = await filtrarLineasZip(buf, 'stop_times.txt', (l) => {
+      const cols = l.split(',');
+      const info = viajeInfo.get((cols[0] || '').trim());
+      return (cols[3] || '').trim() === estacion && !!info && activos.has(info.servicio);
+    });
+    if (!encontradas) return { ok: false, error: 'El GTFS no contiene stop_times.txt.' };
+    filas = encontradas.map((l) => {
+      const cols = l.split(',');
+      const horaTxt = (cols[2] || cols[1] || '').trim();
+      const [h, m, s] = horaTxt.split(':').map((x) => Number(x));
+      const info = viajeInfo.get((cols[0] || '').trim()) || {};
+      return { viaje: (cols[0] || '').trim(), segundosDia: (h || 0) * 3600 + (m || 0) * 60 + (s || 0), hora: horaTxt.slice(0, 5), destino: info.destino || '' };
+    }).sort((a, b) => a.segundosDia - b.segundosDia);
+    try {
+      fs.mkdirSync(path.dirname(ruta), { recursive: true });
+      const tmp = `${ruta}.tmp.${process.pid}`;
+      fs.writeFileSync(tmp, JSON.stringify({ generadoEn: ahora.toISOString(), fecha, estacion, horarios: filas }), 'utf-8');
+      fs.renameSync(tmp, ruta);
+    } catch { /* sin cache no pasa nada */ }
+  }
+  const programadas = filas
+    .filter((f) => f.segundosDia >= segundosDia - 60)
+    .slice(0, 5)
+    .map((f) => ({ viaje: f.viaje, segundos: f.segundosDia - segundosDia, hora: f.hora, destino: f.destino, programado: true }));
+  return { ok: true, programadas };
 }

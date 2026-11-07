@@ -19,7 +19,7 @@ import crypto from 'node:crypto';
 import { DATA_DIR } from '../config/paths.js';
 import { llegadasEmt } from './emtAdapter.js';
 import { llegadasCercanias, llegadasTrenLD } from './cercaniasAdapter.js';
-import { resolverEstaciones, cargarIndiceEstaciones } from './renfeGtfsService.js';
+import { resolverEstaciones, cargarIndiceEstaciones, horariosProgramados } from './renfeGtfsService.js';
 
 export const ARCHIVO_DEFECTO = path.join(DATA_DIR, 'transporte.json');
 export const TIPOS = ['emt', 'cercanias', 'tren'];
@@ -134,10 +134,24 @@ export async function proximasLlegadas({ parada, tipo, codigo } = {}, deps = {})
     const r = await llegadasEmt(codigoFinal, { fetchFn: deps.fetchFnEmt, clientId: deps.clientIdEmt, passKey: deps.passKeyEmt });
     return { ...r, parada: objetivo ? objetivo.nombre : `EMT ${codigoFinal}`, tipo: 'emt' };
   }
+  const nombreParada = (objetivo && objetivo.nombre) || (resuelta && resuelta.nombre) || null;
+  let r = null;
   if (tipoFinal === 'tren') {
-    const r = await llegadasTrenLD(codigoFinal, { fetchFn: deps.fetchFnCercanias, ahora: deps.ahora });
-    return { ...r, parada: (objetivo && objetivo.nombre) || (resuelta && resuelta.nombre) || `Tren ${codigoFinal}`, tipo: 'tren' };
+    r = await llegadasTrenLD(codigoFinal, { fetchFn: deps.fetchFnCercanias, ahora: deps.ahora });
+  } else {
+    r = await llegadasCercanias(codigoFinal, { fetchFn: deps.fetchFnCercanias, ahora: deps.ahora });
   }
-  const r = await llegadasCercanias(codigoFinal, { fetchFn: deps.fetchFnCercanias, ahora: deps.ahora });
-  return { ...r, parada: (objetivo && objetivo.nombre) || (resuelta && resuelta.nombre) || `Cercanias ${codigoFinal}`, tipo: 'cercanias' };
+  const salida = { ...r, parada: nombreParada || `${tipoFinal === 'tren' ? 'Tren' : 'Cercanias'} ${codigoFinal}`, tipo: tipoFinal };
+  // El feed en vivo solo difunde la proxima parada de trenes en curso: si no
+  // hay ninguno, ofrecer las siguientes salidas PROGRAMADAS del GTFS estatico.
+  if (salida.ok && Array.isArray(salida.llegadas) && salida.llegadas.length === 0) {
+    try {
+      const prog = await horariosProgramados(codigoFinal, tipoFinal, deps);
+      if (prog.ok && prog.programadas.length > 0) {
+        salida.programadas = prog.programadas;
+        salida.nota = 'No hay trenes con informacion en vivo ahora (el feed de Renfe solo difunde la proxima parada de trenes en curso). Estas son las proximas salidas programadas de hoy.';
+      }
+    } catch { /* sin horarios: se mantiene la nota del feed en vivo */ }
+  }
+  return salida;
 }

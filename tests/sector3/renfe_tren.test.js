@@ -159,3 +159,45 @@ assert.strictEqual(rDup.tipo, 'cercanias', 'prefiere el feed de Cercanias (mismo
 try { fs.unlinkSync(depsDup.rutaArchivo); } catch { /* nada */ }
 
 console.log('renfe_tren.test.js OK (ampliado)');
+
+// 8) fallback de horario programado: estacion sin trenes en vivo lista las
+// siguientes salidas programadas del GTFS estatico (descubierto 7 nov 2026:
+// el feed GTFS-RT solo difunde la proxima parada de trenes en curso)
+const STOPS_PROG = 'stop_id,stop_name,stop_lat,stop_lon,wheelchair_boarding\n60200,Aranjuez,40.0,-3.6,1\n';
+const TRIPS_PROG = 'route_id,service_id,trip_id,trip_headsign\nC3,LAB,C3-101,Madrid-Chamartin\nC3,LAB,C3-102,Madrid-Chamartin\nC3,FES,C3-900,Madrid-Atocha\n';
+const CAL_PROG = 'service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\nLAB,1,1,1,1,1,0,0,20260101,20261231\nFES,0,0,0,0,0,1,1,20260101,20261231\n';
+const STOP_TIMES_PROG = 'trip_id,arrival_time,departure_time,stop_id,stop_sequence\nC3-101,15:30:00,15:30:00,60105,10\nC3-101,16:00:00,16:00:00,60200,11\nC3-102,16:20:00,16:20:00,60105,10\nC3-102,16:50:00,16:50:00,60200,11\nC3-900,17:00:00,17:00:00,60200,5\n';
+// sabado 7 nov 2026 15:00 Madrid = 14:00 UTC
+const ahoraSabado = new Date('2026-11-07T14:00:00Z').getTime();
+const zipProg = zipDePrueba([
+  { nombre: 'stops.txt', datos: STOPS_PROG, metodo: 8 },
+  { nombre: 'trips.txt', datos: TRIPS_PROG, metodo: 8 },
+  { nombre: 'calendar.txt', datos: CAL_PROG, metodo: 8 },
+  { nombre: 'stop_times.txt', datos: STOP_TIMES_PROG, metodo: 8 }
+]);
+const feedVacio = JSON.stringify({ header: { gtfsRealtimeVersion: '2.0', timestamp: String(Math.floor(ahoraSabado / 1000)) }, entity: [] });
+const depsProg = {
+  rutaArchivo: '/tmp/test-transporte-renfe4.json',
+  rutaCache: '/tmp/test-estaciones-renfe-prog.json',
+  rutaCacheHorarios: '/tmp/test-horarios-renfe',
+  ahora: ahoraSabado,
+  fetchFn: async (url) => {
+    if (url.includes('fomento_transit')) return { arrayBuffer: async () => zipProg.buffer.slice(zipProg.byteOffset, zipProg.byteOffset + zipProg.length) };
+    if (url.includes('google_transit')) return { arrayBuffer: async () => zipLd.buffer.slice(zipLd.byteOffset, zipLd.byteOffset + zipLd.length) };
+    return { text: async () => feedVacio };
+  },
+  fetchFnCercanias: async () => ({ text: async () => feedVacio })
+};
+try { fs.unlinkSync(depsProg.rutaCache); } catch { /* nada */ }
+try { fs.unlinkSync(depsProg.rutaArchivo); } catch { /* nada */ }
+fs.rmSync(depsProg.rutaCacheHorarios, { recursive: true, force: true });
+const rProg = await proximasLlegadas({ parada: 'aranjuez' }, depsProg);
+assert.ok(rProg.ok, 'resuelve aranjuez');
+assert.strictEqual(rProg.llegadas.length, 0, 'sin trenes en vivo');
+assert.strictEqual(rProg.programadas.length, 1, 'solo C3-900 (sabado = servicio FES)');
+assert.strictEqual(rProg.programadas[0].hora, '17:00');
+assert.match(rProg.nota, /programadas/, 'la nota deja claro que son horarios programados');
+fs.rmSync(depsProg.rutaCacheHorarios, { recursive: true, force: true });
+try { fs.unlinkSync(depsProg.rutaArchivo); } catch { /* nada */ }
+
+console.log('renfe_tren.test.js OK (final)');

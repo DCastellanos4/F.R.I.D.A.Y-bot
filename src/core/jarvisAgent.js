@@ -1002,7 +1002,12 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
         if (!res.ok) {
           resultadoTool = res.error;
         } else if (res.llegadas.length === 0) {
-          resultadoTool = `No hay llegadas con informacion en vivo para ${res.parada} ahora mismo.${res.nota ? ' ' + res.nota : ''}`;
+          if (res.programadas && res.programadas.length > 0) {
+            const lineasProg = res.programadas.map((p) => `- ${p.hora}${p.destino ? ' a ' + p.destino : ''} (programado)`);
+            resultadoTool = `No hay trenes con informacion en vivo para ${res.parada} ahora mismo. Proximas salidas programadas de hoy:\n${lineasProg.join('\n')}${res.nota ? '\n' + res.nota : ''}`;
+          } else {
+            resultadoTool = `No hay llegadas con informacion en vivo para ${res.parada} ahora mismo.${res.nota ? ' ' + res.nota : ''}`;
+          }
         } else {
           const lineas = res.llegadas.map((l) => {
             const min = Math.max(0, Math.round(l.segundos / 60));
