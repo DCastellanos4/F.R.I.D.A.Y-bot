@@ -770,7 +770,7 @@ export function guardHallucinations(texto, contexto = {}) {
       herramientas: ['guardar_memoria', 'guardar_nota_personal'],
       enmienda: (m, sep) => /recordar[eé]|apunto/i.test(m)
         ? sep // promesa futura falsa ("lo recordare"): se elimina la frase
-        : `${sep}No he podido guardarlo en el Second Brain porque la herramienta de guardado no se ejecuto con exito; dimelo de nuevo y lo guardo.`
+        : `${sep}No he podido guardarlo en el Second Brain: la herramienta de guardado no se ejecuto con exito.`
     },
     {
       nombre: 'backup_cifrado',

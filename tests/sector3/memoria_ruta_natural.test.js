@@ -228,6 +228,7 @@ test('Guardarrail: una confirmacion de guardado SIN herramienta se corrige antes
   });
   assert.match(respuesta, /No he podido guardarlo/, 'la confirmacion falsa debe sustituirse por una declaracion honesta');
   assert.doesNotMatch(respuesta, /Lo recordare/);
+  assert.doesNotMatch(respuesta, /dimelo de nuevo/, 'la correccion no debe prometer un guardado futuro que no esta garantizado');
   const memoria = JSON.parse(fs.readFileSync(STORE, 'utf8'));
   assert.equal(memoria.length, 0, 'no debe haberse guardado nada');
 });
