@@ -10,6 +10,9 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const { crearAnalizadorTicket } = await import('../../src/services/ticketVisionAdapter.js');
 const { prepareMessagesForProvider } = await import('../../src/core/llmService.js');
@@ -34,6 +37,58 @@ test('el payload enviado al proveedor es el de vision (texto + imagen base64)', 
   assert.equal(partes[1].type, 'image_url');
   assert.ok(partes[1].image_url.url.startsWith('data:image/jpeg;base64,'), 'imagen como data URL base64');
   assert.deepEqual(lectura, { importe: 12.5, comercio: 'Mercadona', moneda: 'EUR', fecha: '2026-11-05', camposDudosos: [] });
+});
+
+test('el prompt NO contiene valores de ejemplo copiables y exige no inventar', async () => {
+  // Fallo medido con recibo sintetico y modelos locales pequenos: con un
+  // JSON de ejemplo en el prompt devolvian los valores del ejemplo (12.50,
+  // fecha del ejemplo) en lugar de los reales del ticket.
+  let llamada = null;
+  const chatFalso = async (args) => { llamada = args; return { message: { content: '{}' } }; };
+  const analizar = crearAnalizadorTicket({ modelo: 'x', chatCompletion: chatFalso });
+  await analizar(Buffer.from('f'));
+  const prompt = llamada.messages[0].content[0].text;
+  assert.ok(!/\d+[.,]\d{2}/.test(prompt), 'sin importes de ejemplo');
+  assert.ok(!/Mercadona|Carrefour|Mercado/i.test(prompt), 'sin comercios de ejemplo');
+  assert.ok(!/\d{4}-\d{2}-\d{2}/.test(prompt.replace(/AAAA-MM-DD/, '')), 'sin fechas de ejemplo');
+  assert.ok(prompt.includes('null'), 'declara el nulo para lo ilegible');
+  assert.ok(/NUNCA inventes/i.test(prompt), 'regla explicita de no inventar');
+});
+
+test('un campo leido como null llega como undefined (el validador de finanzas pide confirmacion)', async () => {
+  const chatFalso = async () => ({ message: { content: '{"importe": null, "comercio": null, "moneda": "EUR", "fecha": null, "camposDudosos": ["importe", "comercio", "fecha"]}' } });
+  const analizar = crearAnalizadorTicket({ modelo: 'x', chatCompletion: chatFalso });
+  const lectura = await analizar(Buffer.from('f'));
+  assert.equal(lectura.importe, undefined, 'null no pasa como valor');
+  assert.equal(lectura.comercio, undefined);
+  assert.equal(lectura.fecha, undefined);
+  assert.deepEqual(lectura.camposDudosos, ['importe', 'comercio', 'fecha']);
+});
+
+test('una foto que no es ticket no produce borrador con 0/N/A (rechazo honesto)', async () => {
+  // Fallo medido por el executor con foto de paisaje: el modelo respondia
+  // importe 0.00 y comercio "N/A" y eso NO puede abrir un borrador.
+  const chatFalso = async () => ({ message: { content: '{"importe": 0.00, "comercio": "N/A", "moneda": null, "fecha": null, "camposDudosos": ["importe", "comercio", "moneda", "fecha"]}' } });
+  const analizar = crearAnalizadorTicket({ modelo: 'x', chatCompletion: chatFalso });
+  const lectura = await analizar(Buffer.from('paisaje'));
+  assert.equal(lectura.importe, undefined, 'un 0.00 no es un gasto');
+  assert.equal(lectura.comercio, undefined, '"N/A" no es un comercio');
+
+  // Y en la capa de finanzas: sin importe legible no hay borrador, se pide
+  // el dato a David.
+  const { crearBorradorDesdeTicket } = await import('../../src/services/financeService.js');
+  const ruta = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'fin-')), 'finanzas.json');
+  const deps = { rutaArchivo: ruta, chatId: 'chat-prueba' };
+  const rechazo = crearBorradorDesdeTicket({}, deps);
+  assert.equal(rechazo.ok, false);
+  assert.match(rechazo.error, /No he podido leer el importe/);
+  const conCero = crearBorradorDesdeTicket({ importe: 0, comercio: 'N/A' }, deps);
+  assert.equal(conCero.ok, false, 'importe 0 tampoco abre borrador');
+  // Con importe real pero comercio marcador: borrador SIN comercio y con la duda declarada.
+  const sinComercio = crearBorradorDesdeTicket({ importe: 5.5, comercio: 'desconocido' }, deps);
+  assert.equal(sinComercio.ok, true);
+  assert.equal(sinComercio.borrador.datos.comercio, null);
+  assert.ok(sinComercio.borrador.dudas.includes('comercio'));
 });
 
 test('parseo robusto: JSON dentro de fences o con texto alrededor', async () => {

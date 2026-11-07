@@ -331,7 +331,11 @@ export function crearBorradorDesdeTicket(ticket = {}, deps = {}) {
   if (n === null) {
     return { ok: false, error: 'No he podido leer el importe del ticket con claridad. Dimelo tu: "gaste 12,50 en Mercadona".' };
   }
-  const comercio = typeof ticket.comercio === 'string' && ticket.comercio.trim() ? ticket.comercio.trim().slice(0, 80) : null;
+  // Marcadores de "no se lee" del modelo (N/A, null, desconocido...) no son
+  // un comercio: se tratan como ausentes y quedan en dudas para que David
+  // confirme; nunca se registran literalmente.
+  const comercioCrudo = typeof ticket.comercio === 'string' ? ticket.comercio.trim().slice(0, 80) : '';
+  const comercio = comercioCrudo && !/^(n\/?a|null|none|unknown|desconocid[ao]|no\s+legible|ilegible|sin\s+datos?|ningun[ao]?)$/i.test(comercioCrudo) ? comercioCrudo : null;
   if (!comercio && !dudas.includes('comercio')) dudas.push('comercio');
   const moneda = typeof ticket.moneda === 'string' && /^[A-Z]{3}$/.test(ticket.moneda.trim()) ? ticket.moneda.trim() : 'EUR';
   if (ticket.moneda === undefined || ticket.moneda === null) dudas.push('moneda');

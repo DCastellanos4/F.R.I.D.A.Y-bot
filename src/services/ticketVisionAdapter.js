@@ -32,14 +32,29 @@
  */
 import { chatCompletion } from '../core/llmService.js';
 
-const PROMPT = `Lee el ticket de la foto y devuelve SOLO un JSON con esta forma exacta:
-{"importe": 12.50, "comercio": "Mercadona", "moneda": "EUR", "fecha": "2026-11-05", "camposDudosos": ["moneda"]}
-Reglas: importe es el TOTAL en numero (punto decimal); comercio es el nombre del establecimiento; moneda es el codigo ISO de 3 letras; fecha en AAAA-MM-DD. En camposDudosos lista los campos que no leas con claridad (o todos si la foto no es un ticket). Sin texto fuera del JSON.`;
+// Sin valores de ejemplo: los modelos locales pequenos los copiaban tal
+// cual en lugar de leer el ticket real (fallo medido con recibo sintetico:
+// devolvian el importe/fecha del ejemplo, no los de la foto). Esquema por
+// tipos y regla explicita de no inventar.
+const PROMPT = `Lee el ticket de la foto y devuelve SOLO un JSON con estas claves exactas:
+- "importe": el TOTAL del ticket, numero con punto decimal; null si no se lee con claridad.
+- "comercio": el nombre del establecimiento, texto; null si no se lee.
+- "moneda": el codigo ISO de 3 letras; null si no se aprecia.
+- "fecha": la fecha del ticket en formato AAAA-MM-DD; null si no se lee.
+- "camposDudosos": lista con los nombres de los campos que no leas con claridad (o todos si la foto no es un ticket).
+Reglas: transcribe UNICAMENTE valores visibles en la foto. NUNCA inventes, estimes ni completes un valor que no se lea: escribe null y declara el campo en camposDudosos. No escribas nada fuera del JSON.`;
 
 const TIMEOUT_DEFECTO_MS = Number.parseInt(process.env.DAVIS_TICKET_VISION_TIMEOUT_MS || '180000', 10) || 180000;
 
 // Cola interna: una lectura de ticket en vuelo como maximo.
 let colaAnalisis = Promise.resolve();
+
+// Valores que el modelo devuelve cuando NO lee el dato; no son datos.
+const MARCADORES_SIN_DATO = /^(n\/?a|null|none|unknown|desconocid[ao]|no\s+legible|ilegible|sin\s+datos?|ningun[ao]?)$/i;
+
+function esMarcadorSinDato(valor) {
+  return MARCADORES_SIN_DATO.test(String(valor || '').trim());
+}
 
 function conLimiteDeTiempo(promesa, ms) {
   let temporizador;
@@ -83,8 +98,12 @@ export function crearAnalizadorTicket({ modelo, provider, baseUrl, timeoutMs, ch
     try {
       const datos = JSON.parse(m[0]);
       return {
-        importe: typeof datos.importe === 'number' ? datos.importe : undefined,
-        comercio: typeof datos.comercio === 'string' ? datos.comercio : undefined,
+        // Un importe 0/negativo/no numerico NO es un gasto: undefined, y el
+        // validador de finanzas pedira el dato a David en lugar de abrir un
+        // borrador de 0,00 (fallo medido con una foto que no era ticket).
+        importe: (typeof datos.importe === 'number' && Number.isFinite(datos.importe) && datos.importe > 0) ? datos.importe : undefined,
+        // Marcadores de "no se lee" del modelo no son un comercio.
+        comercio: (typeof datos.comercio === 'string' && !esMarcadorSinDato(datos.comercio)) ? datos.comercio : undefined,
         moneda: typeof datos.moneda === 'string' ? datos.moneda : undefined,
         fecha: typeof datos.fecha === 'string' ? datos.fecha : undefined,
         camposDudosos: Array.isArray(datos.camposDudosos) ? datos.camposDudosos.filter((c) => typeof c === 'string') : []
