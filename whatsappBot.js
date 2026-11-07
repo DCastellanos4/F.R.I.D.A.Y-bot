@@ -41,6 +41,7 @@ import { enHorarioSilencio } from './src/services/quietHoursService.js';
 import { estadoEntrevista, responderEntrevista, terminarEntrevista } from './src/services/interviewService.js';
 import { programarEnvioMatutino } from './src/services/dailyBriefing.js';
 import { normalizarTexto } from './src/services/memoryService.js';
+import { mensajeErrorParaUsuario } from './src/services/errorSanitizerService.js';
 import { transcribirAudioBuffer } from './src/services/voiceService.js';
 import { capturarPantallaWeb } from './src/services/browserService.js';
 import { isVipModeActive, shouldFilterMessage } from './src/services/vipFilterService.js';
@@ -305,8 +306,10 @@ function inicializarServiciosProactivos() {
       console.warn(`[WhatsApp Programado] Envio a +${m.numero} no confirmado por el canal; se reintentara.`);
       return false;
     } catch (errEnvio) {
+      // Sanitizado: el error crudo (cuota, organizacion, cuerpo HTTP) queda
+      // en logs; a David solo le llega un resumen honesto y el reintento real.
       console.error(`Error en despacho de mensaje programado a +${m.numero}:`, errEnvio.message);
-      await enviarMensajeADavid(`[D.A.V.I.S. - AVISO DE DISPACHO]\n\nSe ha producido una anomalía al entregar el mensaje al número +${m.numero}: ${errEnvio.message}`);
+      await enviarMensajeADavid(`[D.A.V.I.S. - AVISO DE DISPACHO]\n\n${mensajeErrorParaUsuario(errEnvio, { contexto: 'despacho', numero: m.numero })}`);
     }
   }, 15 * 1000);
 
@@ -643,7 +646,7 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         } catch (errAudio) {
           console.error('Error procesando nota de voz:', errAudio);
           await sock.sendMessage(remoteJid, {
-            text: `Ha ocurrido una anomalía al procesar su nota de voz, señor: ${errAudio.message}`
+            text: mensajeErrorParaUsuario(errAudio, { contexto: 'audio' })
           }, { quoted: msg });
           continue;
         }
@@ -1092,7 +1095,9 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         console.error('Error procesando mensaje:', err);
         await sock.sendPresenceUpdate('paused', remoteJid);
         await sock.sendMessage(remoteJid, {
-          text: `Señor, se ha producido una anomalía al procesar su solicitud: ${err.message}`
+          // Sanitizado: un 429 del proveedor llegaba con organization id y
+          // detalle de cuota (fallo observado en produccion, 7 nov 2026).
+          text: mensajeErrorParaUsuario(err)
         }, { quoted: msg });
       }
     }
