@@ -1,18 +1,23 @@
+// Envia el briefing matutino a David a traves de la cola de alertas.
+//
+// ANTES importaba whatsappBot.js para llamar a enviarMensajeADavid: bajo pm2
+// ese import arranca un SEGUNDO cliente de WhatsApp con la misma sesion
+// (conflicto 409 con el bot en marcha) y, sin pm2, nunca conectaba y solo
+// imprimia el texto. La via segura es encolar: el proceso jarvis-whatsapp ya
+// en ejecucion vacia la cola y entrega el mensaje con su sesion viva.
+import { enqueueAlert } from '../src/services/alertQueueService.js';
 import { generarBriefingCompleto } from '../src/services/dailyBriefing.js';
-import { enviarMensajeADavid } from '../whatsappBot.js';
 
 try {
   const briefing = await generarBriefingCompleto('Madrid');
-  const mensaje = '[D.A.V.I.S. READY - COGNITIVE UPGRADE OPERATIVO]\n\n' + briefing;
-  if (typeof enviarMensajeADavid === 'function') {
-    await enviarMensajeADavid(mensaje);
-    console.log('BRIEFING_ENVIADO_EXITO');
-  } else {
-    console.log('ENVIAR_MENSAJE_NO_DISPONIBLE');
-    console.log(mensaje);
-  }
+  enqueueAlert({
+    title: 'D.A.V.I.S. - BRIEFING MATUTINO',
+    details: briefing,
+    priority: 'high'
+  });
+  console.log('BRIEFING_ENCOLADO: el bot en ejecucion lo entregara a David.');
 } catch (err) {
-  console.error('ERROR_ENVIANDO_BRIEFING:', err.message);
+  console.error('ERROR_ENCOLANDO_BRIEFING:', err.message);
   process.exit(1);
 }
 process.exit(0);

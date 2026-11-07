@@ -1878,8 +1878,30 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
     razon: enrutamientoEspecialista.razon
   };
 
-  if (herramientasActivas.length > LIMITE_HERRAMIENTAS_PROVEEDOR || opciones.especialistaForzado) {
-    herramientasActivas = enrutamientoEspecialista.herramientasFiltradas;
+  // El filtrado de catalogo del especialista se aplica cuando es fiable:
+  // especialista forzado explicitamente, o clasificacion de dominio clara
+  // (confianza alta y no-general). Las herramientas ya seleccionadas por
+  // intencion NUNCA se pierden: se unen al conjunto del especialista y el
+  // resultado se acota al limite del proveedor preservando esas primero.
+  const filtradasEspecialista = Array.isArray(enrutamientoEspecialista?.herramientasFiltradas)
+    ? enrutamientoEspecialista.herramientasFiltradas
+    : [];
+  const especialistaFiable = enrutamientoEspecialista
+    && enrutamientoEspecialista.especialista !== 'general'
+    && (enrutamientoEspecialista.confianza || 0) >= 0.9;
+  if (filtradasEspecialista.length > 0 && (opciones.especialistaForzado || especialistaFiable)) {
+    const combinadas = [...herramientasActivas];
+    const yaIncluidas = new Set(herramientasActivas.map((h) => h?.function?.name || h?.name));
+    for (const h of filtradasEspecialista) {
+      const nombre = h?.function?.name || h?.name;
+      if (nombre && !yaIncluidas.has(nombre)) {
+        combinadas.push(h);
+        yaIncluidas.add(nombre);
+      }
+    }
+    herramientasActivas = limitarHerramientasParaProveedor(combinadas);
+    traza.especialista.filtradoAplicado = true;
+    console.log(`[J.A.R.V.I.S. Router] Especialista ${enrutamientoEspecialista.especialista} (confianza ${enrutamientoEspecialista.confianza}): catalogo activo de ${herramientasActivas.length} herramientas.`);
   }
 
   if (!traza.via) traza.via = analisis.esChitChat ? 'conversacion' : 'regex';

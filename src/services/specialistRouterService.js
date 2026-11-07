@@ -562,13 +562,22 @@ export function enrutarYFiltrarHerramientas(mensajeUsuario, herramientasDisponib
 
   // 4. Filtrado y deduplicacion de herramientas
   const mapaDeduplicado = new Map();
+  const presentes = new Set();
   for (const herramienta of listaHerramientas) {
     const nombre = typeof herramienta === 'string'
       ? herramienta
       : (herramienta?.function?.name || herramienta?.name);
+    if (nombre) presentes.add(nombre);
     if (nombre && permitidas.has(nombre) && !mapaDeduplicado.has(nombre)) {
       mapaDeduplicado.set(nombre, herramienta);
     }
+  }
+
+  // Visibilidad: nombres configurados para el especialista que no existen en
+  // el catalogo real (herramientas aun no conectadas o renombradas).
+  const inexistentes = [...permitidas].filter((n) => !presentes.has(n));
+  if (inexistentes.length > 0) {
+    console.warn(`[RouterEspecialista] ${inexistentes.length} herramientas permitidas para ${especialista} no existen en el catalogo y se ignoran: ${inexistentes.join(', ')}`);
   }
 
   let filtradas = Array.from(mapaDeduplicado.values());

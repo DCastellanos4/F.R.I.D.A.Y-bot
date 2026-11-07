@@ -674,6 +674,23 @@ function recopilarDestinatariosAutorizados(contexto = {}) {
     }
   }
 
+  // Numeros que aparecen en RESULTADOS de herramientas (traza ReAct): un
+  // telefono, pedido o referencia que devolvio una herramienta es dato
+  // verificado, no una alucinacion del modelo, y no debe censurarse.
+  if (Array.isArray(contexto.traza?.reactSteps)) {
+    for (const paso of contexto.traza.reactSteps) {
+      if (!Array.isArray(paso?.toolResults)) continue;
+      for (const res of paso.toolResults) {
+        const texto = typeof res?.result === 'string' ? res.result : '';
+        if (!texto) continue;
+        const encontrados = texto.match(/\+?\d{8,15}/g);
+        if (encontrados) {
+          encontrados.forEach(registrar);
+        }
+      }
+    }
+  }
+
   return autorizados;
 }
 

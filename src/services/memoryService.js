@@ -3,6 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { DATA_DIR } from '../config/paths.js';
+import { invalidarIndiceSemantico } from './semanticMemoryService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CARPETA_DATA = process.env.DAVIS_DATA_DIR || DATA_DIR;
@@ -91,6 +92,14 @@ function leerMemorias(deps = {}) {
 function guardarMemorias(lista) {
   try {
     fs.writeFileSync(ARCHIVO_MEMORIA, JSON.stringify(lista, null, 2), 'utf-8');
+    // El indice vectorial (RAG) queda desactualizado tras cada escritura:
+    // se invalida aqui y la propia busqueda semantica lo reconstruye en el
+    // siguiente uso comprobando la firma del archivo de memorias.
+    try {
+      invalidarIndiceSemantico();
+    } catch (errInv) {
+      console.error('Error invalidando indice semantico:', errInv.message);
+    }
   } catch (err) {
     console.error('Error guardando memorias:', err.message);
   }

@@ -22,28 +22,28 @@ const TTL_CACHE_MS = 15 * 60 * 1000;
  * - Prohibicion absoluta de pasarelas de pago, checkouts y compras.
  * - Solo lectura segura de contenido publico.
  */
-export const PATRONES_PROHIBIDOS = [
-  /login/i,
-  /signin/i,
-  /sign-in/i,
-  /signup/i,
-  /sign-up/i,
-  /auth/i,
-  /oauth/i,
-  /password/i,
-  /checkout/i,
-  /cart/i,
-  /carrito/i,
-  /cesta/i,
-  /payment/i,
-  /pago/i,
-  /stripe/i,
-  /paypal/i,
-  /bank/i,
-  /banco/i,
-  /admin/i,
-  /dashboard/i
-];
+// Segmentos de ruta/host que implican autenticacion, compra o administracion.
+// Se comparan como SEGMENTOS completos (no subcadenas) para no bloquear
+// lectura publica legitima: una noticia sobre un banco, un articulo de un
+// autor (/autor/...) o la Wikipedia de "Cartografia" no son un checkout.
+const SEGMENTOS_PROHIBIDOS = new Set([
+  'login', 'log-in', 'signin', 'sign-in', 'signup', 'sign-up',
+  'oauth', 'auth', 'sso',
+  'password', 'passwd',
+  'checkout', 'payment', 'payments', 'pago',
+  'cart', 'carrito', 'cesta',
+  'admin', 'dashboard'
+]);
+
+// Compatibilidad: algunos consumidores importan la lista de patrones.
+export const PATRONES_PROHIBIDOS = [...SEGMENTOS_PROHIBIDOS];
+
+function segmentosDeUrl(parsed) {
+  const bruto = `${parsed.hostname}${parsed.pathname}${parsed.search}`.toLowerCase();
+  // Se conserva el guion dentro de cada segmento ("sign-in" sigue siendo un
+  // segmento); el resto de separadores (/, ., ?, &, =, _, %) trocea.
+  return bruto.split(/[\/.?&=_%+]+/).filter(Boolean);
+}
 
 export function validarGuardarrailesNavegacion(url) {
   if (!url || typeof url !== 'string' || !url.startsWith('http')) {
@@ -52,13 +52,13 @@ export function validarGuardarrailesNavegacion(url) {
 
   try {
     const parsed = new URL(url);
-    const rutaCompleta = `${parsed.hostname}${parsed.pathname}${parsed.search}`.toLowerCase();
+    const segmentos = segmentosDeUrl(parsed);
 
-    for (const patron of PATRONES_PROHIBIDOS) {
-      if (patron.test(rutaCompleta)) {
+    for (const segmento of segmentos) {
+      if (SEGMENTOS_PROHIBIDOS.has(segmento)) {
         return {
           permitido: false,
-          motivo: `Bloqueado por guardarrail de seguridad: la URL coincide con patrones sensibles o de compra/login (${patron.toString()}). DAVIS opera en modo lectura publica segura.`
+          motivo: `Bloqueado por guardarrail de seguridad: la URL contiene la seccion "${segmento}", propia de login, compra o administracion. DAVIS opera en modo lectura publica segura.`
         };
       }
     }

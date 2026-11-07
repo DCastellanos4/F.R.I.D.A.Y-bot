@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -32,6 +33,46 @@ export function getDefaultStorePath() {
 
 export function getDefaultVectorsPath() {
   return path.join(resolveDataDir(), 'knowledge_vectors.json');
+}
+
+/**
+ * Categorias de memoria cuyo contenido NUNCA entra en el indice vectorial:
+ * son credenciales. La busqueda exacta (memoryService) ya las protege con
+ * cifrado en reposo; el camino vectorial no debe convertirse en una via
+ * para sacarlas en plano ni al prompt. Se excluyen tanto al indexar como
+ * al consultar (por si un knowledge_vectors.json antiguo ya las contiene).
+ */
+const CATEGORIAS_SENSIBLES_RAG = new Set(['clave']);
+
+export function esDocumentoSensibleRag(doc) {
+  if (!doc || typeof doc !== 'object') {
+    return false;
+  }
+  const categoria = String(doc.categoria || '').toLowerCase().trim();
+  return CATEGORIAS_SENSIBLES_RAG.has(categoria);
+}
+
+function filtrarDocumentosSensibles(docs) {
+  if (!Array.isArray(docs)) {
+    return [];
+  }
+  return docs.filter((doc) => !esDocumentoSensibleRag(doc));
+}
+
+/**
+ * Firma del contenido del archivo de memorias para detectar escrituras
+ * nuevas: si cambia (guardar, actualizar, olvidar o edicion externa), el
+ * indice vectorial en disco o en cache deja de ser fiable y se reconstruye.
+ * Se usa un hash del contenido (no mtime) porque dos escrituras seguidas
+ * pueden caer en el mismo milisegundo y con el mismo tamano.
+ */
+function firmaArchivoMemoria(storePath) {
+  try {
+    const raw = fs.readFileSync(storePath);
+    return crypto.createHash('sha256').update(raw).digest('hex');
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -258,6 +299,7 @@ function extractDocText(doc) {
  * @returns {{ vocabulary: string[], idfMap: Record<string, number>, docVectors: Array<number[]>, documents: Array<object|string> }}
  */
 export function buildTfIdfIndex(documents) {
+  documents = filtrarDocumentosSensibles(documents);
   if (!Array.isArray(documents) || documents.length === 0) {
     return {
       vocabulary: [],
@@ -505,7 +547,9 @@ export function indexarMemoriasVectoriales(options = {}) {
   }
 
   const index = buildTfIdfIndex(docs);
-  const cache = buildVectorCacheFromIndex(index, docs);
+  const cache = buildVectorCacheFromIndex(index, index.documents || docs);
+  cache.firmaMemoria = firmaArchivoMemoria(storePath);
+  cache.fuenteMemoria = storePath;
 
   if (vectorsPath) {
     try {
@@ -532,6 +576,18 @@ export function indexarMemoriasVectoriales(options = {}) {
     cache,
     index
   };
+}
+
+/**
+ * Invalida las caches en memoria del indice semantico. La llama
+ * memoryService tras cada escritura (guardar, actualizar, olvidar) para
+ * que la siguiente busqueda reconstruya el indice desde el archivo.
+ */
+export function invalidarIndiceSemantico() {
+  cachedIndex = null;
+  cachedStorePath = null;
+  cachedVectorCache = null;
+  cachedVectorCachePath = null;
 }
 
 /**
@@ -653,24 +709,59 @@ export async function buscarMemoriaSemantica(query, options = {}) {
 
   if (Array.isArray(options.memorias)) {
     const tempIndex = buildTfIdfIndex(options.memorias);
-    vectorCache = buildVectorCacheFromIndex(tempIndex, options.memorias);
+    vectorCache = buildVectorCacheFromIndex(tempIndex, tempIndex.documents || options.memorias);
   } else if (Array.isArray(options.documents)) {
     const tempIndex = buildTfIdfIndex(options.documents);
-    vectorCache = buildVectorCacheFromIndex(tempIndex, options.documents);
-  } else if (cachedVectorCache && cachedVectorCachePath === vectorsPath) {
-    vectorCache = cachedVectorCache;
+    vectorCache = buildVectorCacheFromIndex(tempIndex, tempIndex.documents || options.documents);
   } else {
-    vectorCache = cargarIndiceVectorial(vectorsPath);
-    if (!vectorCache || !vectorCache.vectors || vectorCache.vectors.length === 0) {
-      const memorias = leerMemoriasDesdeArchivo(storePath);
-      if (memorias.length > 0) {
-        const indexed = indexarMemoriasVectoriales({ memorias, storePath, vectorsPath });
-        vectorCache = indexed.cache;
+    const firmaActual = firmaArchivoMemoria(storePath);
+
+    if (cachedVectorCache && cachedVectorCachePath === vectorsPath) {
+      vectorCache = cachedVectorCache;
+    } else {
+      vectorCache = cargarIndiceVectorial(vectorsPath);
+      if (vectorCache) {
+        cachedVectorCache = vectorCache;
+        cachedVectorCachePath = vectorsPath;
       }
     }
-    if (vectorCache) {
-      cachedVectorCache = vectorCache;
-      cachedVectorCachePath = vectorsPath;
+
+    // Frescura: si el archivo de memorias cambio desde que se construyo el
+    // indice (guardar/actualizar/olvidar, tambien fuera de este proceso),
+    // la firma ya no coincide y hay que reconstruir. Un indice sin firma
+    // (generado antes de este control) se reconstruye una vez.
+    const indiceVacio = !vectorCache || !Array.isArray(vectorCache.vectors) || vectorCache.vectors.length === 0;
+    const firmaIndice = vectorCache ? (vectorCache.firmaMemoria || null) : null;
+    const memoriasPresentes = firmaActual !== null;
+    const desactualizado = memoriasPresentes && firmaIndice !== firmaActual;
+
+    if (indiceVacio || desactualizado) {
+      const memorias = leerMemoriasDesdeArchivo(storePath);
+      const indexables = filtrarDocumentosSensibles(memorias);
+      if (indexables.length > 0) {
+        const indexed = indexarMemoriasVectoriales({ memorias, storePath, vectorsPath });
+        vectorCache = indexed.cache;
+      } else {
+        vectorCache = null;
+        if (desactualizado) {
+          // Purga el indice obsoleto del disco: puede contener memorias ya
+          // borradas o documentos que ya no deben indexarse.
+          try {
+            fs.writeFileSync(vectorsPath, JSON.stringify({
+              version: '1.0.0',
+              fechaActualizacion: new Date().toISOString(),
+              totalDocumentos: 0,
+              vocabulary: [],
+              idfMap: {},
+              vectors: [],
+              firmaMemoria: firmaActual,
+              fuenteMemoria: storePath
+            }, null, 2), 'utf8');
+          } catch (errPurgar) {
+            console.error('Error al purgar knowledge_vectors obsoleto:', errPurgar.message);
+          }
+        }
+      }
     }
   }
 
@@ -701,6 +792,12 @@ export async function buscarMemoriaSemantica(query, options = {}) {
   for (let i = 0; i < vectorCache.vectors.length; i++) {
     const entry = vectorCache.vectors[i];
     const doc = entry.doc || entry;
+
+    // Defensa en profundidad: una credencial nunca sale por el camino RAG,
+    // aunque un knowledge_vectors.json antiguo la tuviera indexada.
+    if (esDocumentoSensibleRag(doc) || esDocumentoSensibleRag(entry)) {
+      continue;
+    }
 
     if (categoriaFilter && doc.categoria && doc.categoria.toLowerCase() !== categoriaFilter) {
       continue;
