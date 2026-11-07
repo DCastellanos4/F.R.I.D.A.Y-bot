@@ -394,13 +394,3 @@
 {"ts":"2026-11-05T22:21:10.546Z","tipo":"comando","nombre":"consulta_jarvis","duracionMs":1,"detalle":null}
 {"ts":"2026-11-05T22:21:10.547Z","tipo":"comando","nombre":"consulta_jarvis","duracionMs":0,"detalle":null}
 {"ts":"2026-11-07T12:58:45.903Z","tipo":"comando","nombre":"consulta_jarvis","duracionMs":8,"detalle":null}
-{"ts":"2026-11-07T15:53:25.092Z","tipo":"comando","nombre":"consulta_jarvis","duracionMs":18,"detalle":null}
-{"ts":"2026-11-07T15:53:25.104Z","tipo":"comando","nombre":"consulta_jarvis","duracionMs":8,"detalle":null}
-{"ts":"2026-11-07T15:53:25.106Z","tipo":"comando","nombre":"consulta_jarvis","duracionMs":1,"detalle":null}
-{"ts":"2026-11-07T15:53:25.109Z","tipo":"comando","nombre":"consulta_jarvis","duracionMs":1,"detalle":null}
-{"ts":"2026-11-07T15:53:25.114Z","tipo":"comando","nombre":"consulta_jarvis","duracionMs":5,"detalle":null}
-{"ts":"2026-11-07T16:09:03.859Z","tipo":"comando","nombre":"consulta_jarvis","duracionMs":18,"detalle":null}
-{"ts":"2026-11-07T16:09:03.871Z","tipo":"comando","nombre":"consulta_jarvis","duracionMs":8,"detalle":null}
-{"ts":"2026-11-07T16:09:03.873Z","tipo":"comando","nombre":"consulta_jarvis","duracionMs":1,"detalle":null}
-{"ts":"2026-11-07T16:09:03.876Z","tipo":"comando","nombre":"consulta_jarvis","duracionMs":1,"detalle":null}
-{"ts":"2026-11-07T16:09:03.881Z","tipo":"comando","nombre":"consulta_jarvis","duracionMs":4,"detalle":null}
