@@ -53,7 +53,9 @@ test('DAVIS_HISTORY_DIR tiene prioridad sobre la carpeta por defecto', async () 
     const archivos = fs.readdirSync(dirTemporal);
     assert.equal(archivos.length, 1, 'el historial debe escribirse en el override');
     const modo = fs.statSync(path.join(dirTemporal, archivos[0])).mode & 0o777;
-    assert.equal(modo, 0o600, 'el historial conserva permisos 600');
+    if (process.platform !== 'win32') {
+      assert.equal(modo, 0o600, 'el historial conserva permisos 600');
+    }
     const historial = servicio.obtenerHistorial('chat-regresion-paths');
     assert.equal(historial.length, 1);
     assert.equal(historial[0].content, 'mensaje de regresion');

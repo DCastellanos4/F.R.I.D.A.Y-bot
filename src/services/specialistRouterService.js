@@ -521,6 +521,41 @@ export function clasificarEspecialista(mensajeUsuario, contexto = {}) {
  * @param {string} especialista - Identificador ('coder', 'ops', 'personal', 'general').
  * @returns {{ nombre: string, herramientasPermitidas: string[], systemPromptMod: string }}
  */
+
+/**
+ * Genera ejemplos contextuales Few-Shot dinamicos para afinar el determinismo
+ * y la precision de parametros en las herramientas del especialista.
+ *
+ * @param {string} especialista - Identificador del especialista.
+ * @param {string|object} [query=''] - Mensaje o consulta de usuario.
+ * @returns {string}
+ */
+export function obtenerEjemplosFewShot(especialista, query = '') {
+  const q = String(typeof query === 'string' ? query : (query?.texto || query?.mensaje || '')).toLowerCase();
+  const ejemplos = [];
+
+  if (especialista === 'coder' || q.includes('pr') || q.includes('git') || q.includes('commit') || q.includes('rama')) {
+    ejemplos.push(
+      '- Usuario: "Abre una PR de la rama fix-auth para tokens" -> abrir_pull_request({ titulo: "fix: tokens", rama: "fix-auth" })',
+      '- Usuario: "Crea una rama llamada chore-deps" -> crear_rama_trabajo({ nombreRama: "chore-deps" })'
+    );
+  }
+  if (especialista === 'personal' || q.includes('gasto') || q.includes('compra') || q.includes('habito')) {
+    ejemplos.push(
+      '- Usuario: "Apunta 15 euros de comida" -> registrar_gasto({ cantidad: 15, concepto: "comida", categoria: "alimentacion" })',
+      '- Usuario: "Anade leche a la lista" -> anadir_compra({ articulo: "leche" })'
+    );
+  }
+  if (q.includes('tren') || q.includes('renfe') || q.includes('cercanias') || q.includes('atocha') || q.includes('chamartin')) {
+    ejemplos.push(
+      '- Usuario: "Proximos trenes de Chamartin" -> proximas_llegadas_transporte({ parada: "chamartin", tipo: "cercanias" })'
+    );
+  }
+
+  if (ejemplos.length === 0) return '';
+  return '\n\nEJEMPLOS IN-CONTEXT DE LLAMADAS A HERRAMIENTAS (REPETIBILIDAD TOTAL):\n' + ejemplos.join('\n');
+}
+
 export function obtenerConfiguracionEspecialista(especialista) {
   const clave = String(especialista || '').toLowerCase().trim();
   const config = CONFIGURACIONES_ESPECIALISTAS[clave] || CONFIGURACIONES_ESPECIALISTAS.general;
@@ -551,6 +586,8 @@ export function enrutarYFiltrarHerramientas(mensajeUsuario, herramientasDisponib
 
   // 2. Obtencion de configuracion y catalogo permitido
   const configuracion = obtenerConfiguracionEspecialista(especialista);
+  const fewShot = obtenerEjemplosFewShot(especialista, mensajeUsuario);
+  if (fewShot) configuracion.systemPromptMod += fewShot;
   const permitidas = new Set(configuracion.herramientasPermitidas);
 
   // 3. Seleccion del catalogo base

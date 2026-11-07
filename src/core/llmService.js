@@ -307,7 +307,8 @@ export async function chatCompletion({
       keep_alive: options.keep_alive ?? -1,
       options: {
         num_ctx: options.num_ctx || NUM_CTX_DEFECTO,
-        temperature: options.temperature ?? 0.1,
+        temperature: options.temperature !== undefined ? options.temperature : (tools && tools.length > 0 ? 0.0 : 0.7),
+        ...((tools && tools.length > 0) ? { seed: options.seed ?? 42 } : {}),
         num_thread: options.num_thread || 4,
         ...(options.max_tokens ? { num_predict: options.max_tokens } : { num_predict: options.num_predict || NUM_PREDICT_DEFECTO })
       }
@@ -372,7 +373,8 @@ export async function chatCompletion({
   const payload = {
     model,
     messages: preparedMessages,
-    temperature: options.temperature ?? 0.1,
+    temperature: options.temperature !== undefined ? options.temperature : (tools && tools.length > 0 ? 0.0 : 0.7),
+    ...((tools && tools.length > 0) ? { seed: options.seed ?? 42 } : {}),
     ...(options.max_tokens ? { max_tokens: options.max_tokens } : (options.num_predict ? { max_tokens: options.num_predict } : {}))
   };
 

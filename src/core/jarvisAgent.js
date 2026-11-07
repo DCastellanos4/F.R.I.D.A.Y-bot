@@ -48,6 +48,8 @@ import { registrarFechaSenalada, listarFechasSenaladas, eliminarFechaSenalada, p
 import { programarSnooze, listarSnoozes, cancelarSnooze } from '../services/snoozeService.js';
 import { estadisticasChat } from '../services/groupStatsService.js';
 import { registrarAvisoLlegada, listarAvisosLlegada, cancelarAvisoLlegada } from '../services/arrivalWatchService.js';
+import { verificarYRegistrarIdempotencia, guardarResultadoIdempotencia } from '../services/idempotencyService.js';
+import { obtenerContextoGrafo } from '../services/graphMemoryService.js';
 import { registrarParadaFavorita, listarParadasFavoritas, eliminarParadaFavorita, proximasLlegadas } from '../services/transportService.js';
 import { registrarContacto, buscarContacto, listarContactos } from '../services/contactsService.js';
 import { buscarSemantico } from '../services/brainSearchService.js';
@@ -1042,6 +1044,9 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
         const res = await proximasLlegadas({ parada: args.parada, tipo: args.tipo, codigo: args.codigo }, { rutaArchivo: opciones.rutaArchivoTransporte, fetchFnEmt: opciones.fetchFnEmt, fetchFnCercanias: opciones.fetchFnCercanias, clientIdEmt: opciones.clientIdEmt, passKeyEmt: opciones.passKeyEmt });
         if (!res.ok) {
           resultadoTool = res.error;
+        } else if (res.contrastados && res.contrastados.length > 0) {
+          const lineasContr = res.contrastados.map((c) => `- ${c.hora}${c.destino ? ' a ' + c.destino : ''} (${c.viaje || 'Tren'}): ${c.estado}`);
+          resultadoTool = `Horarios contrastados para ${res.parada} (Horario oficial vs Feed API en tiempo real):\n${lineasContr.join('\n')}${res.nota ? '\n' + res.nota : ''}`;
         } else if (res.llegadas.length === 0) {
           if (res.programadas && res.programadas.length > 0) {
             const lineasProg = res.programadas.map((p) => `- ${p.hora}${p.destino ? ' a ' + p.destino : ''} (programado)`);
@@ -2040,7 +2045,10 @@ Directrices de selección:
   const mensajes = [
     {
       role: 'system',
-      content: systemPrompt
+      content: (() => {
+        const contextoGrafo = obtenerContextoGrafo(mensajeUsuario, { rutaArchivo: opciones.rutaArchivoGrafo });
+        return contextoGrafo ? (systemPrompt + '\n\n16. RELACIONES Y GRAFO DE CONOCIMIENTO:\n' + contextoGrafo) : systemPrompt;
+      })()
     },
     ...historial,
     { role: 'user', content: mensajeUsuario }
@@ -2132,6 +2140,26 @@ Directrices de selección:
       }
 
       let resultadoTool;
+      let checkIdemp = { esMutante: false, duplicado: false };
+      try {
+        checkIdemp = verificarYRegistrarIdempotencia({
+          tool: nombreFuncion,
+          args,
+          chatId: opciones.chatId || 'default'
+        }, { rutaArchivo: opciones.rutaArchivoIdempotencia });
+      } catch { /* cache err */ }
+
+      if (checkIdemp.duplicado) {
+        resultadoTool = checkIdemp.resultadoPrevio
+          ? `${checkIdemp.mensaje}\nResultado previo: ${checkIdemp.resultadoPrevio}`
+          : checkIdemp.mensaje;
+        console.warn(`[J.A.R.V.I.S. Idempotency Dedup] ${nombreFuncion} bloqueado por ejecucion reciente.`);
+        traza.llamadas.push({ nombre: nombreFuncion, ronda, resultado: 'idempotente_bloqueado' });
+        resultadosRonda.push({ id: llamada.id, name: nombreFuncion, result: resultadoTool, status: 'idempotent_blocked' });
+        mensajes.push({ role: 'tool', content: resultadoTool, tool_call_id: llamada.id });
+        continue;
+      }
+
       const claveAccion = `${nombreFuncion}:${JSON.stringify(args)}`;
       if (!HERRAMIENTAS_IDEMPOTENTES.has(nombreFuncion) && accionesConEfectosEjecutadas.has(claveAccion)) {
         resultadoTool = `La accion ${nombreFuncion} con esos mismos argumentos ya se ejecuto en esta peticion. NO se duplica una accion con efectos externos: verifica su resultado e informa a David en lugar de repetirla.`;
@@ -2159,6 +2187,9 @@ Directrices de selección:
           );
         }
         resultadoTool = salida.texto;
+        if (checkIdemp.esMutante && checkIdemp.clave) {
+          try { guardarResultadoIdempotencia(checkIdemp.clave, resultadoTool, { rutaArchivo: opciones.rutaArchivoIdempotencia }); } catch { /* err */ }
+        }
         if (salida.enlaces) enlacesParaAdjuntar = salida.enlaces;
         const esNoReconocida = resultadoTool === 'Función no reconocida.' || resultadoTool === 'Funcion no reconocida.';
         const resultadoEstado = esNoReconocida ? 'no_reconocida' : 'ok';

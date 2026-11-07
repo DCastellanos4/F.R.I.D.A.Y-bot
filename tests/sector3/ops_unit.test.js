@@ -149,7 +149,9 @@ test('nº16 backup: sin clave config-required; clave corta rechazada; roundtrip 
   const contenido = fs.readFileSync(r.archivo);
   assert.equal(contenido.includes('MARCA-CLARO-123'), false, 'sin plaintext filtrado');
   assert.equal(contenido.includes(clave), false, 'sin clave filtrada');
-  assert.equal((fs.statSync(r.archivo).mode & 0o777), 0o600, 'permisos 600');
+  if (process.platform !== 'win32') {
+    assert.equal((fs.statSync(r.archivo).mode & 0o777), 0o600, 'permisos 600');
+  }
 
   // Roundtrip de recuperabilidad
   const v = await verificarBackupSesion({ archivo: r.archivo }, { claveBackup: clave });

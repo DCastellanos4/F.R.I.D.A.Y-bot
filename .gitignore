@@ -41,3 +41,5 @@ data/notes/
 data/diario/
 data/metricas_clasificador.jsonl
 data/trazas/
+
+data/horarios-renfe/

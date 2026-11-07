@@ -155,7 +155,9 @@ test('Traza: archivo con permisos 600 y nombre sin el chatId en claro', () => {
   assert.ok(!propio.includes('chat-privacidad-123456789'), 'el nombre de archivo no debe llevar el chatId en claro');
   assert.match(propio, /^[0-9a-f]{24}\.jsonl$/, 'nombre = hash de 24 hex');
   const modo = fs.statSync(path.join(carpetaTrazas, propio)).mode & 0o777;
-  assert.equal(modo, 0o600, 'permisos 600');
+  if (process.platform !== 'win32') {
+    assert.equal(modo, 0o600, 'permisos 600');
+  }
 });
 
 test('explicarUltimoRecorrido: introspeccion dos veces seguidas explica la ultima peticion real', () => {

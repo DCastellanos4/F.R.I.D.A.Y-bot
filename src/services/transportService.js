@@ -142,16 +142,57 @@ export async function proximasLlegadas({ parada, tipo, codigo } = {}, deps = {})
     r = await llegadasCercanias(codigoFinal, { fetchFn: deps.fetchFnCercanias, ahora: deps.ahora });
   }
   const salida = { ...r, parada: nombreParada || `${tipoFinal === 'tren' ? 'Tren' : 'Cercanias'} ${codigoFinal}`, tipo: tipoFinal };
-  // El feed en vivo solo difunde la proxima parada de trenes en curso: si no
-  // hay ninguno, ofrecer las siguientes salidas PROGRAMADAS del GTFS estatico.
-  if (salida.ok && Array.isArray(salida.llegadas) && salida.llegadas.length === 0) {
-    try {
-      const prog = await horariosProgramados(codigoFinal, tipoFinal, deps);
-      if (prog.ok && prog.programadas.length > 0) {
-        salida.programadas = prog.programadas;
-        salida.nota = 'No hay trenes con informacion en vivo ahora (el feed de Renfe solo difunde la proxima parada de trenes en curso). Estas son las proximas salidas programadas de hoy.';
-      }
-    } catch { /* sin horarios: se mantiene la nota del feed en vivo */ }
+  // Contraste de horarios: compara el feed en vivo GTFS-RT contra el horario oficial GTFS estatico
+  if (salida.ok && (tipoFinal === 'cercanias' || tipoFinal === 'tren')) {
+    if (Array.isArray(salida.llegadas) && salida.llegadas.length === 0) {
+      try {
+        const prog = await horariosProgramados(codigoFinal, tipoFinal, deps);
+        if (prog && prog.ok && prog.programadas.length > 0) {
+          salida.programadas = prog.programadas;
+          salida.nota = 'No hay trenes con informacion en vivo ahora (el feed de Renfe solo difunde la proxima parada de trenes en curso). Estas son las proximas salidas programadas de hoy.';
+        }
+      } catch { /* sin horarios: se mantiene la nota del feed en vivo */ }
+    } else if (Array.isArray(salida.llegadas) && salida.llegadas.length > 0) {
+      try {
+        const prog = await horariosProgramados(codigoFinal, tipoFinal, deps);
+        if (prog && prog.ok && Array.isArray(prog.programadas) && prog.programadas.length > 0) {
+          salida.programadas = prog.programadas;
+          const llegadasPorViaje = new Map();
+          for (const ll of salida.llegadas) {
+            if (ll.viaje) llegadasPorViaje.set(String(ll.viaje).toLowerCase(), ll);
+          }
+          salida.contrastados = prog.programadas.map((p) => {
+            const vKey = String(p.viaje || '').toLowerCase();
+            const live = llegadasPorViaje.get(vKey);
+            let estado = 'Segun horario oficial (sin retraso notificado)';
+            let retrasoMin = 0;
+            let cancelado = false;
+            if (live) {
+              retrasoMin = typeof live.retrasoSegundos === 'number' ? Math.round(live.retrasoSegundos / 60) : 0;
+              cancelado = live.cancelado === true;
+              if (cancelado) {
+                estado = 'CANCELADO';
+              } else if (retrasoMin > 0) {
+                estado = 'Retraso +' + retrasoMin + ' min';
+              } else if (retrasoMin < 0) {
+                estado = 'Adelanto ' + Math.abs(retrasoMin) + ' min';
+              } else {
+                estado = 'En hora (verificado en vivo)';
+              }
+            }
+            return {
+              viaje: p.viaje,
+              hora: p.hora,
+              destino: p.destino || '',
+              estado,
+              retrasoMin,
+              cancelado,
+              verificadoEnVivo: Boolean(live)
+            };
+          });
+        }
+      } catch { /* sin horarios estaticos */ }
+    }
   }
   return salida;
 }

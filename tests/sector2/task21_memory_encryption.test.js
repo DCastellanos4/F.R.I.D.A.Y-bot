@@ -138,8 +138,10 @@ describe('MemoryService - Cifrado en reposo de credenciales (categoria clave)', 
       const backupCrudo = fs.readFileSync(backupPath);
       assert.ok(!backupCrudo.toString('utf-8').includes('secreto_legacy_migracion'));
       assert.strictEqual(backupCrudo.subarray(0, 8).toString('ascii'), 'DVMEMBK1');
-      assert.strictEqual((fs.statSync(backupPath).mode & 0o777), 0o600);
-      assert.strictEqual((fs.statSync(tmp).mode & 0o777), 0o600);
+      if (process.platform !== 'win32') {
+        assert.strictEqual((fs.statSync(backupPath).mode & 0o777), 0o600);
+        assert.strictEqual((fs.statSync(tmp).mode & 0o777), 0o600);
+      }
 
       // Recuperacion: el backup se descifra con la clave y conserva el estado anterior
       const resDec = spawnSync(process.execPath, [scriptPath, '--decrypt', backupPath], {

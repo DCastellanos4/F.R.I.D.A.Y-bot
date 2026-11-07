@@ -829,3 +829,13 @@ export async function buscarMemoriaSemantica(query, options = {}) {
  * Alias in English for buscarMemoriaSemantica.
  */
 export const searchSemanticMemory = buscarMemoriaSemantica;
+
+export {
+  cargarGrafo,
+  guardarGrafo,
+  agregarNodo,
+  agregarArista,
+  extraerEntidadesDeTexto,
+  buscarVecindadGrafo,
+  obtenerContextoGrafo
+} from './graphMemoryService.js';
