@@ -356,7 +356,11 @@ export const casosDorados = [
     id: 'R05-real-noticias-resume-primera',
     entrada: 'resume la primera noticia',
     pasos: [{ llama: 'navegar_y_leer_noticia', args: { id: 1 } }, { texto: 'La primera noticia trata de esto.' }],
-    esperado: { invoca: ['navegar_y_leer_noticia'], clasificador: false }
+    esperado: { invoca: ['navegar_y_leer_noticia'], clasificador: false },
+    // La bateria dorada simula contexto previo de titulares; la eval con modelo
+    // real corre con historial vacio, donde el comportamiento correcto es NO
+    // inventar una URL y pedir el enlace u ofrecer los titulares primero.
+    esperadoReal: { noInvoca: ['navegar_y_leer_noticia'], clasificador: false }
   },
   {
     id: 'R06-real-recordatorio-avisame',

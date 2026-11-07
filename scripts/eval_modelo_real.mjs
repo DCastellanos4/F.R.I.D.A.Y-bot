@@ -138,7 +138,7 @@ async function ejecutarCaso(caso) {
   });
   const duracionMs = Date.now() - inicio;
 
-  const esperado = caso.esperado || {};
+  const esperado = caso.esperadoReal || caso.esperado || {};
   const fallos = [];
   if (esperado.invoca) {
     for (const h of esperado.invoca) {
