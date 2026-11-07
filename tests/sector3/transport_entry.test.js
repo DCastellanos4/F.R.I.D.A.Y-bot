@@ -128,7 +128,11 @@ test('Cercanias con feed inyectado: llegadas de la estacion, retrasos y cancelad
   const ahora = new Date('2026-11-05T15:00:00+01:00');
   const fetchFalso = async () => ({ text: async () => JSON.stringify(feedRenfeFalso(ahora.getTime())) });
   const rutaTransporte = path.join(dirEntorno, 'transporte2.json');
-  registrarParadaFavorita({ nombre: 'atocha', tipo: 'cercanias', codigo: '17000' }, { rutaArchivo: rutaTransporte });
+  const rutaCache = path.join(dirEntorno, 'estaciones-cache.json');
+  fs.writeFileSync(rutaCache, JSON.stringify({ generadoEn: new Date().toISOString(), estaciones: [{ id: '17000', nombre: 'Madrid-Chamartin-Clara Campoamor', tipo: 'cercanias' }] }), 'utf-8');
+  const reg = await registrarParadaFavorita({ nombre: 'atocha', tipo: 'cercanias', codigo: '17000' }, { rutaArchivo: rutaTransporte, rutaCache });
+  assert.equal(reg.ok, true);
+  assert.equal(reg.estacion, 'Madrid-Chamartin-Clara Campoamor', 'la confirmacion informa del nombre oficial de la estacion del codigo');
   const r = await proximasLlegadas({ parada: 'atocha' }, { rutaArchivo: rutaTransporte, fetchFnCercanias: fetchFalso, ahora });
   assert.equal(r.ok, true);
   assert.equal(r.tipo, 'cercanias');
@@ -146,9 +150,9 @@ test('Consulta de parada desconocida: error honesto sin inventar', async () => {
   assert.match(r.error, /Registrala primero/);
 });
 
-test('Metro: el servicio rechaza el tipo y explica por que', () => {
+test('Metro: el servicio rechaza el tipo y explica por que', async () => {
   const rutaTransporte = path.join(dirEntorno, 'transporte4.json');
-  const r = registrarParadaFavorita({ nombre: 'metro casa', tipo: 'metro', codigo: '100' }, { rutaArchivo: rutaTransporte });
+  const r = await registrarParadaFavorita({ nombre: 'metro casa', tipo: 'metro', codigo: '100' }, { rutaArchivo: rutaTransporte });
   assert.equal(r.ok, false);
   assert.match(r.error, /Metro no tiene fuente publica/);
 });

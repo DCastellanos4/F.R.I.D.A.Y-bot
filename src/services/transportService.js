@@ -19,7 +19,7 @@ import crypto from 'node:crypto';
 import { DATA_DIR } from '../config/paths.js';
 import { llegadasEmt } from './emtAdapter.js';
 import { llegadasCercanias, llegadasTrenLD } from './cercaniasAdapter.js';
-import { resolverEstaciones } from './renfeGtfsService.js';
+import { resolverEstaciones, cargarIndiceEstaciones } from './renfeGtfsService.js';
 
 export const ARCHIVO_DEFECTO = path.join(DATA_DIR, 'transporte.json');
 export const TIPOS = ['emt', 'cercanias', 'tren'];
@@ -45,7 +45,7 @@ function guardarEstado(estado, deps = {}) {
   fs.renameSync(tmp, ruta);
 }
 
-export function registrarParadaFavorita({ nombre, tipo, codigo } = {}, deps = {}) {
+export async function registrarParadaFavorita({ nombre, tipo, codigo } = {}, deps = {}) {
   const n = String(nombre || '').trim();
   if (!n) return { ok: false, error: 'Ponle un nombre a la parada (por ejemplo: "casa" o "tajamar").' };
   if (n.length > 60) return { ok: false, error: 'Nombre demasiado largo.' };
@@ -53,13 +53,23 @@ export function registrarParadaFavorita({ nombre, tipo, codigo } = {}, deps = {}
   if (!TIPOS.includes(t)) return { ok: false, error: 'Tipo invalido: usa "emt" (bus), "cercanias" o "tren" (AVE/larga/media distancia). El Metro no tiene fuente publica de llegadas en vivo.' };
   const c = String(codigo || '').replace(/\D/g, '');
   if (!c) return { ok: false, error: t === 'emt' ? 'Dime el numero de la parada EMT (esta en la marquesina).' : 'Dime el codigo de la estacion de Cercanias.' };
+  // Validar el codigo contra el indice GTFS oficial de Renfe para que un
+  // codigo equivocado no quede guardado bajo el nombre de otra estacion.
+  let estacionOficial = null;
+  if (t !== 'emt') {
+    try {
+      const indice = await cargarIndiceEstaciones(deps);
+      estacionOficial = indice.find((e) => e.id === c) || null;
+      if (!estacionOficial) return { ok: false, error: `El codigo ${c} no aparece en el indice oficial de estaciones de Renfe. Dime el nombre de la estacion y la busco.` };
+    } catch { /* sin indice disponible: se registra sin verificar el codigo */ }
+  }
   const estado = leerEstado(deps);
   const duplicada = estado.paradas.find((p) => p.nombre.toLowerCase() === n.toLowerCase());
   if (duplicada) return { ok: false, error: `Ya tienes una parada llamada "${duplicada.nombre}" (${duplicada.tipo} ${duplicada.codigo}).` };
   const parada = { id: crypto.randomBytes(4).toString('hex'), nombre: n, tipo: t, codigo: c, creadaEn: new Date().toISOString() };
   estado.paradas.push(parada);
   guardarEstado(estado, deps);
-  return { ok: true, parada };
+  return { ok: true, parada, estacion: estacionOficial ? estacionOficial.nombre : null };
 }
 
 export function listarParadasFavoritas(deps = {}) {

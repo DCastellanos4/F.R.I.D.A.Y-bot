@@ -985,9 +985,9 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
         const res = cancelarAvisoLlegada(args.criterio, { rutaArchivo: opciones.rutaArchivoLlegada });
         resultadoTool = res.ok ? `Cancelado el aviso de llegada a ${res.aviso.nombre}, David.` : res.error;
       } else if (nombreFuncion === 'registrar_parada_favorita') {
-        const res = registrarParadaFavorita({ nombre: args.nombre, tipo: args.tipo, codigo: args.codigo }, { rutaArchivo: opciones.rutaArchivoTransporte });
+        const res = await registrarParadaFavorita({ nombre: args.nombre, tipo: args.tipo, codigo: args.codigo }, { rutaArchivo: opciones.rutaArchivoTransporte });
         resultadoTool = res.ok
-          ? `Parada guardada, David: "${res.parada.nombre}" (${res.parada.tipo} ${res.parada.codigo}). Preguntame cuando quieras: "cuando llega el proximo bus de casa".`
+          ? `Parada guardada, David: "${res.parada.nombre}" (${res.parada.tipo} ${res.parada.codigo}${res.estacion ? `, ${res.estacion}` : ''}). Preguntame cuando quieras: "cuando llega el proximo bus de casa".`
           : res.error;
       } else if (nombreFuncion === 'listar_paradas_favoritas') {
         const paradas = listarParadasFavoritas({ rutaArchivo: opciones.rutaArchivoTransporte });

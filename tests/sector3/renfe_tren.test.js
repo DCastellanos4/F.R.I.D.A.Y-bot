@@ -111,9 +111,19 @@ assert.ok(rNombre.ok, 'resuelve por nombre LD');
 assert.strictEqual(rNombre.tipo, 'tren');
 assert.strictEqual(rNombre.parada, 'Madrid-Puerta de Atocha');
 
-// 5) favorita tipo tren
-const regTren = registrarParadaFavorita({ nombre: 'atocha ave', tipo: 'tren', codigo: '60000' }, { rutaArchivo: '/tmp/test-transporte-renfe2.json' });
+// 5) favorita tipo tren: el codigo se valida contra el indice oficial
+const cacheReg = '/tmp/test-estaciones-renfe-reg.json';
+fs.writeFileSync(cacheReg, JSON.stringify({ generadoEn: new Date().toISOString(), estaciones: [
+  { id: '60000', nombre: 'Madrid-Puerta de Atocha-Almudena Grandes', tipo: 'tren' },
+  { id: '18000', nombre: 'Madrid-Atocha Cercanias', tipo: 'cercanias' }
+] }), 'utf-8');
+const regTren = await registrarParadaFavorita({ nombre: 'atocha ave', tipo: 'tren', codigo: '60000' }, { rutaArchivo: '/tmp/test-transporte-renfe2.json', rutaCache: cacheReg });
 assert.ok(regTren.ok, 'registra favorita tipo tren');
+assert.strictEqual(regTren.estacion, 'Madrid-Puerta de Atocha-Almudena Grandes', 'informa del nombre oficial');
+const regMalo = await registrarParadaFavorita({ nombre: 'inventada', tipo: 'cercanias', codigo: '99999' }, { rutaArchivo: '/tmp/test-transporte-renfe2.json', rutaCache: cacheReg });
+assert.strictEqual(regMalo.ok, false, 'codigo inexistente rechazado');
+assert.match(regMalo.error, /indice oficial/, 'el error remite al indice oficial');
 try { fs.unlinkSync('/tmp/test-transporte-renfe2.json'); } catch { /* nada */ }
+try { fs.unlinkSync(cacheReg); } catch { /* nada */ }
 
 console.log('renfe_tren.test.js OK');
