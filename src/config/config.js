@@ -1,10 +1,33 @@
 import dotenv from 'dotenv';
+import fs from 'node:fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { PROJECT_ROOT } from './paths.js';
+import { PROJECT_ROOT, DATA_DIR } from './paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(PROJECT_ROOT, '.env') });
+
+// Contrato de arranque: las variables persistidas se leen de TODOS los
+// ficheros existentes de esta lista (el primero que define una variable
+// gana; dotenv nunca pisa variables ya presentes en el entorno del
+// proceso). Asi un reinicio simple del servicio recoge la configuracion
+// nueva sin exports manuales, viva donde viva el estado:
+//   1. DAVIS_ENV_FILE        ruta explicita, si el despliegue la define
+//   2. <DATA_DIR>/.env       estado compartido fuera de git (p.ej. jarvis-estado)
+//   3. <raiz del repo>/.env  layout clasico de desarrollo
+// OJO: si una variable YA existe en el entorno cacheado por pm2 con un
+// valor viejo, editar el fichero no basta: hace falta `pm2 restart
+// --update-env` (o delete+start). Las variables NUEVAS siempre entran.
+const candidatosEnv = [
+  process.env.DAVIS_ENV_FILE,
+  path.join(DATA_DIR, '.env'),
+  path.join(PROJECT_ROOT, '.env')
+].filter(Boolean);
+const ficherosEnv = candidatosEnv.filter((p) => {
+  try { return fs.existsSync(p); } catch { return false; }
+});
+if (ficherosEnv.length > 0) {
+  dotenv.config({ path: ficherosEnv, quiet: true });
+}
 
 const hasCloudKey = Boolean(
   process.env.OPENAI_API_KEY ||

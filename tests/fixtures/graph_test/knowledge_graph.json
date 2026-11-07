@@ -1,0 +1,29 @@
+{
+  "nodos": {
+    "mama": {
+      "id": "mama",
+      "nombre": "Mama",
+      "tipo": "persona",
+      "metadata": {},
+      "actualizadoEn": "2026-11-07T16:34:39.379Z"
+    },
+    "regalo_30_eur": {
+      "id": "regalo_30_eur",
+      "nombre": "Regalo 30 EUR",
+      "tipo": "gasto",
+      "metadata": {},
+      "actualizadoEn": "2026-11-07T16:34:39.379Z"
+    }
+  },
+  "aristas": [
+    {
+      "id": "facb4478221d",
+      "origen": "mama",
+      "destino": "regalo_30_eur",
+      "relacion": "destinataria_de",
+      "peso": 1,
+      "metadata": {},
+      "actualizadoEn": "2026-11-07T16:34:39.379Z"
+    }
+  ]
+}
