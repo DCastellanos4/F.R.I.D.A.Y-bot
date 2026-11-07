@@ -574,10 +574,17 @@ export function enrutarYFiltrarHerramientas(mensajeUsuario, herramientasDisponib
   }
 
   // Visibilidad: nombres configurados para el especialista que no existen en
-  // el catalogo real (herramientas aun no conectadas o renombradas).
-  const inexistentes = [...permitidas].filter((n) => !presentes.has(n));
+  // el catalogo ESTATICO completo (herramientas aun no conectadas o
+  // renombradas). `catalogo` suele ser solo la preseleccion de esta peticion,
+  // asi que ausente de ahi NO significa inexistente: el aviso anterior
+  // acusaba "no existen en el catalogo" a decenas de herramientas reales que
+  // simplemente no venian preseleccionadas (ruido observado en vivo).
+  const nombresCatalogoCompleto = new Set(
+    herramientasJarvis.map((h) => (typeof h === 'string' ? h : (h?.function?.name || h?.name))).filter(Boolean)
+  );
+  const inexistentes = [...permitidas].filter((n) => !nombresCatalogoCompleto.has(n));
   if (inexistentes.length > 0) {
-    console.warn(`[RouterEspecialista] ${inexistentes.length} herramientas permitidas para ${especialista} no existen en el catalogo y se ignoran: ${inexistentes.join(', ')}`);
+    console.warn(`[RouterEspecialista] ${inexistentes.length} herramientas permitidas para ${especialista} no existen en el catalogo completo y se ignoran: ${inexistentes.join(', ')}`);
   }
 
   let filtradas = Array.from(mapaDeduplicado.values());

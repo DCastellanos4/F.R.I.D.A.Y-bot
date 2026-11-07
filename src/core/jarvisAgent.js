@@ -242,8 +242,20 @@ export function analizarIntencion(mensaje) {
   );
 
   // Consulta natural de lo guardado ("que sabes de la tia Pili", "te
-  // acuerdas de la talla", "busca en tu memoria lo de Renfe").
-  const esConsultaMemoriaNatural = /(que\s+(sabes|tienes\s+(guardado|apuntado|anotado)|recuerdas)\s+(de|sobre|del)|te\s+acuerdas\s+de|busca\w*\s+en\s+(tu\s+)?(memoria|segundo\s+cerebro|second\s+brain)|consulta\w*\s+(tu\s+)?(memoria|segundo\s+cerebro|second\s+brain)|que\s+hay\s+(guardado\s+)?en\s+(tu\s+)?memoria|mis\s+memorias|mis\s+recuerdos)/i.test(sinNombre);
+  // acuerdas de la talla", "busca en tu memoria lo de Renfe") y parafrasis
+  // de recuerdo ("cual era el tono que te dije para el prototipo Zeta",
+  // "lo que te pedi que apuntaras del dentista"). El texto ya viene
+  // normalizado (minusculas, sin acentos ni signos). Fallo observado en
+  // vivo con modelo real: la parafrasis caia en comunicacion por "que te
+  // dije" y el modelo recibia 15 herramientas irrelevantes y ninguna de
+  // memoria (el RAG proactivo tapaba el dato, pero el enrutado era
+  // incorrecto e inflaba el prompt con miles de tokens).
+  const esConsultaMemoriaNatural = /(que\s+(sabes|tienes\s+(guardado|apuntado|anotado)|recuerdas)\s+(de|sobre|del)|te\s+acuerdas\s+de|busca\w*\s+en\s+(tu\s+)?(memoria|segundo\s+cerebro|second\s+brain)|consulta\w*\s+(tu\s+)?(memoria|segundo\s+cerebro|second\s+brain)|que\s+hay\s+(guardado\s+)?en\s+(tu\s+)?memoria|mis\s+memorias|mis\s+recuerdos|cual\s+(era|es|fue)\s+.*\bque\s+te\s+(dije|pedi|conte)\b|que\s+te\s+(dije|pedi|conte)\s+(de|del|sobre|para|que|lo)\b|lo\s+que\s+te\s+(dije|pedi|conte)\s+(de|del|sobre|para|que)\b)/i.test(sinNombre);
+
+  // "que te dije" a secas apunta al historial del chat (buscar_en_historial);
+  // cuando encaja como consulta de memoria (arriba) pertenece al Second
+  // Brain y no debe arrastrar las herramientas de comunicacion.
+  const esConsultaHistorialChat = /que\s+te\s+dije/i.test(sinNombre) && !esConsultaMemoriaNatural;
 
   const esClaveAlarma = /(codigo|clave|contrasena|pin)\s+(de\s+la\s+)?alarma/i.test(sinNombre);
 
@@ -311,7 +323,9 @@ export function analizarIntencion(mensaje) {
     devtools: /(revisa(r)?\s+(la\s+|el\s+|esta\s+)?(pr|pull\s+request)|changelog|guia(r)?\s+(la\s+)?depuraci[oó]n|depura(r)?\s+(este|el|mi)\s+(fallo|error|c[oó]digo)|pair\s+programming|tengo\s+un\s+fallo|anota(r)?\s+(esta\s+|una\s+)?idea|mis\s+ideas|prioriza(r)?\s+(mis\s+)?ideas|recorrido\s+de\s+(mi|tu|esa|esta|la|un)\s+(respuesta|peticion|mensaje)|como\s+has\s+llegado\s+a\s+(esa|esta|tu)\s+respuesta|explica(r|me)?\s+(el\s+)?recorrido|que\s+herramientas\s+has\s+usado)/i,
     // Compras bajo demanda (extra aprobado por David, 5 nov 2026): sin compras ni vigilancia
     compras: /(busca(r)?\s+(el\s+|la\+|un\s+|una\s+)?(producto|oferta|chollo)|compara(r)?\s+precios|d[oó]nde\s+(lo\s+|la\s+)?(compro|consigo)|precio\s+(de|del)\s+(producto|oferta)|verifica(r)?\s+(esta\s+|esa\s+)?(oferta|ficha|tienda)|est[aá]\s+(disponible|en\s+stock)|comprobar\s+(precio|stock|disponibilidad))/i,
-    comunicacion: /(\btraduc|\btraductor|qu[eé]\s+le\s+respondo|sugier\w*\s+respuesta|busca(r)?\s+en\s+(el\s+)?historial|qu[eé]\s+te\s+dije|cumplea[nñ]os|\bcumple\b|fecha\s+se[nñ]alada|aniversario|\bsnooze\b|recu[eé]rdame\s+(este|el|lo de este)\s+(chat|grupo)|estad[ií]sticas?\s+(del|de este|de este grupo|grupo)|cu[aá]ndo\s+(llegue|llego)|av[ií]sa(me)?\s+cuando\s+llegue|aviso\s+de\s+llegada)/i,
+    // OJO: "que te dije" NO va aqui; se resuelve arriba entre memoria y
+    // historial (esConsultaMemoriaNatural / esConsultaHistorialChat).
+    comunicacion: /(\btraduc|\btraductor|qu[eé]\s+le\s+respondo|sugier\w*\s+respuesta|busca(r)?\s+en\s+(el\s+)?historial|cumplea[nñ]os|\bcumple\b|fecha\s+se[nñ]alada|aniversario|\bsnooze\b|recu[eé]rdame\s+(este|el|lo de este)\s+(chat|grupo)|estad[ií]sticas?\s+(del|de este|de este grupo|grupo)|cu[aá]ndo\s+(llegue|llego)|av[ií]sa(me)?\s+cuando\s+llegue|aviso\s+de\s+llegada)/i,
 
     // Terminal, consola bash y codigos 2FA OTP (Sector 2)
     bash: /(consola|terminal|bash|comando|ejecuta|ejecutar|lanzar|shell|otp|2fa|autorizar|confirmar\s+otp|codigo\s+de\s+confirmacion|uptime|top|free|df|ps\s+aux|pm2\s+status|pm2\s+restart|systemctl)/i,
@@ -363,7 +377,7 @@ export function analizarIntencion(mensaje) {
   let matchEstudio = intents.estudio.test(sinNombre);
   let matchFinanzas = intents.finanzas.test(sinNombre);
   let matchProcesos = intents.procesos.test(sinNombre);
-  let matchComunicacion = intents.comunicacion.test(sinNombre);
+  let matchComunicacion = intents.comunicacion.test(sinNombre) || esConsultaHistorialChat;
   let matchTransporte = intents.transporte.test(sinNombre);
   let matchCerebro = intents.cerebro.test(sinNombre);
   let matchBienestar = intents.bienestar.test(sinNombre);

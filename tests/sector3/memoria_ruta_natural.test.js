@@ -97,6 +97,36 @@ test('Router: formulaciones naturales de consulta ofrecen las herramientas de me
   }
 });
 
+test('Router: parafrasis de recuerdo van a memoria, no a comunicacion', () => {
+  // Fallo observado en vivo con modelo real (7 nov 2026): "cual era el tono
+  // que te dije para el prototipo Zeta?" caia en comunicacion por "que te
+  // dije" y el modelo recibia 15 herramientas irrelevantes y ninguna de
+  // memoria (~5.4k tokens de prompt desperdiciados).
+  const formulaciones = [
+    'cual era el tono que te dije para el prototipo Zeta?',
+    'que te dije del prototipo Zeta?',
+    'lo que te pedi que apuntaras del dentista',
+    'cual es la clave que te conte del garaje?'
+  ];
+  for (const frase of formulaciones) {
+    const r = analizarIntencion(frase);
+    const nombres = r.herramientas.map((h) => h.function.name);
+    assert.ok(
+      nombres.includes('buscar_memoria') || nombres.includes('listar_memorias'),
+      `faltan herramientas de memoria para: "${frase}"`
+    );
+    assert.ok(!r.intenciones.includes('comunicacion'), `comunicacion no debe capturar: "${frase}"`);
+    assert.ok(nombres.length <= 8, `demasiadas herramientas (${nombres.length}) para: "${frase}"`);
+  }
+});
+
+test('Router: "que te dije" con referencia temporal sigue yendo al historial', () => {
+  const r = analizarIntencion('que te dije ayer despues de comer?');
+  const nombres = r.herramientas.map((h) => h.function.name);
+  assert.ok(nombres.includes('buscar_en_historial'), 'el historial conserva su ruta');
+  assert.ok(!r.intenciones.includes('memoria'), 'una consulta de historial no es memoria');
+});
+
 test('Router: los recordatorios temporales NO caen en memoria', () => {
   const r1 = analizarIntencion('recuerdame llamar a Ana a las 5');
   const n1 = r1.herramientas.map((h) => h.function.name);
