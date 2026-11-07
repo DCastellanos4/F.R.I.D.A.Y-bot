@@ -233,7 +233,8 @@ export const herramientasJarvis = [
     type: 'function',
     function: {
       name: 'navegar_y_leer_noticia',
-      description: 'OBLIGATORIA: Abre y navega en vivo con un navegador real (Playwright Chromium) a cualquier noticia, artículo periodístico o enlace web (URL) para leer su contenido completo, verificar la noticia antes de informar a David y extraer detalles profundos superando muros de cookies o JavaScript.',
+      description: 'OBLIGATORIA: Abre y navega en vivo con un navegador real (Playwright Chromium) a cualquier noticia, artículo periodístico o enlace web (URL) para leer su contenido completo, verificar la noticia antes de informar a David y extraer detalles profundos superando muros de cookies o JavaScript. '
+        + 'REGLA: requiere una URL completa presente en la conversación (por ejemplo, de una llamada previa a obtener_noticias_actuales o un enlace de David). Si David pide resumir "la primera noticia" o similar y NO hay URL en el contexto, NO inventes ni adivines la URL: usa obtener_noticias_actuales primero o pide el enlace.',
       parameters: {
         type: 'object',
         properties: {

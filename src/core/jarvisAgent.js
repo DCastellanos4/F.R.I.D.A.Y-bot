@@ -636,7 +636,7 @@ async function chatConRecuperacion400(chatImpl, peticion, etiqueta) {
       console.warn(`[J.A.R.V.I.S.] Segundo 400 de validacion en ${etiqueta}; respuesta degradada sin herramientas.`);
       const soloTexto = {
         role: 'system',
-        content: 'Responde SOLO con texto plano para David: NO invoques ninguna herramienta. Explica que no puedes completar la accion ahora mismo y que NO se ha realizado ninguna accion.'
+        content: 'Responde SOLO con texto plano para David: NO invoques ninguna herramienta. Explica que no puedes completar la accion ahora mismo y que NO se ha realizado ninguna accion, e indica el siguiente paso util y concreto (por ejemplo, que te pase el enlace o el dato que falta, o que repita la peticion en unos minutos).'
       };
       try {
         return await chatImpl({ messages: [...peticion.messages, soloTexto], options: peticion.options });
@@ -1825,7 +1825,19 @@ REGLAS CRÍTICAS DE COMUNICACIÓN:
 - Cuando David pregunte que sabes hacer o que cosas nuevas puedes hacer, describe SOLO tus capacidades implementadas: clima; recordatorios y mensajes programados; memoria personal y segundo cerebro (notas, contactos, wiki, digest, captura de paginas, preguntas a documentos); vigilancia y busqueda de productos con verificacion de ofertas; noticias y resumen de enlaces; estado de tu propio servidor (procesos, copias de seguridad, consola bash con confirmacion OTP); transporte publico de Madrid; estudio (planes, flashcards, entregas); carrera (CV, simulacro de entrevista, radar de empleo); finanzas personales; bienestar (diario, habitos, menus, lista de la compra, quedadas); fechas senaladas, snooze y avisos de llegada; traductor, encuestas, resumen de grupo y modo VIP; descarga de multimedia. Algunas dependen de configuracion o de altas gratuitas: dilo cuando aplique.
 - PROHIBIDO atribuirte capacidades no implementadas (gestionar Docker o contenedores, desplegar infraestructura cloud, enviar correos o Slack, generar imagenes, video o audio, etc.). Si te piden una capacidad que no tienes, dilo claro y ofrece, como mucho, la alternativa real mas cercana.`;
 
-  // Inyección de recuerdos existentes en el prompt para respuesta instantánea y precisa
+  // Estado de configuracion de integraciones, derivado del entorno en runtime
+  // (hechos, no suposiciones): responde con esto si David pregunta que le falta por configurar.
+  const faltan = [];
+  if (!process.env.DAVIS_EMT_CLIENT_ID || !process.env.DAVIS_EMT_PASS_KEY) faltan.push('EMT de Madrid (alta gratuita en MobilityLabs: DAVIS_EMT_CLIENT_ID y DAVIS_EMT_PASS_KEY)');
+  if (!process.env.DAVIS_HA_URL || !process.env.DAVIS_HA_TOKEN) faltan.push('domotica Home Assistant (DAVIS_HA_URL y DAVIS_HA_TOKEN)');
+  if (!process.env.DAVIS_QBIT_URL || !process.env.DAVIS_QBIT_PASS) faltan.push('panel de descargas qBittorrent (DAVIS_QBIT_URL y DAVIS_QBIT_PASS)');
+  if (!process.env.DAVIS_WOL_MAC) faltan.push('Wake-on-LAN para encender el PC (DAVIS_WOL_MAC)');
+  if (!process.env.DAVIS_TICKET_VISION_MODEL) faltan.push('lector de tickets por foto (DAVIS_TICKET_VISION_MODEL)');
+  systemPrompt += `\n\nCONFIGURACION PENDIENTE (hechos del entorno actual, no suposiciones):
+${faltan.length === 0 ? '- Ninguna: todas las integraciones opcionales estan configuradas.' : faltan.map((f) => `- Pendiente: ${f}`).join('\n')}
+(DIRECTIVA: Si David pregunta que le falta por configurar, responde DIRECTAMENTE con esta lista y ofrece guiarle en el alta que elija; no pidas aclaraciones sobre a que configuracion se refiere.)`;
+
+
   if (memoriasProactivas.length > 0) {
     systemPrompt += `\n\n[REGISTROS DEL SECOND BRAIN / BANCO DE MEMORIA]:
 ${memoriasProactivas.map(m => `- [${m.sujeto.toUpperCase()}]: ${m.dato}`).join('\n')}

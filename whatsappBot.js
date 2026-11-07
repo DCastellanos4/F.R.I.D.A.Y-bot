@@ -1055,6 +1055,11 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         clearInterval(typingInterval);
         await sock.sendPresenceUpdate('paused', remoteJid);
 
+        // WhatsApp solo interpreta *negrita* con un asterisco: el modelo suele
+        // emitir **doble** (markdown), que se veria literal. Se normaliza aqui,
+        // unico punto de envio de la respuesta del agente.
+        if (typeof respuesta === 'string') respuesta = respuesta.replace(/\*\*([^*]+)\*\*/g, '*$1*');
+
         // 7. Respuesta en Nota de Voz Nativa PTT (si David envió audio o solicitó voz)
         if (esAudio || /responde(me)?\s+(en|con)?\s*(audio|nota de voz|voz)/i.test(texto)) {
           console.log('[WhatsApp Voz PTT] Sintetizando respuesta de voz con Edge-TTS en OGG Opus...');
