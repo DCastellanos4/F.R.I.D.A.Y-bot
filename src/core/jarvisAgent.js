@@ -1829,14 +1829,18 @@ REGLAS CRÍTICAS DE COMUNICACIÓN:
   // (hechos, no suposiciones): responde con esto si David pregunta que le falta por configurar.
   // Nivel capacidad, sin nombres de variables ni rutas: el prompt no debe filtrar infraestructura.
   const faltan = [];
-  if (!process.env.DAVIS_EMT_CLIENT_ID || !process.env.DAVIS_EMT_PASS_KEY) faltan.push('bus de Madrid en vivo con la EMT (requiere cuenta y credenciales de MobilityLabs)');
-  if (!process.env.DAVIS_HA_URL || !process.env.DAVIS_HA_TOKEN) faltan.push('domotica con Home Assistant');
-  if (!process.env.DAVIS_QBIT_URL || !process.env.DAVIS_QBIT_PASS) faltan.push('panel de descargas qBittorrent');
-  if (!process.env.DAVIS_WOL_MAC) faltan.push('encendido remoto del PC (Wake-on-LAN)');
-  if (!process.env.DAVIS_TICKET_VISION_MODEL) faltan.push('lectura de tickets por foto');
+  if (!process.env.DAVIS_EMT_CLIENT_ID || !process.env.DAVIS_EMT_PASS_KEY) faltan.push('bus de Madrid en vivo con la EMT (requiere cuenta y credenciales del portal de desarrolladores MobilityLabs)');
+  if (!process.env.DAVIS_HA_URL || !process.env.DAVIS_HA_TOKEN) faltan.push('domotica con Home Assistant: requiere la direccion de tu instancia y un token de acceso de larga duracion');
+  if (!process.env.DAVIS_QBIT_URL || !process.env.DAVIS_QBIT_PASS) faltan.push('panel de descargas qBittorrent: requiere una instancia de qBittorrent con WebUI activo y sus credenciales (puede estar en otro equipo; no hay ninguna instalada en este servidor)');
+  if (!process.env.DAVIS_WOL_MAC) faltan.push('encendido remoto del PC (Wake-on-LAN): requiere la MAC de tu PC y WoL activado en su BIOS/placa');
+  if (!process.env.DAVIS_TICKET_VISION_MODEL) faltan.push('lectura de tickets por foto: requiere elegir un modelo con vision (posible coste segun proveedor; se verifica antes de configurar)');
+  if (!process.env.INFOJOBS_CLIENT_ID || !process.env.INFOJOBS_CLIENT_SECRET) faltan.push('radar de empleo con InfoJobs: requiere alta de desarrollador en su portal oficial');
+  const opcionales = ['fuentes extra de comparacion de precios (eBay, Amazon): la busqueda ya funciona con el comparador integrado, sin alta; estas dos requieren alta en sus portales de desarrollador'];
+  if (!process.env.MEMORY_ENCRYPTION_KEY) opcionales.push('guardado de credenciales cifradas en memoria: requiere generar una clave de cifrado; sin ella el bot se niega a guardar credenciales');
   systemPrompt += `\n\nCONFIGURACION PENDIENTE (hechos del entorno actual, no suposiciones):
-${faltan.length === 0 ? '- Ninguna: todas las integraciones opcionales estan configuradas.' : faltan.map((f) => `- Pendiente: ${f}`).join('\n')}
-(DIRECTIVA: Si David pregunta que le falta por configurar, responde DIRECTAMENTE con esta lista y ofrece guiarle en el alta que elija; no pidas aclaraciones sobre a que configuracion se refiere.)`;
+${faltan.length === 0 ? '- Ninguna: todas las integraciones con alta externa estan configuradas.' : faltan.map((f) => `- Pendiente: ${f}`).join('\n')}
+${opcionales.map((o) => `- Opcional: ${o}`).join('\n')}
+(DIRECTIVA: Si David pregunta que le falta por configurar, responde DIRECTAMENTE con esta lista (pendientes y opcionales) y ofrece guiarle en el alta que elija; no pidas aclaraciones sobre a que configuracion se refiere. Una credencial presente no significa conexion verificada: si algo consta configurado pero falla, dilo con honestidad.)`;
 
 
   if (memoriasProactivas.length > 0) {

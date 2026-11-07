@@ -52,7 +52,7 @@ export async function llegadasEmt(stopId, deps = {}) {
     return {
       ok: false,
       configRequired: true,
-      error: 'El acceso a la EMT aun no esta configurado (faltan DAVIS_EMT_CLIENT_ID y DAVIS_EMT_PASS_KEY en el entorno del bot). Es un alta gratuita en MobilityLabs; en cuanto este, te digo los buses en vivo.'
+      error: 'El acceso a la EMT aun no esta configurado (faltan DAVIS_EMT_CLIENT_ID y DAVIS_EMT_PASS_KEY en el entorno del bot). El alta se hace en el portal de desarrolladores de la EMT (MobilityLabs); en cuanto este, te digo los buses en vivo.'
     };
   }
   try {

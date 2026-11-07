@@ -306,7 +306,7 @@ async function buscarEnInfojobs(fuente, config, deps) {
     return {
       fuente: fuente.id,
       estado: 'config-required',
-      detalle: 'Faltan INFOJOBS_CLIENT_ID e INFOJOBS_CLIENT_SECRET. Se crean gratis en developer.infojobs.net.',
+      detalle: 'Faltan INFOJOBS_CLIENT_ID e INFOJOBS_CLIENT_SECRET. Se crean registrando una aplicacion en developer.infojobs.net.',
       ofertas: []
     };
   }

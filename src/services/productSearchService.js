@@ -19,7 +19,7 @@ import { crearAdaptadorPriceRadars, AVISO_PRICERADARS } from './merchants/pricer
 
 const FUENTES_BUSQUEDA = [
   { id: 'priceradars', nombre: 'PriceRadars (comparador gratuito, sin alta ni clave; cobertura desigual: electronica y electrodomesticos, ES)', estado: 'operativa' },
-  { id: 'ebay', nombre: 'eBay Browse API (oficial, nivel gratuito ~5.000 llamadas/dia)', estado: 'config-required', motivo: 'necesita alta gratuita en developer.ebay.com y clave (DAVIS_*, nunca por chat)' },
+  { id: 'ebay', nombre: 'eBay Browse API (oficial, nivel por defecto ~5.000 llamadas/dia)', estado: 'config-required', motivo: 'necesita alta en developer.ebay.com y clave (DAVIS_*, nunca por chat)' },
   { id: 'amazon', nombre: 'Amazon Creators/PA-API (oficial)', estado: 'config-required', motivo: 'necesita cuenta de Amazon Associates aprobada y clave (DAVIS_*, nunca por chat)' }
 ];
 
