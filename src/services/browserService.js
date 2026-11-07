@@ -17,6 +17,59 @@ const cachePaginas = new Map();
 const TTL_CACHE_MS = 15 * 60 * 1000;
 
 /**
+ * Guardarrailes de seguridad estrictos para navegacion autonoma:
+ * - Prohibicion absoluta de URLs de autenticacion / login / registro / OAuth.
+ * - Prohibicion absoluta de pasarelas de pago, checkouts y compras.
+ * - Solo lectura segura de contenido publico.
+ */
+export const PATRONES_PROHIBIDOS = [
+  /login/i,
+  /signin/i,
+  /sign-in/i,
+  /signup/i,
+  /sign-up/i,
+  /auth/i,
+  /oauth/i,
+  /password/i,
+  /checkout/i,
+  /cart/i,
+  /carrito/i,
+  /cesta/i,
+  /payment/i,
+  /pago/i,
+  /stripe/i,
+  /paypal/i,
+  /bank/i,
+  /banco/i,
+  /admin/i,
+  /dashboard/i
+];
+
+export function validarGuardarrailesNavegacion(url) {
+  if (!url || typeof url !== 'string' || !url.startsWith('http')) {
+    return { permitido: false, motivo: 'URL invalida o esquema no permitido (solo http/https).' };
+  }
+
+  try {
+    const parsed = new URL(url);
+    const rutaCompleta = `${parsed.hostname}${parsed.pathname}${parsed.search}`.toLowerCase();
+
+    for (const patron of PATRONES_PROHIBIDOS) {
+      if (patron.test(rutaCompleta)) {
+        return {
+          permitido: false,
+          motivo: `Bloqueado por guardarrail de seguridad: la URL coincide con patrones sensibles o de compra/login (${patron.toString()}). DAVIS opera en modo lectura publica segura.`
+        };
+      }
+    }
+
+    return { permitido: true };
+  } catch {
+    return { permitido: false, motivo: 'URL malformada.' };
+  }
+}
+
+/**
  * Lanza una instancia ligera de Chromium headless optimizada para ARM64 / Oracle VPS
  */
 async function crearPaginaNavegador() {
@@ -57,11 +110,14 @@ async function crearPaginaNavegador() {
 }
 
 /**
- * Navega a una URL con Playwright Chromium, sortea muros/consentimiento y extrae el cuerpo completo del articulo
+ * Navega a una URL con Playwright Chromium con guardarrailes activos,
+ * sortea muros/consentimiento y extrae el cuerpo completo del articulo o informacion publica.
  */
 export async function navegarYExtraerArticulo(url, opciones = {}) {
-  if (!url || !url.startsWith('http')) {
-    return { ok: false, error: 'URL invalida o no proporcionada.' };
+  // 1. Validar guardarrailes
+  const chequeo = validarGuardarrailesNavegacion(url);
+  if (!chequeo.permitido) {
+    return { ok: false, url, error: chequeo.motivo };
   }
 
   // Comprobar cache en memoria
@@ -75,7 +131,7 @@ export async function navegarYExtraerArticulo(url, opciones = {}) {
   const timeoutMs = opciones.timeout || 15000;
 
   try {
-    console.log(`[Playwright] Navegando con Chromium real a: ${url}...`);
+    console.log(`[Playwright Guardarrail Activo] Navegando con Chromium a: ${url}...`);
     const instancias = await crearPaginaNavegador();
     browser = instancias.browser;
     const page = instancias.page;
@@ -102,14 +158,14 @@ export async function navegarYExtraerArticulo(url, opciones = {}) {
       });
     } catch {}
 
-    // Extraer datos estructurados del articulo
+    // Extraer datos estructurados de la pagina
     const resultado = await page.evaluate(() => {
       // 1. Titulo
       const metaTitle = document.querySelector('meta[property="og:title"]')?.getAttribute('content') ||
                         document.querySelector('meta[name="twitter:title"]')?.getAttribute('content') ||
                         document.querySelector('h1')?.innerText?.trim() ||
                         document.title ||
-                        'Noticia';
+                        'Informacion';
 
       // 2. Autor y Fecha
       const autor = document.querySelector('meta[name="author"]')?.getAttribute('content') ||
@@ -121,7 +177,7 @@ export async function navegarYExtraerArticulo(url, opciones = {}) {
                     document.querySelector('time')?.innerText?.trim() ||
                     null;
 
-      // 3. Contenedor principal del articulo
+      // 3. Contenedor principal
       const contenedor = document.querySelector('article') ||
                          document.querySelector('[itemprop="articleBody"]') ||
                          document.querySelector('.article-body') ||
@@ -217,9 +273,14 @@ export async function navegarYExtraerArticulo(url, opciones = {}) {
 }
 
 /**
- * Captura una captura de pantalla (screenshot) de la pagina web con Playwright
+ * Captura de pantalla de pagina web publica respetando guardarrailes.
  */
 export async function capturarPantallaWeb(url) {
+  const chequeo = validarGuardarrailesNavegacion(url);
+  if (!chequeo.permitido) {
+    return { ok: false, error: chequeo.motivo };
+  }
+
   let browser = null;
   try {
     console.log(`[Playwright Screenshot] Capturando pagina web: ${url}...`);

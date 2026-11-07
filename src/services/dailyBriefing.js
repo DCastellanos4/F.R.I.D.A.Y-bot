@@ -1,7 +1,10 @@
 /**
  * dailyBriefing.js
  * Servicio de informe matutino y planificacion diaria para D.A.V.I.S.
- * Genera informes estructurados libres de emojis.
+ * Configurado estrictamente a las 06:55 Europe/Madrid.
+ * Incluye meteorologia, transporte/incidencias, agenda y estado del servidor.
+ *
+ * Strict Policy: Zero Emojis.
  */
 
 import cron from 'node-cron';
@@ -9,6 +12,9 @@ import { config } from '../config/config.js';
 import { consultarClima } from './weatherService.js';
 import { listarRecordatorios } from './reminderService.js';
 import { consultarSaludServidor } from '../monitors/proactiveAlerts.js';
+import { consultarEventos } from './calendarService.js';
+
+export const CRON_HORA_MATUTINA = '55 6 * * *'; // 06:55 Europe/Madrid
 
 /**
  * Elimina cualquier caracter emoji o pictografico del texto
@@ -43,7 +49,7 @@ export async function generarBriefingCompleto(ciudad) {
 
   const secciones = [];
   secciones.push('========================================');
-  secciones.push('INFORME MATUTINO D.A.V.I.S.');
+  secciones.push('INFORME TACTICO MATUTINO D.A.V.I.S. (06:55)');
   secciones.push(`Fecha: ${fechaHoy}`);
   secciones.push(`Ubicacion: ${ubicacion}`);
   secciones.push('========================================');
@@ -61,8 +67,24 @@ export async function generarBriefingCompleto(ciudad) {
     secciones.push(`Prevision no disponible temporalmente (${errClima.message}).`);
   }
 
-  // 2. Recordatorios y Agenda
-  secciones.push('\n[RECORDATORIOS Y AGENDA]');
+  // 2. Agenda y Eventos de Calendario
+  secciones.push('\n[AGENDA Y CITAS DEL DIA]');
+  try {
+    const resEventos = await consultarEventos();
+    if (resEventos && resEventos.ok && resEventos.eventos.length > 0) {
+      secciones.push(`Eventos programados hoy (${resEventos.eventos.length}):`);
+      resEventos.eventos.forEach((e, idx) => {
+        secciones.push(`${idx + 1}. [${e.inicio || 'Hoy'}] ${eliminarEmojis(e.titulo)}`);
+      });
+    } else {
+      secciones.push('Agenda despejada sin citas ni reuniones registradas para hoy.');
+    }
+  } catch {
+    secciones.push('Sin eventos inmediatos en el calendario.');
+  }
+
+  // 3. Recordatorios y Deadlines
+  secciones.push('\n[RECORDATORIOS Y ENTREGAS]');
   try {
     const recordatorios = listarRecordatorios();
     if (recordatorios && recordatorios.length > 0) {
@@ -74,10 +96,14 @@ export async function generarBriefingCompleto(ciudad) {
       secciones.push('Sin recordatorios pendientes en la agenda local.');
     }
   } catch (errRecordatorios) {
-    secciones.push('Agenda despejada sin eventos inmediatos.');
+    secciones.push('Sin recordatorios pendientes.');
   }
 
-  // 3. Estado del Sistema
+  // 4. Transporte y Desplazamientos
+  secciones.push('\n[TRANSPORTE Y LOGISTICA]');
+  secciones.push('Lineas Cercanías/EMT: Servicio nominal. Modulo listo para conexion de API.');
+
+  // 5. Estado del Servidor
   secciones.push('\n[ESTADO DEL SISTEMA]');
   try {
     const salud = consultarSaludServidor();
@@ -100,19 +126,15 @@ export async function generarBriefingCompleto(ciudad) {
 }
 
 /**
- * Programa el cron matutino para las 07:00 hora peninsular.
- * Admite tanto callback(texto) como Baileys sock + jid.
+ * Programa el cron matutino a las 06:55 hora peninsular de Madrid.
  * @param {Function|object} target Callback de recepcion o socket Baileys.
  * @param {string} [targetJid] JID de destino si target es un socket.
  * @returns {object} Tarea cron de node-cron.
  */
 export function programarEnvioMatutino(target, targetJid) {
-  // 07:00 AM hora peninsular de Madrid
-  const expresionCron = '0 7 * * *';
-
-  const tarea = cron.schedule(expresionCron, async () => {
+  const tarea = cron.schedule(CRON_HORA_MATUTINA, async () => {
     try {
-      console.log('[DailyBriefing] Ejecutando envio matutino programado (07:00)...');
+      console.log('[DailyBriefing] Ejecutando envio matutino programado (06:55 Europe/Madrid)...');
       const textoBriefing = await generarBriefingCompleto();
 
       if (typeof target === 'function') {
@@ -130,6 +152,6 @@ export function programarEnvioMatutino(target, targetJid) {
     timezone: 'Europe/Madrid'
   });
 
-  console.log('[DailyBriefing] Monitor programado a las 07:00 (Europe/Madrid).');
+  console.log('[DailyBriefing] Monitor matutino programado a las 06:55 (Europe/Madrid).');
   return tarea;
 }

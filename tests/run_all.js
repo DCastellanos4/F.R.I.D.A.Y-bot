@@ -87,8 +87,9 @@ async function auditZeroEmojisAcrossProject() {
  */
 async function runTestSuite() {
   console.log('====================================================');
-  console.log(' D.A.V.I.S. Master Test Runner (Sector 1 & Sector 2)');
+  console.log(' D.A.V.I.S. Master Test Runner (Sectors 1-3 & Cognitive)');
   console.log(' Architecture: Node.js Native Runner (node:test)');
+
   console.log(' Policy: Strict Zero Emojis');
   console.log('====================================================\n');
 
@@ -124,24 +125,28 @@ async function runTestSuite() {
   const sector2HelperFiles = await getTestFiles(path.join('tests', 'sector2', 'helpers'));
   const sector2Files = await getTestFiles(path.join('tests', 'sector2'));
   const sector3Files = await getTestFiles(path.join('tests', 'sector3'));
+  const cognitiveFiles = await getTestFiles(path.join('tests', 'cognitive'));
 
   const allTestFiles = [
     ...harnessFiles,
     ...sector1Files,
     ...sector2HelperFiles,
     ...sector2Files,
-    ...sector3Files
+    ...sector3Files,
+    ...cognitiveFiles
   ];
 
   console.log(`Discovered ${allTestFiles.length} test suites:`);
   console.log(`- Sector 1 & Harness: ${harnessFiles.length + sector1Files.length} suites`);
   console.log(`- Sector 2: ${sector2HelperFiles.length + sector2Files.length} suites`);
-  console.log(`- Sector 3 (mejoras agénticas + batería dorada): ${sector3Files.length} suites\n`);
+  console.log(`- Sector 3 (mejoras agenticas + bateria dorada): ${sector3Files.length} suites`);
+  console.log(`- Cognitive Enhancements (Tiers 1-5): ${cognitiveFiles.length} suites\n`);
 
   const testArgs = [
     '--test',
     ...allTestFiles
   ];
+
 
   const child = spawn(process.execPath, testArgs, {
     cwd: ROOT_DIR,
@@ -161,8 +166,9 @@ async function runTestSuite() {
   child.on('close', (code) => {
     console.log('\n====================================================');
     if (code === 0) {
-      console.log(' [SUCCESS] All Sector 1 and Sector 2 test suites completed cleanly (exit code 0)');
+      console.log(' [SUCCESS] All Sector 1-3 and Cognitive test suites completed cleanly (exit code 0)');
     } else {
+
       console.error(` [FAILED] Test runner exited with failure code ${code}`);
     }
     console.log('====================================================');

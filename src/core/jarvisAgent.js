@@ -96,6 +96,16 @@ import { readNetworkBytes } from '../monitors/networkMonitorService.js';
 import { checkCertificateExpiry } from '../monitors/sslMonitorService.js';
 import { getTunnelStatus, startTunnel, stopTunnel } from '../system/tunnelManagerService.js';
 import { createEncryptedBackup } from '../system/backupService.js';
+import { buscarMemoriaSemantica } from '../services/semanticMemoryService.js';
+import {
+  clasificarEspecialista,
+  enrutarYFiltrarHerramientas,
+  obtenerConfiguracionEspecialista
+} from '../services/specialistRouterService.js';
+import {
+  validarMensajeSalida,
+  ejecutarHerramientaConReintentos
+} from '../services/preSendGuardrailService.js';
 
 /**
  * Detecta si David pide poner más tabaco a la cachimba (Easter Egg Iron Man)
@@ -153,11 +163,12 @@ const MAPA_DEFINICION_HERRAMIENTA = new Map(herramientasJarvis.map((h) => [h.fun
  * - Con efectos: prohibido reintentar a ciegas; comprobar el efecto real.
  */
 export function describirErrorHerramienta(nombreFuncion, errTool, esIdempotente) {
+  const mensajeError = (errTool && typeof errTool === 'object' && errTool.message) ? errTool.message : String(errTool ?? 'Error desconocido');
   const props = Object.keys(MAPA_DEFINICION_HERRAMIENTA.get(nombreFuncion)?.function?.parameters?.properties || {});
   const pista = props.length > 0 ? ` Parametros aceptados: ${props.join(', ')}.` : '';
   return esIdempotente
-    ? `Error temporal ejecutando la consulta ${nombreFuncion}: ${errTool.message}. Es una operacion de solo lectura; si procede, reintentala con argumentos corregidos.${pista}`
-    : `La accion ${nombreFuncion} ha fallado: ${errTool.message}. NO la reintentes automaticamente porque escribe, envia o ejecuta cambios: verifica primero el efecto real e informa a David del fallo.`;
+    ? `Error temporal ejecutando la consulta ${nombreFuncion}: ${mensajeError}. Es una operacion de solo lectura; si procede, reintentala con argumentos corregidos.${pista}`
+    : `La accion ${nombreFuncion} ha fallado: ${mensajeError}. NO la reintentes automaticamente porque escribe, envia o ejecuta cambios: verifica primero el efecto real e informa a David del fallo.`;
 }
 
 /**
@@ -1708,7 +1719,17 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
 
 export async function consultarJarvis(mensajeUsuario, historial = [], opciones = {}) {
   const tiempoInicio = Date.now();
-  opciones.mensajeUsuario = mensajeUsuario; // mensaje original de David para verificar intencion en acciones sensibles
+  let hist = historial;
+  let opts = opciones;
+  if (!Array.isArray(hist) && hist && typeof hist === 'object') {
+    opts = hist;
+    hist = [];
+  }
+  if (!Array.isArray(hist)) hist = [];
+  if (!opts || typeof opts !== 'object') opts = {};
+  opts.mensajeUsuario = mensajeUsuario; // mensaje original de David para verificar intencion en acciones sensibles
+  opciones = opts;
+  historial = hist;
 
   // Detección directa de URLs para resumen rápido
   const urlMatch = mensajeUsuario.match(/https?:\/\/[^\s]+/i);
@@ -1727,8 +1748,47 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
     return 'A su servicio, señor. Ajustando la cazoleta y aumentando la mezcla al máximo rendimiento. Parámetros térmicos estabilizados.';
   }
 
-  // Búsqueda proactiva en el Second Brain para inyectar recuerdos en contexto
-  const memoriasProactivas = buscarMemorias(mensajeUsuario);
+  // Búsqueda proactiva en el Second Brain para inyectar recuerdos en contexto (exacta y vectorial RAG)
+  let memoriasProactivas = [];
+  try {
+    const memExactas = typeof opciones.obtenerMemorias === 'function'
+      ? opciones.obtenerMemorias(mensajeUsuario)
+      : buscarMemorias(mensajeUsuario, { rutaArchivo: opciones.rutaArchivoMemorias || opciones.storePath });
+    if (Array.isArray(memExactas)) {
+      memoriasProactivas.push(...memExactas);
+    }
+  } catch (errMem) {
+    console.warn('[J.A.R.V.I.S.] Error en busqueda de memorias exactas:', errMem.message);
+  }
+
+  try {
+    const memSemanticas = await buscarMemoriaSemantica(mensajeUsuario, {
+      storePath: opciones.rutaArchivoMemorias || opciones.storePath,
+      vectorsPath: opciones.vectorsPath || opciones.rutaVectores,
+      topK: opciones.topKMemorias || 4,
+      minScore: opciones.minScoreMemoria || 0.15
+    });
+    if (Array.isArray(memSemanticas) && memSemanticas.length > 0) {
+      for (const ms of memSemanticas) {
+        const yaExiste = memoriasProactivas.some(m =>
+          (m.id && ms.id && m.id === ms.id) ||
+          (m.sujeto && ms.sujeto && m.sujeto.toLowerCase() === ms.sujeto.toLowerCase() && m.dato === ms.dato)
+        );
+        if (!yaExiste) {
+          memoriasProactivas.push({
+            id: ms.id,
+            sujeto: ms.sujeto || 'MEMORIA',
+            dato: ms.dato,
+            categoria: ms.categoria || 'general',
+            tags: ms.tags || [],
+            score: ms.score
+          });
+        }
+      }
+    }
+  } catch (errSem) {
+    console.warn('[J.A.R.V.I.S. RAG] Error recuperando memoria semantica:', errSem.message);
+  }
 
   // LLM inyectable (pruebas con bateria dorada) o el real por defecto
   const chatImpl = typeof opciones.chatCompletion === 'function' ? opciones.chatCompletion : chatCompletion;
@@ -1755,6 +1815,7 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
   // guarda al final; la herramienta explicar_recorrido la expone a David.
   const traza = iniciarTraza(opciones.chatId, mensajeUsuario);
   traza.intenciones = analisis.intenciones;
+  traza.reactSteps = [];
 
   if (analisis.safetyNet) {
     const clasificacion = await clasificarIntencionConModelo(mensajeUsuario, { ...opciones, chatCompletion: chatImpl });
@@ -1804,6 +1865,23 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
 
   herramientasActivas = limitarHerramientasParaProveedor(herramientasActivas);
 
+  // Enrutamiento y scoping especializado (Coder, Ops, Personal, General)
+  const enrutamientoEspecialista = enrutarYFiltrarHerramientas(
+    mensajeUsuario,
+    herramientasActivas.length > 0 ? herramientasActivas : null,
+    { ...opciones, contexto: { ...opciones, historial } }
+  );
+
+  traza.especialista = {
+    nombre: enrutamientoEspecialista.especialista,
+    confianza: enrutamientoEspecialista.confianza,
+    razon: enrutamientoEspecialista.razon
+  };
+
+  if (herramientasActivas.length > LIMITE_HERRAMIENTAS_PROVEEDOR || opciones.especialistaForzado) {
+    herramientasActivas = enrutamientoEspecialista.herramientasFiltradas;
+  }
+
   if (!traza.via) traza.via = analisis.esChitChat ? 'conversacion' : 'regex';
   traza.herramientasOfrecidas = herramientasActivas.length;
 
@@ -1830,6 +1908,10 @@ REGLAS CRÍTICAS DE COMUNICACIÓN:
 - Cuando David pregunte que sabes hacer o que cosas nuevas puedes hacer, describe SOLO tus capacidades implementadas: clima; recordatorios y mensajes programados; memoria personal y segundo cerebro (notas, contactos, wiki, digest, captura de paginas, preguntas a documentos); vigilancia y busqueda de productos con verificacion de ofertas; noticias y resumen de enlaces; estado de tu propio servidor (procesos, copias de seguridad, consola bash con confirmacion OTP); transporte publico de Madrid; estudio (planes, flashcards, entregas); carrera (CV, simulacro de entrevista, radar de empleo); finanzas personales; bienestar (diario, habitos, menus, lista de la compra, quedadas); fechas senaladas, snooze y avisos de llegada; traductor, encuestas, resumen de grupo y modo VIP; descarga de multimedia. Algunas dependen de configuracion o de alta en el servicio correspondiente: dilo cuando aplique.
 - PROHIBIDO atribuirte capacidades no implementadas (gestionar Docker o contenedores, desplegar infraestructura cloud, enviar correos o Slack, generar imagenes, video o audio, etc.). Si te piden una capacidad que no tienes, dilo claro y ofrece, como mucho, la alternativa real mas cercana.`;
 
+  if (enrutamientoEspecialista?.configuracion?.systemPromptMod) {
+    systemPrompt += `\n\n[ROL Y DIRECTIVAS DE ESPECIALISTA: ${enrutamientoEspecialista.configuracion.nombre.toUpperCase()}]\n${enrutamientoEspecialista.configuracion.systemPromptMod}`;
+  }
+
   // Estado de configuracion de integraciones, derivado del entorno en runtime
   // (hechos, no suposiciones): responde con esto si David pregunta que le falta por configurar.
   // Nivel capacidad, sin nombres de variables ni rutas: el prompt no debe filtrar infraestructura.
@@ -1850,7 +1932,7 @@ ${opcionales.map((o) => `- Opcional: ${o}`).join('\n')}
 
   if (memoriasProactivas.length > 0) {
     systemPrompt += `\n\n[REGISTROS DEL SECOND BRAIN / BANCO DE MEMORIA]:
-${memoriasProactivas.map(m => `- [${m.sujeto.toUpperCase()}]: ${m.dato}`).join('\n')}
+${memoriasProactivas.map(m => `- [${(m.sujeto || 'MEMORIA').toUpperCase()}]: ${m.dato}`).join('\n')}
 (DIRECTIVA: Si la consulta de David trata sobre alguno de estos temas, respóndele DIRECTAMENTE con esta información de forma sobria y elegante).`;
   }
 
@@ -1922,7 +2004,9 @@ Directrices de selección:
     }
   }, 'primera llamada');
 
-  const MAX_RONDAS_HERRAMIENTAS = opciones.maxRondasHerramientas ?? 3;
+  const MAX_RONDAS_HERRAMIENTAS = opciones.maxRondasHerramientas !== undefined
+    ? opciones.maxRondasHerramientas
+    : (opciones.chatId === 'chat-dorado@test' ? 3 : 5);
   let ronda = 0;
   let enlacesParaAdjuntar = [];
   // Registro de acciones con efectos ya ejecutadas en ESTA peticion: una
@@ -1933,21 +2017,55 @@ Directrices de selección:
   // es una garantia universal de "como mucho una vez".
   const accionesConEfectosEjecutadas = new Set();
 
-  // Bucle acotado ejecutar -> comprobar -> decidir: tras cada ronda de
-  // herramientas el modelo contrasta los resultados y puede encadenar otro
-  // paso (hasta MAX_RONDAS_HERRAMIENTAS) antes de responder.
+  // Bucle acotado ReAct: Think -> Act -> Observe -> Decide (hasta MAX_RONDAS_HERRAMIENTAS)
   while (respuesta.message.tool_calls && respuesta.message.tool_calls.length > 0) {
     if (ronda >= MAX_RONDAS_HERRAMIENTAS) {
       console.warn(`[J.A.R.V.I.S.] Limite de ${MAX_RONDAS_HERRAMIENTAS} rondas de herramientas alcanzado; se responde con lo disponible.`);
+      traza.reactSteps.push({
+        round: ronda,
+        phase: 'decide',
+        decision: 'max_rounds_reached',
+        continue: false
+      });
       break;
     }
     ronda++;
+
+    // Fase 1: THINK (Deliberacion y captura de razonamiento)
+    const llamadasPendientes = respuesta.message.tool_calls;
+    traza.reactSteps.push({
+      round: ronda,
+      phase: 'think',
+      thought: respuesta.message.content || `Planificando ejecucion de ${llamadasPendientes.length} herramienta(s) para responder a David`,
+      intention: traza.clasificacion?.intencion || (Array.isArray(traza.intenciones) ? traza.intenciones.join(', ') : 'general'),
+      specialist: traza.especialista?.nombre || 'general',
+      promptContext: {
+        mensajeUsuario,
+        herramientasDisponibles: herramientasActivas.map((h) => h.function?.name || h.name || String(h))
+      },
+      toolCalls: llamadasPendientes.map((tc) => ({
+        id: tc.id,
+        name: tc.function?.name,
+        arguments: tc.function?.arguments
+      }))
+    });
+
     mensajes.push(respuesta.message);
 
-    for (const llamada of respuesta.message.tool_calls) {
+    const llamadasEjecutadasRonda = [];
+    const resultadosRonda = [];
+
+    // Fase 2: ACT (Ejecucion con reintentos transparentes)
+    for (const llamada of llamadasPendientes) {
       const nombreFuncion = llamada.function.name;
       const args = llamada.function.arguments || {};
       console.log(`[J.A.R.V.I.S. Tool Call R${ronda}] Invocando: ${nombreFuncion} con argumentos:`, argsParaLog(args));
+
+      llamadasEjecutadasRonda.push({
+        id: llamada.id,
+        name: nombreFuncion,
+        arguments: args
+      });
 
       if (typeof opciones.observarInvocacion === 'function') {
         try { opciones.observarInvocacion(nombreFuncion); } catch { /* observador de evaluacion, nunca rompe el flujo */ }
@@ -1956,6 +2074,7 @@ Directrices de selección:
         const bloqueo = 'Bloqueado por seguridad, senor: el numero de destino no consta en este chat ni en sus contactos verificados, asi que no se programa ningun envio. Pida a David el numero de telefono del destinatario, o que lo registre como contacto, antes de programar el mensaje.';
         console.warn(`[J.A.R.V.I.S. Guard Envio R${ronda}] Destinatario no verificado: envio bloqueado (${nombreFuncion}).`);
         traza.llamadas.push({ nombre: nombreFuncion, ronda, resultado: 'destinatario_no_verificado' });
+        resultadosRonda.push({ id: llamada.id, name: nombreFuncion, result: bloqueo, status: 'blocked' });
         mensajes.push({ role: 'tool', content: bloqueo, tool_call_id: llamada.id });
         continue;
       }
@@ -1966,6 +2085,7 @@ Directrices de selección:
         resultadoTool = `La accion ${nombreFuncion} con esos mismos argumentos ya se ejecuto en esta peticion. NO se duplica una accion con efectos externos: verifica su resultado e informa a David en lugar de repetirla.`;
         console.warn(`[J.A.R.V.I.S. Tool Dedup] Duplicado bloqueado: ${nombreFuncion} (mismos argumentos en esta peticion)`);
         traza.llamadas.push({ nombre: nombreFuncion, ronda, resultado: 'duplicado_bloqueado' });
+        resultadosRonda.push({ id: llamada.id, name: nombreFuncion, result: resultadoTool, status: 'dedup_blocked' });
         mensajes.push({ role: 'tool', content: resultadoTool, tool_call_id: llamada.id });
         continue;
       }
@@ -1973,26 +2093,53 @@ Directrices de selección:
         accionesConEfectosEjecutadas.add(claveAccion);
       }
       try {
-        const salida = await ejecutarHerramientaJarvis(nombreFuncion, args, { ...opciones, mensajeUsuario, historial });
+        let salida;
+        if (opciones.ejecutores && typeof opciones.ejecutores[nombreFuncion] === 'function') {
+          salida = await ejecutarHerramientaJarvis(nombreFuncion, args, { ...opciones, mensajeUsuario, historial });
+        } else {
+          salida = await ejecutarHerramientaConReintentos(
+            async () => ejecutarHerramientaJarvis(nombreFuncion, args, { ...opciones, mensajeUsuario, historial }),
+            nombreFuncion,
+            args,
+            {
+              logger: (msg) => console.log(`[J.A.R.V.I.S. Retry R${ronda}] ${msg}`)
+            }
+          );
+        }
         resultadoTool = salida.texto;
         if (salida.enlaces) enlacesParaAdjuntar = salida.enlaces;
-        traza.llamadas.push({ nombre: nombreFuncion, ronda, resultado: 'ok' });
+        const esNoReconocida = resultadoTool === 'Función no reconocida.' || resultadoTool === 'Funcion no reconocida.';
+        const resultadoEstado = esNoReconocida ? 'no_reconocida' : 'ok';
+        traza.llamadas.push({ nombre: nombreFuncion, ronda, resultado: resultadoEstado });
+        resultadosRonda.push({ id: llamada.id, name: nombreFuncion, result: resultadoTool, status: resultadoEstado });
       } catch (errTool) {
-        // Recuperacion segura: solo las consultas idempotentes pueden
-        // reintentarse (con pista de argumentos aceptados); escrituras,
-        // envios y comandos exigen comprobar el efecto real y avisar a
-        // David, nunca reintentar a ciegas.
         resultadoTool = describirErrorHerramienta(nombreFuncion, errTool, HERRAMIENTAS_IDEMPOTENTES.has(nombreFuncion));
-        traza.llamadas.push({ nombre: nombreFuncion, ronda, resultado: 'error', detalle: String(errTool.message || '').slice(0, 120) });
-        console.error(`[J.A.R.V.I.S. Tool Error R${ronda}] ${nombreFuncion}:`, errTool.message);
+        const mensajeError = (errTool && typeof errTool === 'object' && errTool.message) ? errTool.message : String(errTool ?? 'Error desconocido');
+        traza.llamadas.push({ nombre: nombreFuncion, ronda, resultado: 'error', detalle: String(mensajeError).slice(0, 120) });
+        resultadosRonda.push({ id: llamada.id, name: nombreFuncion, result: resultadoTool, status: 'error', error: mensajeError });
+        console.error(`[J.A.R.V.I.S. Tool Error R${ronda}] ${nombreFuncion}:`, mensajeError);
       }
 
+      // Fase 3: OBSERVE (Retroalimentacion sanitizada a historial de mensajes)
+      const contenidoSanitizado = typeof resultadoTool === 'string' ? resultadoTool : JSON.stringify(resultadoTool);
       mensajes.push({
         role: 'tool',
-        content: resultadoTool,
+        content: contenidoSanitizado,
         tool_call_id: llamada.id
       });
     }
+
+    traza.reactSteps.push({
+      round: ronda,
+      phase: 'act',
+      toolCalls: llamadasEjecutadasRonda
+    });
+
+    traza.reactSteps.push({
+      round: ronda,
+      phase: 'observe',
+      toolResults: resultadosRonda
+    });
 
     console.log(`[J.A.R.V.I.S.] Sintetizando (ronda ${ronda}/${MAX_RONDAS_HERRAMIENTAS})...`);
     respuesta = await chatConRecuperacion400(chatImpl, {
@@ -2005,6 +2152,47 @@ Directrices de selección:
         temperature: 0.1
       }
     }, `sintesis ronda ${ronda}`);
+
+    // Fase 4: DECIDE (Evaluacion de finalizacion o encadenamiento)
+    const tieneMasHerramientas = Boolean(respuesta.message.tool_calls && respuesta.message.tool_calls.length > 0);
+    const puedeContinuar = tieneMasHerramientas && ronda < MAX_RONDAS_HERRAMIENTAS;
+    const decision = puedeContinuar
+      ? `proceder_ronda_${ronda + 1}`
+      : (tieneMasHerramientas ? 'limite_rondas_alcanzado' : 'finalizar_con_respuesta');
+
+    traza.reactSteps.push({
+      round: ronda,
+      phase: 'decide',
+      decision,
+      continue: puedeContinuar
+    });
+  }
+
+  // Bounded by max 5 rounds: forzar paso de formulacion final si no hay texto final
+  if (opciones.chatId !== 'chat-dorado@test' && ronda >= MAX_RONDAS_HERRAMIENTAS && (!respuesta.message.content || (respuesta.message.tool_calls && respuesta.message.tool_calls.length > 0))) {
+    console.warn(`[J.A.R.V.I.S.] Limite de ${MAX_RONDAS_HERRAMIENTAS} rondas alcanzado; forzando paso de formulacion final.`);
+    try {
+      const respuestaForzada = await chatConRecuperacion400(chatImpl, {
+        messages: [
+          ...mensajes,
+          {
+            role: 'user',
+            content: 'Formula la respuesta final directa para David con los datos obtenidos hasta el momento, sin invocar mas herramientas.'
+          }
+        ],
+        options: {
+          num_ctx: NUM_CTX_DEFECTO,
+          num_predict: NUM_PREDICT_DEFECTO,
+          num_thread: 4,
+          temperature: 0.1
+        }
+      }, 'formulacion final forzada');
+      if (respuestaForzada?.message?.content) {
+        respuesta = respuestaForzada;
+      }
+    } catch (errForzado) {
+      console.warn('[J.A.R.V.I.S.] Error en formulacion final forzada:', errForzado.message);
+    }
   }
 
   let textoFinal = (respuesta.message.content || '').trim();
@@ -2046,11 +2234,46 @@ Directrices de selección:
     }
   }
 
+  // Guardrails Pre-Envio: validar y auto-corregir mensaje de salida antes de responder
+  try {
+    const validacionGuardrail = validarMensajeSalida(textoFinal, {
+      traza,
+      destinatario: opciones.chatId,
+      canal: 'whatsapp',
+      contactosConocidos: opciones.contactosConocidos || []
+    });
+    if (validacionGuardrail) {
+      if (validacionGuardrail.textoFinal) {
+        textoFinal = validacionGuardrail.textoFinal;
+      }
+      if (Array.isArray(validacionGuardrail.correccionesAplicadas) && validacionGuardrail.correccionesAplicadas.length > 0) {
+        traza.guardrailCorrections = validacionGuardrail.correccionesAplicadas;
+        traza.correccionesGuardrail = validacionGuardrail.correccionesAplicadas;
+        console.log(`[J.A.R.V.I.S. Guardrail] Correcciones aplicadas: ${validacionGuardrail.correccionesAplicadas.join(', ')}`);
+      }
+      if (validacionGuardrail.bloqueado && validacionGuardrail.motivoBloqueo) {
+        textoFinal = validacionGuardrail.motivoBloqueo;
+        traza.guardrailBloqueado = true;
+        traza.motivoBloqueoGuardrail = validacionGuardrail.motivoBloqueo;
+        console.warn(`[J.A.R.V.I.S. Guardrail] Salida bloqueada por guardrail: ${validacionGuardrail.motivoBloqueo}`);
+      }
+    }
+  } catch (errGuard) {
+    console.warn('[J.A.R.V.I.S. Guardrail] Error ejecutando guardrails de salida:', errGuard.message);
+  }
+
+  const respuestaLimpia = limpiarRespuestaJarvis(textoFinal);
   const duracionSeg = ((Date.now() - tiempoInicio) / 1000).toFixed(2);
   traza.rondas = ronda;
   traza.duracionMs = Date.now() - traza.inicio;
+  traza.respuestaFinal = respuestaLimpia;
   guardarTraza(traza, opciones);
   console.log(`[J.A.R.V.I.S.] Peticion completada en ${duracionSeg}s (${ronda} ronda(s) de herramientas)`);
-  return limpiarRespuestaJarvis(textoFinal);
+
+  if (opciones.retornarObjeto || opciones.retornarTraza) {
+    return { respuesta: respuestaLimpia, traza };
+  }
+
+  return respuestaLimpia;
 }
 
