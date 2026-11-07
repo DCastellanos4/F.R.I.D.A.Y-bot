@@ -8,6 +8,9 @@ const execFileAsync = promisify(execFile);
 
 const WHISPER_BIN = process.env.WHISPER_BIN || '/home/ubuntu/whisper.cpp/build/bin/whisper-cli';
 const WHISPER_MODEL = process.env.WHISPER_MODEL || '/home/ubuntu/whisper.cpp/models/ggml-base.bin';
+// Idioma fijado por defecto a espanol: con '-l auto' el detector falla en notas
+// cortas y cuesta ~2x mas; sobreescribible con WHISPER_LANG si hiciera falta.
+const WHISPER_LANG = process.env.WHISPER_LANG || 'es';
 
 /**
  * Convierte un buffer de audio (OGG/Opus de WhatsApp) a WAV 16kHz mono y lo transcribe localmente con Whisper
@@ -39,7 +42,7 @@ export async function transcribirAudioBuffer(audioBuffer) {
     const { stdout } = await execFileAsync(WHISPER_BIN, [
       '-m', WHISPER_MODEL,
       '-f', tmpWav,
-      '-l', 'auto',
+      '-l', WHISPER_LANG,
       '-nt',
       '-t', '4',
       '--no-prints'
