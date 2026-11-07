@@ -32,6 +32,7 @@ test('el system prompt incluye CONFIGURACION PENDIENTE a nivel capacidad y sin n
     assert.ok(sys.includes('CONFIGURACION PENDIENTE'), 'debe incluir la seccion');
     assert.ok(/Pendiente: .*EMT/.test(sys), 'debe listar la EMT como pendiente sin credenciales');
     assert.ok(!sys.includes('DAVIS_EMT_CLIENT_ID') && !sys.includes('PASS_KEY') && !sys.includes('DAVIS_QBIT'), 'no debe filtrar nombres de variables de entorno');
+    assert.ok(!sys.includes('gratuita'), 'no debe afirmar gratuidad sin verificar');
   } finally {
     process.env = backup;
   }

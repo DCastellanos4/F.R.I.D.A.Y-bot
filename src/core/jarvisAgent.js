@@ -1829,7 +1829,7 @@ REGLAS CRÍTICAS DE COMUNICACIÓN:
   // (hechos, no suposiciones): responde con esto si David pregunta que le falta por configurar.
   // Nivel capacidad, sin nombres de variables ni rutas: el prompt no debe filtrar infraestructura.
   const faltan = [];
-  if (!process.env.DAVIS_EMT_CLIENT_ID || !process.env.DAVIS_EMT_PASS_KEY) faltan.push('bus de Madrid en vivo con la EMT (alta gratuita en MobilityLabs)');
+  if (!process.env.DAVIS_EMT_CLIENT_ID || !process.env.DAVIS_EMT_PASS_KEY) faltan.push('bus de Madrid en vivo con la EMT (requiere cuenta y credenciales de MobilityLabs)');
   if (!process.env.DAVIS_HA_URL || !process.env.DAVIS_HA_TOKEN) faltan.push('domotica con Home Assistant');
   if (!process.env.DAVIS_QBIT_URL || !process.env.DAVIS_QBIT_PASS) faltan.push('panel de descargas qBittorrent');
   if (!process.env.DAVIS_WOL_MAC) faltan.push('encendido remoto del PC (Wake-on-LAN)');
