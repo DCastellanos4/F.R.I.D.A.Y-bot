@@ -80,3 +80,55 @@ test('snoozes y entregas: alta, listado y baja por ruta', async () => {
   assert.ok(!txt(D.listarEntregas(dA('e.json'))).includes('Entrega-Secreta-A'));
   vacioCentinela('snoozes/entregas');
 });
+
+test('procesos vigilados, fechas senaladas, avisos de llegada y menus por ruta', async () => {
+  const P = await import('../../src/services/processWatchdogService.js');
+  const F = await import('../../src/services/specialDatesService.js');
+  const L = await import('../../src/services/arrivalWatchService.js');
+  const M = await import('../../src/services/menuService.js');
+  const rp = P.registrarProceso({ nombre: 'proc-secreto-A', patron: 'nginx', cpuLimite: 80, memLimite: 80 }, dA('p.json'));
+  assert.ok(rp.ok, txt(rp));
+  assert.ok(txt(P.listarProcesos(dA('p.json'))).includes('proc-secreto-A'));
+  assert.ok(!txt(P.listarProcesos(dB('p.json'))).includes('proc-secreto-A'));
+  P.dejarDeVigilar('proc-secreto-A', dB('p.json'));
+  assert.ok(txt(P.listarProcesos(dA('p.json'))).includes('proc-secreto-A'), 'baja en B no toca A');
+
+  const rf = F.registrarFechaSenalada({ nombre: 'Fecha-Secreta-A', dia: 3, mes: 4, descripcion: 'x' }, dA('f.json'));
+  assert.ok(rf.ok, txt(rf));
+  assert.ok(txt(F.listarFechasSenaladas(dA('f.json'))).includes('Fecha-Secreta-A'));
+  assert.ok(!txt(F.listarFechasSenaladas(dB('f.json'))).includes('Fecha-Secreta-A'));
+  F.eliminarFechaSenalada('Fecha-Secreta-A', dB('f.json'));
+  assert.ok(txt(F.listarFechasSenaladas(dA('f.json'))).includes('Fecha-Secreta-A'));
+
+  const rl = L.registrarAvisoLlegada({ chatId: 'chat-a', nombre: 'Casa-Secreta-A', latitud: 40.4, longitud: -3.7, radioMetros: 200 }, dA('l.json'));
+  assert.ok(rl.ok, txt(rl));
+  assert.ok(txt(L.listarAvisosLlegada(dA('l.json'))).includes('Casa-Secreta-A'));
+  assert.ok(!txt(L.listarAvisosLlegada(dB('l.json'))).includes('Casa-Secreta-A'));
+  L.cancelarAvisoLlegada('Casa-Secreta-A', dB('l.json'));
+  assert.ok(txt(L.listarAvisosLlegada(dA('l.json'))).includes('Casa-Secreta-A'));
+
+  M.ponerMenu({ dia: 'lunes', comida: 'lentejas-secretas-A', cena: 'x' }, dA('m.json'));
+  assert.ok(txt(M.verMenu({}, dA('m.json'))).includes('lentejas-secretas-A'));
+  assert.ok(!txt(M.verMenu({}, dB('m.json'))).includes('lentejas-secretas-A'));
+  vacioCentinela('procesos/fechas/llegada/menus');
+});
+
+test('viajes vigilados por ruta', async () => {
+  const V = await import('../../src/services/viajesService.js');
+  const r = V.vigilarRuta({ tipo: 'tren', origen: 'Madrid', destino: 'secretopolis-a', fecha: '2027-03-01', precioObjetivo: 20 }, dA('v.json'));
+  assert.ok(r.ok, txt(r));
+  assert.ok(txt(V.listarRutasVigiladas(dA('v.json'))).includes('secretopolis-a'));
+  assert.ok(!txt(V.listarRutasVigiladas(dB('v.json'))).includes('secretopolis-a'));
+  V.cancelarVigilanciaRuta({ criterio: 'secretopolis-a' }, dB('v.json'));
+  assert.ok(txt(V.listarRutasVigiladas(dA('v.json'))).includes('secretopolis-a'));
+  vacioCentinela('viajes');
+});
+
+test('flashcards por ruta (tarjetas y configuracion)', async () => {
+  const FC = await import('../../src/services/flashcardService.js');
+  const r = FC.agregarFlashcard({ pregunta: 'pregunta-secreta-A', respuesta: 'r' }, { rutaArchivo: path.join(RA, 'fc.json'), rutaConfig: path.join(RA, 'fcc.json') });
+  assert.ok(r.ok, txt(r));
+  assert.ok(txt(FC.listarFlashcards({}, { rutaArchivo: path.join(RA, 'fc.json') })).includes('pregunta-secreta-A'));
+  assert.ok(!txt(FC.listarFlashcards({}, { rutaArchivo: path.join(RB, 'fc.json') })).includes('pregunta-secreta-A'));
+  vacioCentinela('flashcards');
+});
