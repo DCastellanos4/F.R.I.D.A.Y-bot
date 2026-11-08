@@ -116,6 +116,12 @@ test('label herramienta: solo catalogo cerrado; arbitrario o inexistente -> desc
   assert.ok(labels.includes('desconocida'), `arbitrario -> desconocida (${labels})`);
   assert.ok(labels.includes('consultar_clima'), `catalogo pasa tal cual (${labels})`);
   assert.ok(!labels.includes(SECRETO_ALNUM) && !labels.includes(INEXISTENTE), `sin nombres fuera de catalogo (${labels})`);
+  // Mismas reglas en las METRICAS: un nombre inventado por el LLM no puede
+  // crear series nuevas (cardinalidad) ni filtrar el secreto a /metrics.
+  const reg = await atenderMetricasLocal();
+  assert.ok(!reg.includes(SECRETO_ALNUM) && !reg.includes(INEXISTENTE), 'metricas sin nombres fuera de catalogo');
+  assert.match(reg, /jarvis_tool_duracion_segundos_count\{[^}]*herramienta="desconocida"/, 'metricas: fuera de catalogo -> desconocida');
+  assert.match(reg, /jarvis_tool_duracion_segundos_count\{[^}]*herramienta="consultar_clima"/, 'metricas: catalogo pasa tal cual');
 });
 
 test('PRIVACIDAD: ningun atributo contiene el texto del mensaje ni argumentos', async () => {

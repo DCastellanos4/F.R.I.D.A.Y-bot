@@ -818,18 +818,19 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
   // Observabilidad: span 'tool' + metricas por herramienta. Atributos: solo
   // el nombre; NUNCA los argumentos (pueden contener datos privados).
   const inicioTool = Date.now();
+  // El nombre de herramienta lo emite el LLM: solo entra en la etiqueta del
+  // span Y de las metricas si pertenece al CATALOGO CERRADO de herramientas
+  // declaradas. Una regex no sirve: un secreto alfanumerico o un nombre
+  // inventado la cumpliria y generaria cardinalidad/filtrado. Fuera del
+  // catalogo -> 'desconocida', sin registrar el nombre recibido (ni en
+  // /metrics: un nombre inventado crearia series nuevas sin limite).
+  const herramientaLbl = NOMBRES_HERRAMIENTAS_JARVIS.has(nombreFuncion) ? nombreFuncion : 'desconocida';
   try {
-    // El nombre de herramienta lo emite el LLM: solo entra en la etiqueta
-    // del span si pertenece al CATALOGO CERRADO de herramientas declaradas.
-    // Una regex no sirve: un secreto alfanumerico o un nombre inventado la
-    // cumpliria y generaria cardinalidad/filtrado. Fuera del catalogo ->
-    // 'desconocida', sin registrar el nombre recibido.
-    const herramientaLbl = NOMBRES_HERRAMIENTAS_JARVIS.has(nombreFuncion) ? nombreFuncion : 'desconocida';
     const resTool = await conSpan('tool', { herramienta: herramientaLbl }, () => ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones));
-    registrarFinTool({ herramienta: nombreFuncion, duracionSeg: (Date.now() - inicioTool) / 1000 });
+    registrarFinTool({ herramienta: herramientaLbl, duracionSeg: (Date.now() - inicioTool) / 1000 });
     return resTool;
   } catch (errTool) {
-    registrarFinTool({ herramienta: nombreFuncion, duracionSeg: (Date.now() - inicioTool) / 1000, error: errTool });
+    registrarFinTool({ herramienta: herramientaLbl, duracionSeg: (Date.now() - inicioTool) / 1000, error: errTool });
     throw errTool;
   }
 }
