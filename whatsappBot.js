@@ -58,7 +58,7 @@ import { synthesizeSpeech, sendVoiceNote } from './src/services/ttsService.js';
 import { classifyUrgency, getUrgencyPromptDirective } from './src/services/urgencyService.js';
 import { parseInteractiveResponse, parsePollVote } from './src/core/interactiveService.js';
 import { drainAlerts, formatAlertText } from './src/services/alertQueueService.js';
-import { checkAndHealContainers, inspectContainers } from './src/monitors/dockerMonitorService.js';
+import { checkAndHealContainers, inspectContainers, clasificarFalloDocker } from './src/monitors/dockerMonitorService.js';
 import { checkAndPurgeIfExceeded } from './src/system/diskStorageService.js';
 import { scanFail2banLog } from './src/monitors/fail2banMonitorService.js';
 import { checkBandwidthSpike } from './src/monitors/networkMonitorService.js';
@@ -240,6 +240,79 @@ export async function drenarColaAlertas(deps = {}) {
 }
 
 /**
+ * Arranca el watchdog de Docker con sondeo previo y politica explicita.
+ *  - ausente (no instalado): un aviso, sin intervalo.
+ *  - denegado (permission denied): se reintenta el sondeo (esperaSondeoMs) y,
+ *    si persiste, un aviso accionable y sin intervalo. No pide ni usa
+ *    privilegios nuevos; sin acceso tampoco habria auto-curacion posible.
+ *  - transitorio/desconocido: el intervalo arranca igual; una caida del daemon
+ *    debe poder recuperarse. Se registra el primer fallo y la recuperacion, no
+ *    cada minuto.
+ *  - Si ya en marcha el acceso se pierde de forma sostenida (3 pasadas
+ *    seguidas denegadas), se detiene con un aviso.
+ * Devuelve { estado, timer } para pruebas.
+ */
+export async function iniciarWatchdogDocker(deps = {}) {
+  const inspect = deps.inspect || inspectContainers;
+  const heal = deps.heal || checkAndHealContainers;
+  const log = deps.log || console.log;
+  const logErr = deps.logErr || console.error;
+  const every = deps.every || setInterval;
+  const clear = deps.clear || clearInterval;
+  const espera = typeof deps.esperaSondeoMs === 'number' ? deps.esperaSondeoMs : 3000;
+  const periodo = typeof deps.periodoMs === 'number' ? deps.periodoMs : 60 * 1000;
+  const dormir = deps.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+
+  let falloInicial = null;
+  for (let intento = 0; intento < 2; intento++) {
+    try {
+      await inspect();
+      falloInicial = null;
+      break;
+    } catch (err) {
+      falloInicial = clasificarFalloDocker(err.message);
+      if (falloInicial !== 'denegado') {
+        if (falloInicial === 'ausente') break;
+        logErr('Error en sondeo inicial de Docker:', err.message);
+        break;
+      }
+      if (intento === 0) await dormir(espera);
+    }
+  }
+  if (falloInicial === 'ausente') {
+    log('[Watchdog Docker] Docker no instalado en este host; vigilancia desactivada (sin ruido en logs).');
+    return { estado: 'ausente', timer: null };
+  }
+  if (falloInicial === 'denegado') {
+    log('[Watchdog Docker] Sin acceso al socket de Docker para este usuario; vigilancia y auto-curacion desactivadas. Se reactiva al reiniciar el bot con acceso concedido.');
+    return { estado: 'denegado', timer: null };
+  }
+
+  let denegadas = 0;
+  let enFallo = false;
+  const timer = every(async () => {
+    try {
+      await heal();
+      denegadas = 0;
+      if (enFallo) { enFallo = false; log('[Watchdog Docker] Docker vuelve a responder.'); }
+    } catch (errDocker) {
+      if (clasificarFalloDocker(errDocker.message) === 'denegado') {
+        denegadas += 1;
+        if (denegadas >= 3) {
+          clear(timer);
+          log('[Watchdog Docker] Acceso al socket de Docker perdido de forma sostenida; vigilancia desactivada.');
+          return;
+        }
+      } else {
+        denegadas = 0;
+      }
+      if (!enFallo) { enFallo = true; logErr('Error en watchdog de Docker:', errDocker.message); }
+    }
+  }, periodo);
+  return { estado: 'activo', timer };
+}
+
+/**
  * Ejecuta una pasada de todos los vigilantes del Sector 2 (Docker, Disco, Fail2ban, Red).
  */
 export async function ejecutarWatchdogsSector2(deps = {}) {
@@ -398,31 +471,10 @@ function inicializarServiciosProactivos() {
     console.error('Error iniciando monitor del digest:', errDigest.message);
   }
 
-  // 7. Watchdog de Docker y Auto-Healing (cada 60 segundos). Higiene de
-  // monitores: sondeo previo; si Docker no esta instalado en este host el
-  // watchdog se apaga con UN solo aviso en el log en lugar de ensuciarlo
-  // cada minuto con ENOENT.
-  (async () => {
-    let dockerDisponible = true;
-    try {
-      await inspectContainers();
-    } catch (errSondeo) {
-      if (/ENOENT|not found|no such file/i.test(errSondeo.message || '')) {
-        dockerDisponible = false;
-        console.log('[Watchdog Docker] Docker no instalado en este host; vigilancia desactivada (sin ruido en logs).');
-      } else {
-        console.error('Error en sondeo inicial de Docker:', errSondeo.message);
-      }
-    }
-    if (!dockerDisponible) return;
-    setInterval(async () => {
-      try {
-        await checkAndHealContainers();
-      } catch (errDocker) {
-        console.error('Error en watchdog de Docker:', errDocker.message);
-      }
-    }, 60 * 1000);
-  })();
+  // 7. Watchdog de Docker y Auto-Healing (cada 60 segundos). Ver
+  // iniciarWatchdogDocker: solo se apaga con UN aviso si Docker falta o el
+  // usuario no tiene acceso persistente al socket.
+  iniciarWatchdogDocker();
 
   // 8. Vigilante de almacenamiento en disco con purga automatica al superar el 85% (cada 5 minutos)
   setInterval(async () => {

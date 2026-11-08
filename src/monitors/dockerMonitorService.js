@@ -211,6 +211,26 @@ export async function inspectContainers(deps = {}) {
 }
 
 /**
+ * Clasifica el fallo de `docker` para decidir si vigilar tiene sentido.
+ *  - 'ausente':     binario no instalado (ENOENT / not found).
+ *  - 'denegado':    el usuario no puede abrir el socket (permission denied).
+ *                   Solo cambia con un cambio de privilegios, no por reintento.
+ *  - 'transitorio': daemon caido/arrancando o timeout; puede recuperarse.
+ *  - 'desconocido': cualquier otro mensaje. Se trata como transitorio.
+ * El orden importa: "permission denied ... docker.sock ... Cannot connect"
+ * es denegado, no transitorio.
+ * @param {string} [mensaje]
+ * @returns {'ausente'|'denegado'|'transitorio'|'desconocido'}
+ */
+export function clasificarFalloDocker(mensaje) {
+  const m = String(mensaje || '');
+  if (/permission denied|access denied|operation not permitted/i.test(m)) return 'denegado';
+  if (/ENOENT|command not found|not found|no such file/i.test(m)) return 'ausente';
+  if (/cannot connect to the docker daemon|is the docker daemon running|connection refused|ETIMEDOUT|timed? ?out|ECONNREFUSED|EAI_AGAIN/i.test(m)) return 'transitorio';
+  return 'desconocido';
+}
+
+/**
  * Inspects a specific container state via 'docker inspect --format "{{json .State}}" <id>'.
  *
  * @param {string} containerIdOrName
