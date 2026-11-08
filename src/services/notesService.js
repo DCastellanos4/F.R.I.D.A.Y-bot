@@ -6,6 +6,10 @@ import { DATA_DIR } from '../config/paths.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const NOTES_BASE_DIR = path.join(DATA_DIR, 'notes');
+// La carpeta puede inyectarse (ambito de tenant); sin ella, la del propietario.
+function baseNotas(opts) {
+  return opts && typeof opts.carpetaNotas === 'string' && opts.carpetaNotas ? opts.carpetaNotas : NOTES_BASE_DIR;
+}
 
 /**
  * Triggers indicating an explicit personal note instruction.
@@ -269,7 +273,7 @@ export async function savePersonalNote(text, metadata = {}) {
   const rawCategory = safeMeta.category || categorizeNote(text);
   const category = sanitizeCategory(rawCategory);
 
-  const targetDir = path.join(NOTES_BASE_DIR, dateFolder);
+  const targetDir = path.join(baseNotas(safeMeta), dateFolder);
   await fs.mkdir(targetDir, { recursive: true });
 
   const baseFileName = `${dateFolder}_${timeStr}_${category}`;
@@ -431,14 +435,15 @@ export async function listRecentNotes(limit = 10, options = {}) {
   const maxLimit = typeof limit === 'number' && limit > 0 ? limit : 10;
   const safeOptions = options && typeof options === 'object' ? options : {};
   const notes = [];
+  const BASE = baseNotas(safeOptions);
 
   try {
-    await fs.access(NOTES_BASE_DIR);
+    await fs.access(BASE);
   } catch {
     return [];
   }
 
-  const dateDirs = await fs.readdir(NOTES_BASE_DIR, { withFileTypes: true });
+  const dateDirs = await fs.readdir(BASE, { withFileTypes: true });
   const sortedDateDirs = dateDirs
     .filter(d => d.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(d.name))
     .map(d => d.name)
@@ -448,7 +453,7 @@ export async function listRecentNotes(limit = 10, options = {}) {
   for (const dateDir of sortedDateDirs) {
     if (notes.length >= maxLimit) break;
 
-    const dirPath = path.join(NOTES_BASE_DIR, dateDir);
+    const dirPath = path.join(BASE, dateDir);
     let files = [];
     try {
       files = await fs.readdir(dirPath, { withFileTypes: true });

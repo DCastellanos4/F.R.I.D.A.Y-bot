@@ -171,6 +171,8 @@ export function aislarOpcionesTenant(opciones, dataDir) {
     crearRecordatorioEstudio: () => ({ ok: false, error: 'recordatorios no disponibles para este usuario' }),
     chatId: claveChatTenant(tid, opciones.chatId),
     rutaArchivoMemorias: rutaDatosTenant(dataDir, tid, 'brain_memory.json'),
+    carpetaNotas: rutaDatosTenant(dataDir, tid, 'notes'),
+    carpetaDiario: rutaDatosTenant(dataDir, tid, 'diario'),
     storePath: undefined,
     semanticaSoloArchivo: true,
     vectorsPath: rutaDatosTenant(dataDir, tid, 'knowledge_vectors.json'),

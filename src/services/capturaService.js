@@ -31,7 +31,8 @@ export async function capturarPagina({ url, titulo } = {}, deps = {}) {
     const tituloFinal = String(titulo || articulo.titulo || articulo.title || u).slice(0, 120);
     const res = await savePersonalNote(`[captura web] ${tituloFinal}\nFuente: ${u}\n\n${texto.slice(0, 8000)}`, {
       source: 'captura-web',
-      sender: 'navegador'
+      sender: 'navegador',
+      carpetaNotas: deps.carpetaNotas
     });
     if (!res.ok) return { ok: false, error: 'No he podido archivar la captura en tus notas.' };
     return { ok: true, titulo: tituloFinal, archivo: res.filename || null };

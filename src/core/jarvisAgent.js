@@ -835,11 +835,13 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
     tenantId: opciones.tenantId,
     herramienta: nombreFuncion,
     catalogo: NOMBRES_HERRAMIENTAS_JARVIS,
-    rolDe: opciones.rolDeTenant
+    rolDe: opciones.rolDeTenant,
+    // Solo inyectable por codigo interno (pruebas E2E); sin ella, la lista vacia por defecto.
+    ...(Array.isArray(opciones.permitidasUsuario) ? { permitidasUsuario: opciones.permitidasUsuario } : {})
   });
   if (!acceso.permitido) {
     registrarFinTool({ herramienta: herramientaLbl, duracionSeg: 0, error: { name: 'AccesoDenegado' } });
-    return `Herramienta no disponible para este usuario (${acceso.motivo}).`;
+    return { texto: `Herramienta no disponible para este usuario (${acceso.motivo}).` };
   }
   try {
     const resTool = await conSpan('tool', { herramienta: herramientaLbl }, () => ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones));
@@ -1201,7 +1203,7 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
           ? 'No tienes contactos guardados. Dime por ejemplo: "apunta el contacto de Ana, 600123123, amiga de la uni".'
           : 'Tus contactos:\n' + lista.map((c) => `- ${c.nombre}${c.telefono ? `: ${c.telefono}` : ''}${c.relacion ? ` (${c.relacion})` : ''}`).join('\n');
       } else if (nombreFuncion === 'buscar_recuerdo_semantico') {
-        const res = await buscarSemantico(args.consulta, { carpetaNotas: opciones.carpetaNotas, chatCompletion: opciones.chatCompletion });
+        const res = await buscarSemantico(args.consulta, { carpetaNotas: opciones.carpetaNotas, rutaArchivoMemorias: opciones.rutaArchivoMemorias, chatCompletion: opciones.chatCompletion });
         resultadoTool = !res.ok ? res.error
           : res.resultados.length === 0 ? 'No encuentro nada relacionado en tus memorias ni en tus notas.'
           : `He encontrado esto${res.semantica ? '' : ' (busqueda por palabras; sin el modelo no puedo hacerla semantica)'}:\n` + res.resultados.map((r) => `- [${r.tipo}] ${r.texto.slice(0, 200)}`).join('\n');
@@ -1224,7 +1226,7 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
           ? `Wiki regenerada, David: ${res.total} notas en ${res.categorias} categorias. Indice en ${res.rutaIndice}.`
           : res.error;
       } else if (nombreFuncion === 'capturar_pagina') {
-        const res = await capturarPagina({ url: args.url, titulo: args.titulo }, { extraerArticulo: opciones.extraerArticulo });
+        const res = await capturarPagina({ url: args.url, titulo: args.titulo }, { extraerArticulo: opciones.extraerArticulo, carpetaNotas: opciones.carpetaNotas });
         resultadoTool = res.ok ? `Capturada y archivada en tus notas, David: "${res.titulo}".` : res.error;
       } else if (nombreFuncion === 'preguntar_documentos') {
         const res = await preguntarDocumentos({ pregunta: args.pregunta }, { carpetaNotas: opciones.carpetaNotas, chatCompletion: opciones.chatCompletion });
@@ -1700,10 +1702,10 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
         const res = await downloadMedia(args.url, { format: args.formato || 'video', audioOnly: args.formato === 'audio' });
         resultadoTool = res.ok ? `Descarga completada con éxito: ${res.fileName} (${(res.fileSize / 1024 / 1024).toFixed(2)} MB). Tramitado para entrega directa al chat.` : `Error en la descarga multimedia: ${res.error}`;
       } else if (nombreFuncion === 'guardar_nota_personal') {
-        const res = await savePersonalNote(args.texto, { category: args.categoria, tags: args.etiquetas });
+        const res = await savePersonalNote(args.texto, { category: args.categoria, tags: args.etiquetas, carpetaNotas: opciones.carpetaNotas });
         resultadoTool = res.ok ? `Nota personal guardada en el Second Brain (${res.category}): ${res.filename}.` : `Error al guardar nota: ${res.error}`;
       } else if (nombreFuncion === 'listar_notas_recientes') {
-        const notas = await listRecentNotes({ category: args.categoria, limit: args.limite || 10 });
+        const notas = await listRecentNotes(args.limite || 10, { category: args.categoria, carpetaNotas: opciones.carpetaNotas });
         resultadoTool = notas.length === 0 ? 'No hay notas registradas en esta categoría, señor.' : 'Notas registradas en el Second Brain:\n' + notas.map(n => `- [${n.category}] ${n.filename}: ${n.preview}`).join('\n');
       } else if (nombreFuncion === 'enviar_contacto_vcard') {
         resultadoTool = `Tarjeta vCard digital generada para ${args.nombre} (${args.telefono}${args.organizacion ? ' - ' + args.organizacion : ''}). Tramitado para envío al chat de WhatsApp.`;

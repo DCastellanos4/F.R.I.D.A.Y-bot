@@ -95,3 +95,57 @@ test('con la fuente SQLite del propietario REGISTRADA por defecto (como en prod)
     assert.ok(cap2.join('\n').includes('SECRETO-OWNER-FUENTE-DEFECTO'), 'control: propietario conserva su fuente');
   } finally { S.registrarFuenteMemoriasPorDefecto(null); }
 });
+
+// ---- Herramienta buscar_recuerdo_semantico por el bucle REAL del agente ----
+const nota = (base, dia, nombre, titulo, cuerpo) => {
+  const d = path.join(base, dia); fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(d, nombre), `# ${titulo}\ncategoria: general\ntags: tesoro\n\n${cuerpo}\n`);
+};
+nota(path.join(DIR, 'notes'), '2026-01-01', 'o.md', 'nota tesoro propietario', 'tesoro azul zeta SECRETO-NOTA-OWNER');
+nota(path.join(DIR, 'tenants', 'sint-b', 'notes'), '2026-01-01', 'b.md', 'nota tesoro b', 'tesoro azul zeta SECRETO-NOTA-B');
+nota(path.join(DIR, 'tenants', 'sint-a', 'notes'), '2026-01-01', 'a.md', 'nota tesoro a', 'tesoro azul zeta NOTA-PROPIA-A');
+
+function llmHerramienta(capturas) {
+  let n = 0;
+  return async (peticion) => {
+    capturas.push(JSON.stringify(peticion));
+    n++;
+    if (n === 1) {
+      return { model: 'stub', message: { role: 'assistant', content: '', tool_calls: [{ id: 'c1', function: { name: 'buscar_recuerdo_semantico', arguments: { consulta: 'tesoro azul zeta' } } }] } };
+    }
+    return { model: 'stub', message: { role: 'assistant', content: '1,2,3' } };
+  };
+}
+
+async function correrHerramienta(opc) {
+  const cap = [];
+  await consultarJarvisEnAmbito('busca en mis recuerdos el tesoro azul zeta con la busqueda semantica', [], { chatId: 'chat1', chatCompletion: llmHerramienta(cap), ...opc });
+  return cap.join('\n');
+}
+
+test('herramienta buscar_recuerdo_semantico (lista blanca abierta SOLO en el test): el modelo del tenant no ve memorias SQLite del propietario ni notas ajenas; ve lo propio', async () => {
+  const S = await import('../../src/services/memoryService.js');
+  S.registrarStoreMemoriasPorDefecto({
+    buscar: () => mem('o7', 'tesoro azul zeta SECRETO-OWNER-STORE-DEFECTO'),
+    listar: () => mem('o7', 'tesoro azul zeta SECRETO-OWNER-STORE-DEFECTO'),
+    leer: () => mem('o7', 'tesoro azul zeta SECRETO-OWNER-STORE-DEFECTO'),
+    guardar: () => {}, transaccion: (fn) => fn()
+  });
+  try {
+    const todo = await correrHerramienta({ tenantId: 'sint-a', rolDeTenant: () => 'usuario', permitidasUsuario: ['buscar_recuerdo_semantico'] });
+    assert.ok(todo.includes('buscar_recuerdo_semantico'), 'la herramienta se ejecuto (ver resultado en la segunda peticion)');
+    assert.ok(todo.includes('NOTA-PROPIA-A') || todo.includes('DATO-PROPIO-A'), 've lo propio');
+    for (const s of ['SECRETO-OWNER-STORE-DEFECTO', 'SECRETO-NOTA-OWNER', 'SECRETO-NOTA-B', 'SECRETO-TENANT-B']) {
+      assert.ok(!todo.includes(s), `fuga: ${s}`);
+    }
+    // control: el propietario conserva su store y sus notas por defecto
+    const cap2 = await correrHerramienta({ permitidasUsuario: ['buscar_recuerdo_semantico'] });
+    assert.ok(cap2.includes('SECRETO-OWNER-STORE-DEFECTO') || cap2.includes('SECRETO-NOTA-OWNER'), 'control: propietario ve lo suyo');
+  } finally { S.registrarStoreMemoriasPorDefecto(null); }
+});
+
+test('con la lista blanca vacia (produccion) un tenant no ejecuta buscar_recuerdo_semantico', async () => {
+  const todo = await correrHerramienta({ tenantId: 'sint-a', rolDeTenant: () => 'usuario' });
+  assert.ok(todo.includes('no_en_lista_blanca'));
+  assert.ok(!todo.includes('NOTA-PROPIA-A'));
+});

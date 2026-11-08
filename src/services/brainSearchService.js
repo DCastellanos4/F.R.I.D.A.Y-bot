@@ -11,10 +11,18 @@
 import { buscarMemorias, listarMemorias } from './memoryService.js';
 import { leerNotas } from './notesReader.js';
 
+// Con rutaArchivoMemorias (ambito de tenant) las memorias salen SOLO de ese
+// archivo; sin ella, el almacen por defecto del propietario (comportamiento previo).
+function depsMemoria(deps) {
+  return deps && deps.rutaArchivoMemorias ? { rutaArchivo: deps.rutaArchivoMemorias } : {};
+}
+
 function candidatas(consulta, deps) {
   const q = String(consulta || '').toLowerCase();
   const palabras = q.split(/\s+/).filter((w) => w.length > 2);
-  const memorias = (palabras.length ? buscarMemorias(consulta) : listarMemorias())
+  const memorias = (palabras.length
+    ? buscarMemorias(consulta, depsMemoria(deps))
+    : listarMemorias(null, depsMemoria(deps)))
     .slice(0, 10)
     .map((m) => ({ tipo: 'memoria', referencia: m.sujeto, texto: `${m.sujeto}: ${m.dato}` }));
   const notas = leerNotas({ limite: 60 }, deps)
