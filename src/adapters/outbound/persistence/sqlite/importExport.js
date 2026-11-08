@@ -31,6 +31,12 @@ function leerJsonSiExiste(ruta, valorDefecto) {
   }
 }
 
+function exigirStoresPropietario(memoryStore, financeStore) {
+  if (memoryStore?.tenantId !== 'propietario' || financeStore?.tenantId !== 'propietario') {
+    throw new Error('Import/export historico requiere stores del propietario; ambito de tenant rechazado.');
+  }
+}
+
 function estadoTablas(db) {
   // Solo filas del PROPIETARIO: la importacion JSON historica es del
   // propietario; las filas de otros tenants ni la bloquean ni cuentan en su
@@ -64,6 +70,7 @@ function hayDatos(conteos) {
  *        Inyectables para pruebas; por defecto lee/escribe via los stores.
  */
 export function importarJsonASqlite(db, { rutaMemorias, rutaFinanzas, rutaUsuarios = null, memoryStore, financeStore } = {}) {
+  exigirStoresPropietario(memoryStore, financeStore);
   const origen = db.prepare("SELECT valor FROM meta WHERE clave = 'origen'").get();
   if (origen) {
     return { ok: true, yaImportado: true, origen: origen.valor, importados: null };
@@ -161,6 +168,7 @@ function escribirAtomico(ruta, contenido) {
  * operador verifique antes de colocarlos como ficheros activos.
  */
 export function exportarSqliteAJson(db, { dirDestino, memoryStore, financeStore } = {}) {
+  exigirStoresPropietario(memoryStore, financeStore);
   if (!dirDestino) throw new Error('exportarSqliteAJson requiere dirDestino.');
   if (fs.existsSync(dirDestino)) {
     throw new Error(`El directorio de exportacion ya existe: ${dirDestino}. No se sobrescribe una exportacion previa.`);

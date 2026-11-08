@@ -90,3 +90,19 @@ test('importacion JSON del propietario sobre una base con tenants: fail-closed s
   assert.equal(db.prepare("SELECT dato FROM memorias WHERE tenant_id='propietario'").get().dato, 'DB-OWNER', 'propietario intacto');
   db.close();
 });
+
+
+test('import/export rechaza stores de tenant o sin ambito antes de leer/escribir o crear archivos', () => {
+  const { raiz, db } = montarDatos();
+  const tenant = crearSqliteMemoryStore(db, { tenantId: 'sint-a' });
+  const ownerFin = crearSqliteFinanceStore(db);
+  const antes = conteos(db);
+  const dir = path.join(raiz, 'rechazado');
+  for (const memoryStore of [tenant, { leer: () => [] }]) {
+    assert.throws(() => exportarSqliteAJson(db, { dirDestino: dir, memoryStore, financeStore: ownerFin }), /propietario/);
+    assert.throws(() => importarJsonASqlite(db, { memoryStore, financeStore: ownerFin }), /propietario/);
+  }
+  assert.equal(fs.existsSync(dir), false);
+  assert.deepEqual(conteos(db), antes);
+  db.close();
+});
