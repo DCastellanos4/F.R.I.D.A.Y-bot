@@ -36,6 +36,7 @@ import {
 import { consultarClima } from '../services/weatherService.js';
 import { chatCompletion, esRespuestaTruncada } from './llmService.js';
 import { clasificarIntencionConModelo, seleccionarDominiosConModelo, comprobarYAvisarSalud, UMBRAL_CONFIANZA } from './intentRouterService.js';
+import { conSpan, hashSesion, registrarFinLLM, registrarFinTool, registrarFinConsulta } from '../observability/telemetry.js';
 import { buscarEpisodios } from '../services/episodicMemoryService.js';
 import { registrarCandidatura, listarCandidaturas, actualizarCandidatura, resumenCandidaturas } from '../services/applicationTrackerService.js';
 import { crearPlanEstudio, listarPlanes, registrarAvance, resumenPlan, programarRecordatoriosPlan } from '../services/studyPlannerService.js';
@@ -814,6 +815,20 @@ function destinatarioVerificado(numero, mensajeUsuario, historial, opciones = {}
  * opciones.ejecutores permite inyectar ejecutores simulados en pruebas.
  */
 async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
+  // Observabilidad: span 'tool' + metricas por herramienta. Atributos: solo
+  // el nombre; NUNCA los argumentos (pueden contener datos privados).
+  const inicioTool = Date.now();
+  try {
+    const resTool = await conSpan('tool', { herramienta: String(nombreFuncion) }, () => ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones));
+    registrarFinTool({ herramienta: nombreFuncion, duracionSeg: (Date.now() - inicioTool) / 1000 });
+    return resTool;
+  } catch (errTool) {
+    registrarFinTool({ herramienta: nombreFuncion, duracionSeg: (Date.now() - inicioTool) / 1000, error: errTool });
+    throw errTool;
+  }
+}
+
+async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = {}) {
   const override = opciones.ejecutores && opciones.ejecutores[nombreFuncion];
   if (typeof override === 'function') {
     const res = await override(args);
@@ -1838,7 +1853,7 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
   return { texto: resultadoTool, enlaces: enlacesTool };
 }
 
-export async function consultarJarvis(mensajeUsuario, historial = [], opciones = {}) {
+async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones = {}) {
   const tiempoInicio = Date.now();
   let hist = historial;
   let opts = opciones;
@@ -1923,9 +1938,28 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
   // de failover de llmService) para declararlo honestamente en la respuesta.
   let failoverDetectado = null;
   const chatImpl = async (peticion) => {
-    const r = await chatImplBase(peticion);
-    if (r && r.degradado && r.failover) failoverDetectado = r.failover;
-    return r;
+    // Observabilidad: span + metricas por llamada LLM (latencia P95/P99 y
+    // tokens por sesion). Atributos: solo modelo; NUNCA mensajes.
+    const inicioLlm = Date.now();
+    try {
+      const r = await conSpan('llm_call', { modelo: String(peticion && peticion.model || 'desconocido') }, () => chatImplBase(peticion));
+      registrarFinLLM({
+        modelo: peticion && peticion.model,
+        sesion: opciones.chatId,
+        duracionSeg: (Date.now() - inicioLlm) / 1000,
+        usage: r && r.usage
+      });
+      if (r && r.degradado && r.failover) failoverDetectado = r.failover;
+      return r;
+    } catch (errLlm) {
+      registrarFinLLM({
+        modelo: peticion && peticion.model,
+        sesion: opciones.chatId,
+        duracionSeg: (Date.now() - inicioLlm) / 1000,
+        error: errLlm
+      });
+      throw errLlm;
+    }
   };
 
   // Memoria episodica: recupera fragmentos antiguos verbatim de ESTE chat
@@ -1970,27 +2004,33 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
       const destinoDet = extraerDestinoHacia(mensajeUsuario) || undefined;
       const tipoDet = /\b(ave|alvia|avant|larga distancia|media distancia)\b/i.test(mensajeUsuario || '') ? 'tren' : (/cercan/i.test(mensajeUsuario || '') ? 'cercanias' : undefined);
       const overrideDet = opciones.ejecutores && opciones.ejecutores['proximas_llegadas_transporte'];
+      const inicioToolDet = Date.now();
       if (typeof overrideDet === 'function') {
         // Inyeccion de pruebas (bateria dorada): mismo canal de ejecucion
         // que el resto de herramientas. En produccion no hay override.
         try {
           const resOv = await overrideDet({ parada: origenDet, tipo: tipoDet, destino: destinoDet });
+          registrarFinTool({ herramienta: 'proximas_llegadas_transporte', duracionSeg: (Date.now() - inicioToolDet) / 1000 });
           textoDet = typeof resOv === 'string' ? resOv : ((resOv && resOv.texto) || JSON.stringify(resOv));
           traza.llamadas.push({ nombre: 'proximas_llegadas_transporte', ronda: 0, resultado: 'ok', datos: String(textoDet).slice(0, 2000) });
         } catch (errOv) {
+          registrarFinTool({ herramienta: 'proximas_llegadas_transporte', duracionSeg: (Date.now() - inicioToolDet) / 1000, error: errOv });
           textoDet = `Señor, no he podido consultar las salidas ahora mismo (${errOv.message}). Intentelo de nuevo en unos minutos.`;
           traza.llamadas.push({ nombre: 'proximas_llegadas_transporte', ronda: 0, resultado: 'error', detalle: String(errOv && errOv.message).slice(0, 120) });
         }
       } else try {
-        const resDet = await proximasLlegadas({ parada: origenDet, tipo: tipoDet, destino: destinoDet }, depsTransporteDe(opciones));
+        const resDet = await conSpan('tool', { herramienta: 'proximas_llegadas_transporte' }, () => proximasLlegadas({ parada: origenDet, tipo: tipoDet, destino: destinoDet }, depsTransporteDe(opciones)));
+        registrarFinTool({ herramienta: 'proximas_llegadas_transporte', duracionSeg: (Date.now() - inicioToolDet) / 1000, error: resDet.ok ? null : { tipo: 'resultado_error' } });
         textoDet = textoResultadoTransporte(resDet);
         traza.llamadas.push({ nombre: 'proximas_llegadas_transporte', ronda: 0, resultado: resDet.ok ? 'ok' : 'error', ...(resDet.ok ? { datos: textoDet.slice(0, 2000) } : { detalle: String(resDet.error || '').slice(0, 120) }) });
       } catch (errDet) {
+        registrarFinTool({ herramienta: 'proximas_llegadas_transporte', duracionSeg: (Date.now() - inicioToolDet) / 1000, error: errDet });
         textoDet = `Señor, no he podido consultar las salidas ahora mismo (${errDet.message}). Intentelo de nuevo en unos minutos.`;
         traza.llamadas.push({ nombre: 'proximas_llegadas_transporte', ronda: 0, resultado: 'error', detalle: String(errDet && errDet.message).slice(0, 120) });
       }
     }
     traza.via = 'determinista_salidas_trenes';
+    registrarFinConsulta({ via: 'determinista_salidas_trenes', duracionSeg: (Date.now() - traza.inicio) / 1000 });
     try {
       const valDet = validarMensajeSalida(textoDet, { traza, destinatario: opciones.chatId, canal: 'whatsapp', contactosConocidos: opciones.contactosConocidos || [] });
       if (valDet && valDet.textoFinal) textoDet = valDet.textoFinal;
@@ -2008,7 +2048,7 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
   }
 
   if (analisis.safetyNet) {
-    const clasificacion = await clasificarIntencionConModelo(mensajeUsuario, { ...opciones, chatCompletion: chatImpl });
+    const clasificacion = await conSpan('clasificacion', { via: 'safety_net' }, () => clasificarIntencionConModelo(mensajeUsuario, { ...opciones, chatCompletion: chatImpl }));
     // Vigilancia de salud del clasificador: aviso acotado (1/24h) si la
     // tasa de fallo reciente es alta. No bloquea la respuesta.
     comprobarYAvisarSalud({ ...opciones, chatCompletion: chatImpl }).catch((e) => console.error('[SaludClasificador] aviso fallido:', e.message));
@@ -2619,6 +2659,7 @@ Directrices de selección:
 
   const respuestaLimpia = limpiarRespuestaJarvis(textoFinal);
   const duracionSeg = ((Date.now() - tiempoInicio) / 1000).toFixed(2);
+  registrarFinConsulta({ via: traza.via || 'regex', duracionSeg: Number(duracionSeg) });
   traza.rondas = ronda;
   traza.duracionMs = Date.now() - traza.inicio;
   traza.respuestaFinal = respuestaLimpia;
@@ -2630,5 +2671,14 @@ Directrices de selección:
   }
 
   return respuestaLimpia;
+}
+
+/**
+ * Span 'consulta': da coherencia de TraceId a toda la peticion tambien
+ * cuando se llama al agente sin el span raiz del procesador de mensajes
+ * (CLI, pruebas, canales directos). Atributo: solo hash opaco de sesion.
+ */
+export async function consultarJarvis(mensajeUsuario, historial = [], opciones = {}) {
+  return conSpan('consulta', { sesion: hashSesion(opciones && opciones.chatId) }, () => consultarJarvisInterna(mensajeUsuario, historial, opciones));
 }
 

@@ -12,6 +12,7 @@
  *
  * Strict Policy: Zero Emojis.
  */
+import { conSpanPosibleSincrono } from '../../../../observability/telemetry.js';
 
 function filaAMemoria(fila) {
   const memoria = {
@@ -68,7 +69,8 @@ export function crearSqliteMemoryStore(db) {
       return stmtTodo.all().map(filaAMemoria);
     },
     guardar(lista) {
-      reemplazarTodo(lista);
+      // Observabilidad: span db_write (solo entidad/operacion, nunca datos).
+      return conSpanPosibleSincrono('db_write', { entidad: 'memoria', operacion: 'guardar' }, () => reemplazarTodo(lista));
     },
     /**
      * Ejecuta fn dentro de una transaccion IMMEDIATE: adquiere el
@@ -76,7 +78,7 @@ export function crearSqliteMemoryStore(db) {
      * secuencia leer-modificar-escribir es atomica entre conexiones.
      */
     transaccion(fn) {
-      return db.transaction(fn).immediate();
+      return conSpanPosibleSincrono('db_write', { entidad: 'memoria', operacion: 'transaccion' }, () => db.transaction(fn).immediate());
     }
   });
 }

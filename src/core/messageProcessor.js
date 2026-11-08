@@ -13,6 +13,7 @@
 import { consultarJarvis } from './jarvisAgent.js';
 import { afirmarLLMProvider } from '../ports/outbound/LLMProviderPort.js';
 import { afirmarMemoryRepository } from '../ports/outbound/MemoryRepositoryPort.js';
+import { conSpan, hashSesion } from '../observability/telemetry.js';
 
 export function crearMessageProcessor({ llmProvider, memoryRepository, metricasClasificador, crearStoreMetricas, rutaArchivoIdempotenciaDefecto } = {}) {
   if (llmProvider !== undefined) afirmarLLMProvider(llmProvider);
@@ -61,7 +62,14 @@ export function crearMessageProcessor({ llmProvider, memoryRepository, metricasC
         opcionesConPuertos.rutaArchivoIdempotencia = rutaArchivoIdempotenciaDefecto;
       }
 
-      return consultarJarvis(inbound.text, historial, opcionesConPuertos);
+      // Span raiz de la peticion: el TraceId de este mensaje atraviesa
+      // clasificacion, llamadas LLM, herramientas y escrituras de BD.
+      // Atributos: solo metadatos (canal y hash opaco de sesion), NUNCA
+      // el texto del mensaje (privacidad, regla dura de telemetria).
+      return conSpan('mensaje_entrante', {
+        canal: String(inbound.channel || 'desconocido').slice(0, 30),
+        sesion: hashSesion(inbound.userId)
+      }, () => consultarJarvis(inbound.text, historial, opcionesConPuertos));
     }
   });
 }

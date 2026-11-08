@@ -9,6 +9,7 @@
  *
  * Strict Policy: Zero Emojis.
  */
+import { conSpanPosibleSincrono } from '../../../../observability/telemetry.js';
 
 function filaAGasto(f) {
   return {
@@ -146,11 +147,12 @@ export function crearSqliteFinanceStore(db) {
       };
     },
     guardar(estado) {
-      reemplazarTodo(estado);
+      // Observabilidad: span db_write (solo entidad/operacion, nunca datos).
+      return conSpanPosibleSincrono('db_write', { entidad: 'finanzas', operacion: 'guardar' }, () => reemplazarTodo(estado));
     },
     /** Transaccion IMMEDIATE: candado de escritura antes de leer. */
     transaccion(fn) {
-      return db.transaction(fn).immediate();
+      return conSpanPosibleSincrono('db_write', { entidad: 'finanzas', operacion: 'transaccion' }, () => db.transaction(fn).immediate());
     }
   });
 }

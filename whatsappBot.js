@@ -23,6 +23,7 @@ import { confirmAndExecute } from './src/system/bashConsoleService.js';
 import { iniciarMonitorRecordatorios } from './src/services/reminderService.js';
 import { iniciarMonitorMensajesProgramados, registrarIdWhatsApp, procesarActualizacionEntrega } from './src/services/scheduledMessageService.js';
 import { obtenerHistorial, registrarIntercambio, programarCondensacionSiNecesario, limpiarHistorial } from './src/services/conversationHistoryService.js';
+import { iniciarObservabilidad } from './src/observability/telemetry.js';
 import { esAccionCriticaPorVoz, guardarPendienteVoz, resolverConfirmacionVoz } from './src/services/voiceConfirmationService.js';
 import { resolverConfirmacionBorrado, resolverCancelacionBorrado, registrarBorradoConversacionPendiente, esPeticionBorradoConversacion } from './src/services/destructiveActionService.js';
 import { resolverConfirmacionSkill } from './src/services/skillsService.js';
@@ -458,6 +459,10 @@ function inicializarServiciosProactivos() {
  * Inicia el cliente Baileys de WhatsApp
  */
 export async function iniciarWhatsApp() {
+  // Observabilidad (Mejora 3): OTel + Prometheus, apagada salvo
+  // DAVIS_OTEL_ENABLED=true. No-op seguro si las deps faltan.
+  iniciarObservabilidad({ puertoMetricas: Number(process.env.DAVIS_METRICS_PUERTO_WS || 9464) })
+    .catch((e) => console.error('[Observabilidad] init fallido:', e.message));
   const { state, saveCreds } = await useMultiFileAuthState(CARPETA_AUTH);
   const { version } = await fetchLatestBaileysVersion();
 

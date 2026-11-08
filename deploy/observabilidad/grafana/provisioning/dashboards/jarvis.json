@@ -1,0 +1,100 @@
+{
+  "title": "D.A.V.I.S. - Salud del agente",
+  "uid": "davis-jarvis",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Latencia LLM P95 / P99 (segundos)",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(jarvis_llm_duracion_segundos_bucket[5m])) by (le, modelo))",
+          "legendFormat": "P95 {{modelo}}"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.99, sum(rate(jarvis_llm_duracion_segundos_bucket[5m])) by (le, modelo))",
+          "legendFormat": "P99 {{modelo}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Latencia consulta completa P95 (segundos, por via)",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(jarvis_consulta_duracion_segundos_bucket[5m])) by (le, via))",
+          "legendFormat": "P95 {{via}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Errores de herramientas (por minuto)",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(jarvis_tool_errores_total[1m])) by (herramienta, tipo) * 60",
+          "legendFormat": "{{herramienta}} ({{tipo}})"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Latencia herramientas P95 (segundos)",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(jarvis_tool_duracion_segundos_bucket[5m])) by (le, herramienta))",
+          "legendFormat": "P95 {{herramienta}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Tokens LLM por sesion (por minuto)",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(jarvis_llm_tokens_total[1m])) by (sesion, tipo) * 60",
+          "legendFormat": "{{tipo}} sesion {{sesion}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Llamadas LLM con error (ultima hora)",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(jarvis_llm_duracion_segundos_count{resultado=\"error\"}[1h]))",
+          "legendFormat": "errores"
+        }
+      ]
+    }
+  ]
+}

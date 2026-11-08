@@ -33,6 +33,12 @@ import {
   verifySignature,
   handleWebhookPayload
 } from './src/monitors/githubWebhookService.js';
+import { iniciarObservabilidad, atenderMetricas } from './src/observability/telemetry.js';
+
+// Observabilidad (Mejora 3): OTel + Prometheus, apagada salvo
+// DAVIS_OTEL_ENABLED=true. No-op seguro si las deps faltan.
+iniciarObservabilidad({ puertoMetricas: Number(process.env.DAVIS_METRICS_PUERTO_API || 9465) })
+  .catch((e) => console.error('[Observabilidad] init fallido:', e.message));
 
 const PUERTO = config.port;
 
@@ -68,6 +74,11 @@ export async function handleApiRequest(req, res) {
   }
 
   const url = new URL(req.url, `http://${req.headers.host}`);
+
+  // Metricas Prometheus: SOLO localhost (Prometheus convive en el VPS).
+  if (req.method === 'GET' && url.pathname === '/metrics') {
+    if (await atenderMetricas(req, res)) return;
+  }
 
   // Endpoint de Webhook de GitHub Actions (CI/CD)
   if (req.method === 'POST' && url.pathname === '/api/webhook/github') {

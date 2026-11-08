@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: davis
+    orgId: 1
+    folder: D.A.V.I.S.
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

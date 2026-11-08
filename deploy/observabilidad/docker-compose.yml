@@ -1,0 +1,89 @@
+# Observabilidad D.A.V.I.S. (Mejora 3): Jaeger (trazas OTLP) + Prometheus
+# (metricas) + Grafana (dashboards). Todo OSS, sin servicios de pago.
+# Imagenes multi-arch (amd64 + arm64/aarch64).
+#
+# TOPOLOGIA (preflight VPS): red bridge DEDICADA con subred fija. Ningun
+# servicio usa host network (con host network TODOS los listeners del
+# contenedor quedan expuestos y no hereda la seguridad del port mapping).
+# Los unicos puertos publicados van bindeados a 127.0.0.1: el firewall
+# restrictivo no se toca y nada responde fuera del VPS. Acceso a las UIs
+# por tunel SSH:  ssh -L 3001:127.0.0.1:3001 -L 16686:127.0.0.1:16686 vps
+#
+# Puertos loopback en el host:
+#   9464  /metrics proceso jarvis-whatsapp (el agente vive ahi)
+#   9465  /metrics proceso jarvis-api
+#   4318  OTLP HTTP (aqui apunta DAVIS_OTEL_ENDPOINT del bot)
+#   16686 Jaeger UI      3001 Grafana (3000 lo ocupa la API del bot)
+#   9090  Prometheus SOLO dentro de la red interna (no se publica al host)
+#
+# El bot (pm2, en el host) permite el scrape desde la subred interna con:
+#   DAVIS_METRICS_REDES_PERMITIDAS=172.30.50.0/24  (en jarvis-estado/.env)
+#
+# Uso (executor, en el VPS):
+#   cd deploy/observabilidad && docker compose up -d
+#   En jarvis-estado/.env: DAVIS_OTEL_ENABLED=true
+#   (y reinicio pm2 de jarvis-whatsapp y jarvis-api con --update-env).
+
+networks:
+  observabilidad:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.50.0/24
+
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.62
+    container_name: davis-jaeger
+    restart: unless-stopped
+    networks:
+      - observabilidad
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      # Los demas listeners de Jaeger (14250/14268/14269/6831/6832/...)
+      # NO se publican: solo existen dentro de la red interna.
+      - "127.0.0.1:16686:16686"   # UI trazas (solo loopback)
+      - "127.0.0.1:4318:4318"     # OTLP HTTP (solo loopback)
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: davis-prometheus
+    restart: unless-stopped
+    networks:
+      - observabilidad
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - davis-prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+    extra_hosts:
+      # Scrape de los listeners loopback del host (9464/9465 del bot).
+      - "host.docker.internal:host-gateway"
+    # Sin ports: Prometheus solo es alcanzable desde la red interna (Grafana).
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: davis-grafana
+    restart: unless-stopped
+    networks:
+      - observabilidad
+    environment:
+      GF_HTTP_PORT: "3000"
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Define GRAFANA_ADMIN_PASSWORD en el entorno (nunca en el repo)}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - davis-grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3001:3000"     # solo loopback; acceso por tunel SSH
+    depends_on:
+      - prometheus
+      - jaeger
+
+volumes:
+  davis-prometheus-data:
+  davis-grafana-data:
