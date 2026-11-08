@@ -57,3 +57,11 @@ Actualizacion (limites de uso, backup y exclusiones):
 - Limite explicito de `ejecutar_skill`: denegado a no propietarios; cada subtool conserva RBAC; sin E2E por no exportar la funcion solo para pruebas.
 
 Import/export historico exige stores con tenantId propietario; rechaza stores de tenant o sin ambito antes de leer/escribir. Probado con base sintetica y sin crear el directorio de salida.
+
+Verificacion adicional: cuota E2E con el agente real, controlador SQLite y libro de uso real (usage sintetico del LLM stub): la primera consulta registra tokens, la siguiente queda denegada sin llamada al modelo. Programadores owner-only: E2E por el bucle real con lista blanca amplia y ejecutores espia; no llegan a ejecutarse. No se exporta el ejecutor de skills.
+
+Resumen de capacidades del candidato:
+- Implementado y probado: rutas/almacenes de tenant, herramientas aptas de memoria y servicios acotados, contexto LLM/RAG, RBAC por catalogo cerrado, medicion persistente, mecanismo configurable de cuotas diarias/mensuales y ritmo por minuto, rechazo antes de programar capacidades excluidas, import/export historico solo propietario, backup y restauracion sintetica en carpeta aislada.
+- Excluido: canales y altas reales de tenant, monitores y envios multiusuario, herramientas owner-only y skills para tenants. La compuerta sigue cerrada.
+- Limitaciones tecnicas abiertas: cuotas de tokens son control posterior al uso, no reserva previa ni hard cap ante peticiones en vuelo; backup actual NO demuestra consistencia con escritores concurrentes; no hay restauracion selectiva de un tenant en la base activa; controlador de limites disponible pero sin canal multiusuario al que cablearlo. No son decisiones que deban pedir al usuario para seguir investigando.
+- Decisiones del propietario solo cuando se active: cifras concretas por tenant si desea limites, capacidades/canales y destinatarios autorizados, y liberacion de despliegue. Ninguna se presupone ni se activa en este candidato.
