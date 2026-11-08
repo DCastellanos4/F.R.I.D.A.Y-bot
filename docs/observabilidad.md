@@ -23,9 +23,15 @@
 Red bridge DEDICADA con subred fija (172.30.50.0/24). NINGUN servicio usa
 host network (con host network todos los listeners del contenedor quedan
 expuestos y no hereda la seguridad del port mapping). Los unicos puertos
-publicados al host van bindeados a 127.0.0.1; Jaeger tiene listeners
-auxiliares (14250/14268/14269/6831/6832) que NO se publican y solo existen
-dentro de la red interna. Imagenes multi-arch (arm64 OK).
+publicados al host van bindeados a 127.0.0.1; los demas listeners de
+Jaeger NO se publican y solo existen dentro de la red interna. Imagenes
+multi-arch (arm64 OK).
+
+Versiones fijadas (comprobadas contra releases oficiales el 8 nov 2026):
+Jaeger 2.23.0 (v1 EOL desde el 31-dic-2025, no usar all-in-one:1.x;
+OTLP activo por defecto en v2), Prometheus v3.16.0, Grafana 13.3.0 (el
+dashboard provisionado usa schemaVersion 39, migrado en caliente por
+Grafana). Revisar estas versiones antes de futuras activaciones.
 
 | Puerto host | Servicio | Publicacion |
 | --- | --- | --- |
@@ -105,9 +111,8 @@ algo explicitamente habilitado.
    - `curl 127.0.0.1:9464/metrics` NO responde (bind solo al gateway).
    - Desde fuera del VPS, esos puertos NO responden (firewall + loopback).
    - `ss -tlnp` en el VPS: NINGUN listener de Jaeger/Prometheus/Grafana en
-     0.0.0.0 (solo 127.0.0.1); comprobar tambien los auxiliares de Jaeger
-     (14250/14268/14269/6831/6832 no aparecen fuera del bridge). Los
-     listeners del bot en 172.30.50.1, no en 0.0.0.0.
+     0.0.0.0 (solo 127.0.0.1). Los listeners del bot en 172.30.50.1, no en
+     0.0.0.0.
    - Un mensaje real de prueba deja un trace en Jaeger con spans
      `mensaje_entrante → consulta → llm_call → tool → db_write` y un solo
      TraceId.

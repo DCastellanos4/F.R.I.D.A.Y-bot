@@ -1,6 +1,8 @@
 # Observabilidad D.A.V.I.S. (Mejora 3): Jaeger (trazas OTLP) + Prometheus
 # (metricas) + Grafana (dashboards). Todo OSS, sin servicios de pago.
 # Imagenes multi-arch (amd64 + arm64/aarch64).
+# Versiones fijadas comprobadas contra releases oficiales el 8 nov 2026:
+# Jaeger 2.23.0 (v1 EOL 31-dic-2025), Prometheus v3.16.0, Grafana 13.3.0.
 #
 # TOPOLOGIA (preflight VPS): red bridge DEDICADA con subred fija. Ningun
 # servicio usa host network (con host network TODOS los listeners del
@@ -38,21 +40,23 @@ networks:
 
 services:
   jaeger:
-    image: jaegertracing/all-in-one:1.62
+    # Jaeger v2 (basado en OpenTelemetry Collector). v1 esta EOL desde el
+    # 31-dic-2025: NO usar jaegertracing/all-in-one:1.x. OTLP 4317/4318
+    # activo por defecto en v2 (sin flags). Almacenamiento en memoria
+    # (efimero, documentado).
+    image: jaegertracing/jaeger:2.23.0
     container_name: davis-jaeger
     restart: unless-stopped
     networks:
       - observabilidad
-    environment:
-      COLLECTOR_OTLP_ENABLED: "true"
     ports:
-      # Los demas listeners de Jaeger (14250/14268/14269/6831/6832/...)
-      # NO se publican: solo existen dentro de la red interna.
+      # Los demas listeners de Jaeger NO se publican: solo existen dentro
+      # de la red interna.
       - "127.0.0.1:16686:16686"   # UI trazas (solo loopback)
       - "127.0.0.1:4318:4318"     # OTLP HTTP (solo loopback)
 
   prometheus:
-    image: prom/prometheus:v2.54.1
+    image: prom/prometheus:v3.16.0
     container_name: davis-prometheus
     restart: unless-stopped
     networks:
@@ -68,7 +72,7 @@ services:
     # prometheus.yml): host-gateway resolveria al bridge por defecto.
 
   grafana:
-    image: grafana/grafana:11.2.0
+    image: grafana/grafana:13.3.0
     container_name: davis-grafana
     restart: unless-stopped
     networks:
