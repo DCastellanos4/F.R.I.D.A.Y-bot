@@ -5,6 +5,33 @@ import { fileURLToPath } from 'url';
 import { DATA_DIR } from '../config/paths.js';
 import { invalidarIndiceSemantico } from './semanticMemoryService.js';
 
+// ---------------------------------------------------------------------------
+// Costura de persistencia: por defecto se usan los ficheros JSON historicos.
+// La raiz de composicion puede registrar un store por defecto (p.ej. SQLite)
+// que usan todas las llamadas sin deps explicitas. Una rutaArchivo explicita
+// siempre gana al store por defecto (aislamiento de pruebas), y un store
+// explicito en deps gana a ambos. Un store puede exponer transaccion(fn):
+// las operaciones de leer-modificar-escribir se ejecutan dentro, de modo que
+// la lectura y la escritura son atomicas entre escritores concurrentes.
+// ---------------------------------------------------------------------------
+let storeMemoriasPorDefecto = null;
+
+export function registrarStoreMemoriasPorDefecto(store) {
+  storeMemoriasPorDefecto = store || null;
+}
+
+function storeDe(deps = {}) {
+  if (deps.store) return deps.store;
+  if (deps.rutaArchivo) return null; // ruta explicita: fichero JSON
+  return storeMemoriasPorDefecto;
+}
+
+function transaccionar(deps, fn) {
+  const store = deps && deps.store;
+  if (store && typeof store.transaccion === 'function') return store.transaccion(fn);
+  return fn();
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CARPETA_DATA = process.env.DAVIS_DATA_DIR || DATA_DIR;
 const ARCHIVO_MEMORIA = path.join(CARPETA_DATA, 'brain_memory.json');
@@ -76,6 +103,15 @@ export function esCifrada(m) {
 
 
 function leerMemorias(deps = {}) {
+  const store = storeDe(deps);
+  if (store) {
+    try {
+      return store.leer();
+    } catch (err) {
+      console.error('Error leyendo memorias:', err.message);
+      return [];
+    }
+  }
   const ruta = deps.rutaArchivo || ARCHIVO_MEMORIA;
   try {
     if (!fs.existsSync(ruta)) {
@@ -90,12 +126,17 @@ function leerMemorias(deps = {}) {
 }
 
 function guardarMemorias(lista, deps = {}) {
-  const ruta = deps.rutaArchivo || ARCHIVO_MEMORIA;
+  const store = storeDe(deps);
   try {
-    fs.writeFileSync(ruta, JSON.stringify(lista, null, 2), 'utf-8');
+    if (store) {
+      store.guardar(lista);
+    } else {
+      const ruta = deps.rutaArchivo || ARCHIVO_MEMORIA;
+      fs.writeFileSync(ruta, JSON.stringify(lista, null, 2), 'utf-8');
+    }
     // El indice vectorial (RAG) queda desactualizado tras cada escritura:
     // se invalida aqui y la propia busqueda semantica lo reconstruye en el
-    // siguiente uso comprobando la firma del archivo de memorias.
+    // siguiente uso comprobando la firma de la fuente de memorias.
     try {
       invalidarIndiceSemantico();
     } catch (errInv) {
@@ -183,15 +224,8 @@ function sonElMismoHecho(memoriaExistente, nuevaMemoria) {
 /**
  * Guarda o actualiza un hecho en el Second Brain
  */
-export function guardarMemoria({ sujeto, dato, categoria = 'general', tags = [], rutaArchivo } = {}) {
-  if (!sujeto || !dato) {
-    return { ok: false, error: 'Se requiere sujeto y dato para guardar en la memoria.' };
-  }
-
-  // La ruta es inyectable (puerto de persistencia): sin override, el
-  // archivo historico; con override, el repositorio decide.
-  const depsRuta = rutaArchivo ? { rutaArchivo } : {};
-  const lista = leerMemorias(depsRuta);
+function guardarMemoriaImpl({ sujeto, dato, categoria = 'general', tags = [] }, deps) {
+  const lista = leerMemorias(deps);
   const id = `mem_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
   const formatoLocal = new Date().toLocaleString('es-ES', {
@@ -240,16 +274,36 @@ export function guardarMemoria({ sujeto, dato, categoria = 'general', tags = [],
   if (idxExistente !== -1) {
     const idAnterior = lista[idxExistente].id;
     lista[idxExistente] = { ...memoriaAlmacenada, id: idAnterior };
-    guardarMemorias(lista, depsRuta);
+    guardarMemorias(lista, deps);
     console.log(`[Memoria] [Memoria Actualizada] "${nuevaMemoria.sujeto}": ${datoParaLog}`);
     return { ok: true, accion: 'actualizada', memoria: descifrarMemoria(lista[idxExistente]) };
   }
 
   lista.push(memoriaAlmacenada);
-  guardarMemorias(lista, depsRuta);
+  guardarMemorias(lista, deps);
   console.log(`[Memoria] [Memoria Guardada] "${nuevaMemoria.sujeto}": ${datoParaLog}`);
 
   return { ok: true, accion: 'creada', memoria: nuevaMemoria };
+}
+
+/**
+ * Guarda o actualiza un hecho en el Second Brain.
+ * Persistencia inyectable (puerto): rutaArchivo explicita = JSON; store
+ * explicito o registrado por defecto = SQLite transaccional; sin ambos,
+ * el JSON historico. Con store transaccional, toda la operacion de
+ * leer-modificar-escribir corre dentro de una transaccion IMMEDIATE.
+ */
+export function guardarMemoria({ sujeto, dato, categoria = 'general', tags = [], rutaArchivo, store } = {}) {
+  if (!sujeto || !dato) {
+    return { ok: false, error: 'Se requiere sujeto y dato para guardar en la memoria.' };
+  }
+  const deps = {};
+  if (rutaArchivo) deps.rutaArchivo = rutaArchivo;
+  if (store) deps.store = store;
+  const storeEfectivo = storeDe(deps);
+  if (storeEfectivo) deps.store = storeEfectivo;
+  return transaccionar(deps, () =>
+    guardarMemoriaImpl({ sujeto, dato, categoria, tags }, deps));
 }
 
 /**
@@ -330,9 +384,8 @@ export function listarMemorias(categoria = null, deps = {}) {
 /**
  * Elimina una o todas las memorias guardadas
  */
-export function olvidarMemoria(criterio, opciones = {}) {
-  const depsRuta = opciones.rutaArchivo ? { rutaArchivo: opciones.rutaArchivo } : {};
-  const lista = leerMemorias(depsRuta);
+function olvidarMemoriaImpl(criterio, opciones, deps) {
+  const lista = leerMemorias(deps);
   const rawCrit = (criterio || '').toString().trim().toLowerCase();
 
   // Comprobación de comodín ANTES de normalizar
@@ -348,7 +401,7 @@ export function olvidarMemoria(criterio, opciones = {}) {
       };
     }
     const total = lista.length;
-    guardarMemorias([], depsRuta);
+    guardarMemorias([], deps);
     console.log(`[Memoria] [Memoria Vaciada] Se eliminaron todos los recuerdos (${total}) tras confirmacion explicita.`);
     return { ok: true, mensaje: `Se han eliminado todos los recuerdos del Second Brain (${total} registros).` };
   }
@@ -365,8 +418,22 @@ export function olvidarMemoria(criterio, opciones = {}) {
   }
 
   const [eliminada] = lista.splice(idx, 1);
-  guardarMemorias(lista, depsRuta);
+  guardarMemorias(lista, deps);
   const datoLog = esCifrada(eliminada) ? '[cifrado]' : eliminada.dato;
   console.log(`[Memoria] [Memoria Olvidada] "${eliminada.sujeto}": ${datoLog}`);
   return { ok: true, memoria: descifrarMemoria(eliminada), mensaje: `Recuerdo olvidado con éxito: "${eliminada.sujeto}".` };
+}
+
+/**
+ * Elimina una o todas las memorias. Misma costura de persistencia que
+ * guardarMemoria; con store transaccional la lectura, la comprobacion
+ * de confirmacion y el borrado corren en una transaccion IMMEDIATE.
+ */
+export function olvidarMemoria(criterio, opciones = {}) {
+  const deps = {};
+  if (opciones.rutaArchivo) deps.rutaArchivo = opciones.rutaArchivo;
+  if (opciones.store) deps.store = opciones.store;
+  const storeEfectivo = storeDe(deps);
+  if (storeEfectivo) deps.store = storeEfectivo;
+  return transaccionar(deps, () => olvidarMemoriaImpl(criterio, opciones, deps));
 }

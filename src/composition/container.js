@@ -15,10 +15,59 @@ import { crearLLMServiceProviderAdapter } from '../adapters/outbound/llm/llmServ
 import { crearJsonMemoryRepository } from '../adapters/outbound/persistence/jsonMemoryRepository.js';
 import { crearJsonlClassifierMetricsStore } from '../adapters/outbound/persistence/jsonlClassifierMetricsStore.js';
 import { crearMessageProcessor } from '../core/messageProcessor.js';
+import { DATA_DIR } from '../config/paths.js';
+import { registrarStoreMemoriasPorDefecto } from '../services/memoryService.js';
+import { registrarStoreFinanzasPorDefecto } from '../services/financeService.js';
+import { registrarFuenteMemoriasPorDefecto } from '../services/semanticMemoryService.js';
+import { crearPersistenciaSqlite } from '../adapters/outbound/persistence/sqlite/persistenciaSqlite.js';
+import { crearSqliteMemoryRepository } from '../adapters/outbound/persistence/sqlite/sqliteMemoryRepository.js';
+import { crearSqliteMemoryStore } from '../adapters/outbound/persistence/sqlite/sqliteMemoryStore.js';
+import { abrirBaseDatos } from '../adapters/outbound/persistence/sqlite/connection.js';
+import { ejecutarMigraciones } from '../adapters/outbound/persistence/sqlite/migraciones.js';
+
+/**
+ * Persistencia activa: DAVIS_PERSISTENCE=json (por defecto, comportamiento
+ * historico) o sqlite (base embebida WAL con migraciones versionadas e
+ * importacion automatica de los JSON existentes, que NO se borran).
+ * Con sqlite, un estado inconsistente (datos sin marca de origen) es un
+ * fallo cerrado: la factoria lanza y el arranque se detiene con el error
+ * claro; nunca se cae en silencio al JSON, que podria estar obsoleto.
+ */
+function crearPersistenciaActiva(overrides) {
+  if (overrides.memoryRepository) return { modo: 'inyectado', memoryRepository: overrides.memoryRepository };
+  const modo = (process.env.DAVIS_PERSISTENCE || 'json').toLowerCase();
+  if (modo === 'json') return { modo, memoryRepository: crearJsonMemoryRepository() };
+  if (modo !== 'sqlite') {
+    throw new Error(`DAVIS_PERSISTENCE desconocido: "${modo}". Valores validos: json, sqlite.`);
+  }
+  const rutaDb = process.env.DAVIS_SQLITE_PATH || path.join(DATA_DIR, 'jarvis.db');
+  const persistencia = crearPersistenciaSqlite({
+    rutaDb,
+    rutaMemoriasJson: path.join(DATA_DIR, 'brain_memory.json'),
+    rutaFinanzasJson: path.join(DATA_DIR, 'finanzas.json')
+  });
+  // Costuras por defecto: todo consumidor historico sin deps explicitas
+  // (digest, busqueda, cripto, monitor de finanzas, whatsappBot) pasa a
+  // leer y escribir en SQLite. Una rutaArchivo explicita sigue yendo a
+  // JSON (aislamiento de pruebas).
+  registrarStoreMemoriasPorDefecto(persistencia.memoryStore);
+  registrarStoreFinanzasPorDefecto(persistencia.financeStore);
+  registrarFuenteMemoriasPorDefecto(persistencia.fuenteSemantica);
+  const memoryRepository = crearSqliteMemoryRepository({
+    memoryStore: persistencia.memoryStore,
+    crearStoreParaRuta: (ruta) => {
+      const db = abrirBaseDatos(ruta);
+      ejecutarMigraciones(db);
+      return crearSqliteMemoryStore(db);
+    }
+  });
+  return { modo, memoryRepository, persistencia };
+}
 
 export function crearContenedor(overrides = {}) {
   const llmProvider = overrides.llmProvider ?? crearLLMServiceProviderAdapter();
-  const memoryRepository = overrides.memoryRepository ?? crearJsonMemoryRepository();
+  const persistenciaActiva = crearPersistenciaActiva(overrides);
+  const memoryRepository = persistenciaActiva.memoryRepository;
   const metricasClasificador = overrides.metricasClasificador ?? crearJsonlClassifierMetricsStore();
   // Aislamiento del estado de pruebas: bajo NODE_ENV=test la cache de
   // idempotencia por defecto vive en un tmp por proceso; el estado
@@ -40,11 +89,26 @@ export function crearContenedor(overrides = {}) {
     crearStoreMetricas: crearJsonlClassifierMetricsStore,
     rutaArchivoIdempotenciaDefecto: overrides.rutaArchivoIdempotenciaDefecto ?? rutaIdempTest
   });
+  const procesarBase = processor.procesarMensajeEntrante;
+  const userRepository = persistenciaActiva.persistencia?.userRepository || overrides.userRepository || null;
   return Object.freeze({
     llmProvider,
     memoryRepository,
     metricasClasificador,
-    procesarMensajeEntrante: processor.procesarMensajeEntrante
+    persistencia: persistenciaActiva.persistencia || null,
+    async procesarMensajeEntrante(inbound, ctx) {
+      const respuesta = await procesarBase(inbound, ctx);
+      // Registro de contacto YA autenticado (la lista blanca decide el
+      // acceso antes de llegar aqui; el repositorio nunca autoriza).
+      if (userRepository) {
+        try {
+          userRepository.registrarContacto(inbound.userId);
+        } catch (err) {
+          console.error('[Contenedor] Error registrando contacto de usuario:', err.message);
+        }
+      }
+      return respuesta;
+    }
   });
 }
 

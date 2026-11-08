@@ -75,6 +75,27 @@ function firmaArchivoMemoria(storePath) {
   }
 }
 
+// Fuente de memorias inyectable: lectura y firma de frescura. Por
+// defecto, el archivo JSON historico; la raiz de composicion registra la
+// fuente SQLite cuando la persistencia activa es SQLite, para que el
+// indice vectorial siga detectando escrituras nuevas sin ese archivo.
+let fuenteMemoriasPorDefecto = null;
+
+export function registrarFuenteMemoriasPorDefecto(fuente) {
+  fuenteMemoriasPorDefecto = fuente || null;
+}
+
+function fuenteDe(options, storePath) {
+  const fuente = (options && options.fuente) || fuenteMemoriasPorDefecto;
+  if (fuente && typeof fuente.leerMemorias === 'function' && typeof fuente.firma === 'function') {
+    return fuente;
+  }
+  return {
+    leerMemorias: () => leerMemoriasDesdeArchivo(storePath),
+    firma: () => firmaArchivoMemoria(storePath)
+  };
+}
+
 /**
  * Common Spanish stop words used for vocabulary filtering in TF-IDF.
  */
@@ -548,7 +569,7 @@ export function indexarMemoriasVectoriales(options = {}) {
 
   const index = buildTfIdfIndex(docs);
   const cache = buildVectorCacheFromIndex(index, index.documents || docs);
-  cache.firmaMemoria = firmaArchivoMemoria(storePath);
+  cache.firmaMemoria = options.firmaMemoria !== undefined ? options.firmaMemoria : firmaArchivoMemoria(storePath);
   cache.fuenteMemoria = storePath;
 
   if (vectorsPath) {
@@ -714,7 +735,8 @@ export async function buscarMemoriaSemantica(query, options = {}) {
     const tempIndex = buildTfIdfIndex(options.documents);
     vectorCache = buildVectorCacheFromIndex(tempIndex, tempIndex.documents || options.documents);
   } else {
-    const firmaActual = firmaArchivoMemoria(storePath);
+    const fuente = fuenteDe(options, storePath);
+    const firmaActual = fuente.firma();
 
     if (cachedVectorCache && cachedVectorCachePath === vectorsPath) {
       vectorCache = cachedVectorCache;
@@ -736,10 +758,10 @@ export async function buscarMemoriaSemantica(query, options = {}) {
     const desactualizado = memoriasPresentes && firmaIndice !== firmaActual;
 
     if (indiceVacio || desactualizado) {
-      const memorias = leerMemoriasDesdeArchivo(storePath);
+      const memorias = fuente.leerMemorias();
       const indexables = filtrarDocumentosSensibles(memorias);
       if (indexables.length > 0) {
-        const indexed = indexarMemoriasVectoriales({ memorias, storePath, vectorsPath });
+        const indexed = indexarMemoriasVectoriales({ memorias, storePath, vectorsPath, firmaMemoria: firmaActual });
         vectorCache = indexed.cache;
       } else {
         vectorCache = null;

@@ -1,0 +1,175 @@
+/**
+ * Importacion JSON -> SQLite y exportacion SQLite -> JSON.
+ *
+ * Importar: todo-o-nada dentro de UNA transaccion; solo sobre tablas
+ * vacias (idempotente: una segunda llamada no duplica). Los ficheros
+ * JSON de origen NO se tocan: quedan como punto de partida previo a la
+ * migracion. Al terminar se marca meta.origen='importada' y se guardan
+ * los conteos esperados; un arranque posterior que encuentre datos sin
+ * marca de origen se considera estado inconsistente (fallo cerrado en
+ * la factoria).
+ *
+ * Exportar: vuelca el contenido ACTUAL de la base (incluidas las
+ * escrituras posteriores a la migracion) a un directorio nuevo con
+ * escritura atomica, verificando integridad (conteos y sha256 del
+ * volcado). Nunca sobrescribe los JSON activos: el procedimiento de
+ * recuperacion documentado es parar el bot, exportar, verificar,
+ * colocar manualmente los JSON verificados como ficheros activos y
+ * volver a DAVIS_PERSISTENCE=json.
+ *
+ * Strict Policy: Zero Emojis.
+ */
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+
+function leerJsonSiExiste(ruta, valorDefecto) {
+  try {
+    return JSON.parse(fs.readFileSync(ruta, 'utf-8'));
+  } catch {
+    return valorDefecto;
+  }
+}
+
+function estadoTablas(db) {
+  const contar = (tabla) => db.prepare(`SELECT COUNT(*) AS n FROM ${tabla}`).get().n;
+  return {
+    memorias: contar('memorias'),
+    gastos: contar('finanzas_gastos'),
+    suscripciones: contar('finanzas_suscripciones'),
+    presupuestos: contar('finanzas_presupuestos'),
+    borradores: contar('finanzas_borradores'),
+    config: contar('finanzas_config')
+  };
+}
+
+function hayDatos(conteos) {
+  return Object.values(conteos).some((n) => n > 0);
+}
+
+/**
+ * @param {Database} db  Base ya migrada.
+ * @param {{rutaMemorias?: string, rutaFinanzas?: string,
+ *          leerMemoriasJson?: () => Array, leerFinanzasJson?: () => Object,
+ *          escribirMemoria?: (lista) => void, escribirFinanzas?: (estado) => void}} fuentes
+ *        Inyectables para pruebas; por defecto lee/escribe via los stores.
+ */
+export function importarJsonASqlite(db, { rutaMemorias, rutaFinanzas, memoryStore, financeStore } = {}) {
+  const origen = db.prepare("SELECT valor FROM meta WHERE clave = 'origen'").get();
+  if (origen) {
+    return { ok: true, yaImportado: true, origen: origen.valor, importados: null };
+  }
+  const conteos = estadoTablas(db);
+  if (hayDatos(conteos)) {
+    // Datos sin marca de origen: proveniencia desconocida. Fallo cerrado:
+    // no se importa encima ni se sirve este estado como valido.
+    return {
+      ok: false,
+      error: 'Estado inconsistente: la base tiene datos pero ninguna marca de origen en meta. No se importa ni se activa.',
+      conteos
+    };
+  }
+
+  const memorias = rutaMemorias ? leerJsonSiExiste(rutaMemorias, []) : [];
+  const finanzas = rutaFinanzas ? leerJsonSiExiste(rutaFinanzas, null) : null;
+
+  const esperados = {
+    memorias: Array.isArray(memorias) ? memorias.length : 0,
+    gastos: finanzas && Array.isArray(finanzas.gastos) ? finanzas.gastos.length : 0,
+    suscripciones: finanzas && Array.isArray(finanzas.suscripciones) ? finanzas.suscripciones.length : 0
+  };
+
+  db.transaction(() => {
+    if (esperados.memorias > 0) memoryStore.guardar(memorias);
+    if (finanzas) {
+      financeStore.guardar({
+        gastos: finanzas.gastos || [],
+        suscripciones: finanzas.suscripciones || [],
+        presupuestos: finanzas.presupuestos || {},
+        config: finanzas.config || {},
+        borradores: Array.isArray(finanzas.borradores) ? finanzas.borradores : []
+      });
+    }
+    // Verificacion de integridad DENTRO de la transaccion: si los
+    // conteos no coinciden con la fuente, se hace rollback y no queda
+    // importacion parcial ni marca.
+    const reales = estadoTablas(db);
+    for (const [tabla, n] of Object.entries(esperados)) {
+      if (reales[tabla] !== n) {
+        throw new Error(`Importacion incompleta en ${tabla}: esperados ${n}, escritos ${reales[tabla]}. Rollback.`);
+      }
+    }
+    db.prepare("INSERT INTO meta (clave, valor) VALUES ('origen', ?)").run(
+      esperados.memorias + esperados.gastos + esperados.suscripciones > 0 ? 'importada' : 'nueva'
+    );
+    db.prepare("INSERT INTO meta (clave, valor) VALUES ('importada_en', ?)").run(new Date().toISOString());
+    db.prepare("INSERT INTO meta (clave, valor) VALUES ('conteos_importacion', ?)").run(JSON.stringify(esperados));
+  })();
+
+  return { ok: true, yaImportado: false, importados: esperados };
+}
+
+/** Marca una base creada desde cero (sin JSON previo) como origen 'nueva'. */
+export function marcarOrigenNueva(db) {
+  const origen = db.prepare("SELECT valor FROM meta WHERE clave = 'origen'").get();
+  if (origen) return origen.valor;
+  const conteos = estadoTablas(db);
+  if (hayDatos(conteos)) return null; // inconsistente: que decida la factoria
+  db.prepare("INSERT INTO meta (clave, valor) VALUES ('origen', 'nueva')").run();
+  return 'nueva';
+}
+
+/** null si el estado es consistente; descripcion del problema si no. */
+export function comprobarEstadoConsistente(db) {
+  const origen = db.prepare("SELECT valor FROM meta WHERE clave = 'origen'").get();
+  const conteos = estadoTablas(db);
+  if (!origen && hayDatos(conteos)) {
+    return `Base SQLite con datos (${JSON.stringify(conteos)}) pero sin marca de origen en meta: proveniencia desconocida.`;
+  }
+  return null;
+}
+
+function escribirAtomico(ruta, contenido) {
+  fs.mkdirSync(path.dirname(ruta), { recursive: true });
+  const tmp = `${ruta}.tmp`;
+  fs.writeFileSync(tmp, contenido, 'utf-8');
+  fs.renameSync(tmp, ruta);
+}
+
+/**
+ * Vuelca la base actual a JSON verificados en dirDestino (un directorio
+ * NUEVO por exportacion). Devuelve rutas, conteos y hashes para que el
+ * operador verifique antes de colocarlos como ficheros activos.
+ */
+export function exportarSqliteAJson(db, { dirDestino, memoryStore, financeStore } = {}) {
+  if (!dirDestino) throw new Error('exportarSqliteAJson requiere dirDestino.');
+  if (fs.existsSync(dirDestino)) {
+    throw new Error(`El directorio de exportacion ya existe: ${dirDestino}. No se sobrescribe una exportacion previa.`);
+  }
+  const memorias = memoryStore.leer();
+  const finanzas = financeStore.leer();
+
+  const jsonMemorias = JSON.stringify(memorias, null, 2);
+  const jsonFinanzas = JSON.stringify(finanzas, null, 2);
+  const rutaMemorias = path.join(dirDestino, 'brain_memory.json');
+  const rutaFinanzas = path.join(dirDestino, 'finanzas.json');
+  escribirAtomico(rutaMemorias, jsonMemorias);
+  escribirAtomico(rutaFinanzas, jsonFinanzas);
+
+  const manifiesto = {
+    exportadoEn: new Date().toISOString(),
+    conteos: {
+      memorias: memorias.length,
+      gastos: finanzas.gastos.length,
+      suscripciones: finanzas.suscripciones.length,
+      presupuestos: Object.keys(finanzas.presupuestos).length,
+      borradores: finanzas.borradores.length
+    },
+    sha256: {
+      'brain_memory.json': crypto.createHash('sha256').update(jsonMemorias).digest('hex'),
+      'finanzas.json': crypto.createHash('sha256').update(jsonFinanzas).digest('hex')
+    }
+  };
+  escribirAtomico(path.join(dirDestino, 'manifiesto.json'), JSON.stringify(manifiesto, null, 2));
+  return { ok: true, rutaMemorias, rutaFinanzas, manifiesto };
+}

@@ -16,6 +16,32 @@ import crypto from 'node:crypto';
 import { DATA_DIR } from '../config/paths.js';
 import { enqueueAlert } from './alertQueueService.js';
 
+// ---------------------------------------------------------------------------
+// Costura de persistencia (misma mecanica que memoryService): por defecto el
+// fichero JSON historico; la raiz de composicion puede registrar un store
+// por defecto (p.ej. SQLite) para todas las llamadas sin deps explicitas.
+// rutaArchivo explicita gana al store por defecto (aislamiento de pruebas);
+// store explicito en deps gana a ambos. Con store transaccional, cada
+// operacion de leer-modificar-escribir corre en una transaccion IMMEDIATE.
+// ---------------------------------------------------------------------------
+let storeFinanzasPorDefecto = null;
+
+export function registrarStoreFinanzasPorDefecto(store) {
+  storeFinanzasPorDefecto = store || null;
+}
+
+function storeDe(deps = {}) {
+  if (deps.store) return deps.store;
+  if (deps.rutaArchivo) return null; // ruta explicita: fichero JSON
+  return storeFinanzasPorDefecto;
+}
+
+function transaccionar(deps, fn) {
+  const store = storeDe(deps || {});
+  if (store && typeof store.transaccion === 'function') return store.transaccion(fn);
+  return fn();
+}
+
 export const ARCHIVO_DEFECTO = path.join(DATA_DIR, 'finanzas.json');
 export const DIAS_AVISO_SUSCRIPCION = 3;
 export const UMBRAL_ALERTA_PRESUPUESTO = 0.8;
@@ -31,6 +57,14 @@ function estadoInicial() {
 }
 
 function leerEstado(deps = {}) {
+  const store = storeDe(deps);
+  if (store) {
+    try {
+      return { ...estadoInicial(), ...store.leer() };
+    } catch {
+      return estadoInicial();
+    }
+  }
   try {
     return { ...estadoInicial(), ...JSON.parse(fs.readFileSync(ruta(deps), 'utf-8')) };
   } catch {
@@ -39,6 +73,11 @@ function leerEstado(deps = {}) {
 }
 
 function guardarEstado(estado, deps = {}) {
+  const store = storeDe(deps);
+  if (store) {
+    store.guardar(estado);
+    return;
+  }
   const destino = ruta(deps);
   fs.mkdirSync(path.dirname(destino), { recursive: true });
   const tmp = `${destino}.tmp`;
@@ -70,7 +109,7 @@ function importeValido(importe) {
 
 // ---------- Gastos (nº 24) ----------
 
-export function registrarGasto({ importe, comercio, categoria, fecha, notas, origen }, deps = {}) {
+function registrarGastoImpl({ importe, comercio, categoria, fecha, notas, origen }, deps = {}) {
   const n = importeValido(importe);
   if (n === null) return { ok: false, error: 'Importe invalido: debe ser un numero positivo.' };
   if (typeof comercio !== 'string' || !comercio.trim()) {
@@ -99,13 +138,21 @@ export function registrarGasto({ importe, comercio, categoria, fecha, notas, ori
   };
 }
 
-export function eliminarGasto(id, deps = {}) {
+export function registrarGasto(parametros, deps = {}) {
+  return transaccionar(deps, () => registrarGastoImpl(parametros, deps));
+}
+
+function eliminarGastoImpl(id, deps = {}) {
   const estado = leerEstado(deps);
   const antes = estado.gastos.length;
   estado.gastos = estado.gastos.filter((g) => g.id !== id);
   if (estado.gastos.length === antes) return { ok: false, error: `No hay ningun gasto con ID ${id}.` };
   guardarEstado(estado, deps);
   return { ok: true };
+}
+
+export function eliminarGasto(id, deps = {}) {
+  return transaccionar(deps, () => eliminarGastoImpl(id, deps));
 }
 
 export function listarGastos({ mes, categoria } = {}, deps = {}) {
@@ -145,7 +192,7 @@ export function resumenMensual({ mes } = {}, deps = {}) {
 
 // ---------- Suscripciones (nº 26) ----------
 
-export function registrarSuscripcion({ nombre, importe, diaRenovacion, categoria }, deps = {}) {
+function registrarSuscripcionImpl({ nombre, importe, diaRenovacion, categoria }, deps = {}) {
   if (typeof nombre !== 'string' || !nombre.trim()) {
     return { ok: false, error: 'El nombre de la suscripcion es obligatorio.' };
   }
@@ -174,7 +221,11 @@ export function registrarSuscripcion({ nombre, importe, diaRenovacion, categoria
   return { ok: true, suscripcion };
 }
 
-export function cancelarSuscripcion(criterio, deps = {}) {
+export function registrarSuscripcion(parametros, deps = {}) {
+  return transaccionar(deps, () => registrarSuscripcionImpl(parametros, deps));
+}
+
+function cancelarSuscripcionImpl(criterio, deps = {}) {
   const estado = leerEstado(deps);
   const q = String(criterio || '').trim().toLowerCase();
   if (!q) return { ok: false, error: 'Indica el nombre o ID de la suscripcion.' };
@@ -186,6 +237,10 @@ export function cancelarSuscripcion(criterio, deps = {}) {
   estado.suscripciones = estado.suscripciones.filter((s) => s.id !== coincidencias[0].id);
   guardarEstado(estado, deps);
   return { ok: true, cancelada: coincidencias[0] };
+}
+
+export function cancelarSuscripcion(criterio, deps = {}) {
+  return transaccionar(deps, () => cancelarSuscripcionImpl(criterio, deps));
 }
 
 export function listarSuscripciones(deps = {}) {
@@ -213,7 +268,7 @@ function proximaRenovacion(dia, hoy) {
  * Ronda del vigilante: encola aviso para las suscripciones que renuevan en
  * DIAS_AVISO_SUSCRIPCION dias o menos, una vez por renovacion.
  */
-export function lanzarRondaSuscripciones(deps = {}) {
+function lanzarRondaSuscripcionesImpl(deps = {}) {
   const estado = leerEstado(deps);
   if (estado.suscripciones.length === 0) return { ok: true, avisadas: 0 };
   const hoy = ahora(deps);
@@ -241,9 +296,13 @@ export function lanzarRondaSuscripciones(deps = {}) {
   return { ok: true, avisadas };
 }
 
+export function lanzarRondaSuscripciones(deps = {}) {
+  return transaccionar(deps, () => lanzarRondaSuscripcionesImpl(deps));
+}
+
 // ---------- Presupuesto (nº 27) ----------
 
-export function configurarPresupuesto({ categoria, limite }, deps = {}) {
+function configurarPresupuestoImpl({ categoria, limite }, deps = {}) {
   const c = normalizarCategoria(categoria);
   if (categoria === undefined || categoria === null || !String(categoria).trim()) {
     return { ok: false, error: 'La categoria es obligatoria.' };
@@ -254,6 +313,10 @@ export function configurarPresupuesto({ categoria, limite }, deps = {}) {
   estado.presupuestos[c] = n;
   guardarEstado(estado, deps);
   return { ok: true, categoria: c, limite: n };
+}
+
+export function configurarPresupuesto(parametros, deps = {}) {
+  return transaccionar(deps, () => configurarPresupuestoImpl(parametros, deps));
 }
 
 export function estadoPresupuestos({ mes } = {}, deps = {}) {
@@ -277,7 +340,7 @@ export function estadoPresupuestos({ mes } = {}, deps = {}) {
 
 let temporizador = null;
 
-export function configurarAvisosSuscripciones({ activo } = {}, deps = {}) {
+function configurarAvisosSuscripcionesImpl({ activo } = {}, deps = {}) {
   const estado = leerEstado(deps);
   if (typeof estado.config !== 'object' || estado.config === null) estado.config = {};
   estado.config.avisosSuscripciones = activo === true;
@@ -288,6 +351,10 @@ export function configurarAvisosSuscripciones({ activo } = {}, deps = {}) {
   }
   detenerMonitorFinanzas();
   return { ok: true, activo: false };
+}
+
+export function configurarAvisosSuscripciones(parametros, deps = {}) {
+  return transaccionar(deps, () => configurarAvisosSuscripcionesImpl(parametros, deps));
 }
 
 export function iniciarMonitorFinanzas(deps = {}) {
@@ -325,7 +392,7 @@ function estadoConBorradores(estado) {
   return estado;
 }
 
-export function crearBorradorDesdeTicket(ticket = {}, deps = {}) {
+function crearBorradorDesdeTicketImpl(ticket = {}, deps = {}) {
   const dudas = Array.isArray(ticket.camposDudosos) ? ticket.camposDudosos.slice(0, 6) : [];
   const n = ticket.importe === undefined || ticket.importe === null ? null : importeValido(ticket.importe);
   if (n === null) {
@@ -368,6 +435,10 @@ export function crearBorradorDesdeTicket(ticket = {}, deps = {}) {
   return { ok: true, borrador, resumen: resumenBorrador(borrador) };
 }
 
+export function crearBorradorDesdeTicket(ticket = {}, deps = {}) {
+  return transaccionar(deps, () => crearBorradorDesdeTicketImpl(ticket, deps));
+}
+
 export function resumenBorrador(borrador) {
   const d = borrador.datos;
   const partes = [`${d.importe.toFixed(2)} ${d.moneda}`, d.comercio ? `en ${d.comercio}` : '(sin comercio legible)', `fecha ${d.fecha}`];
@@ -395,7 +466,7 @@ export function borradorPendiente(deps = {}) {
   return buscarBorradorPendiente(leerEstado(deps), {}, deps);
 }
 
-export function confirmarBorrador({ id, correcciones } = {}, deps = {}) {
+function confirmarBorradorImpl({ id, correcciones } = {}, deps = {}) {
   const estado = estadoConBorradores(leerEstado(deps));
   const borrador = buscarBorradorPendiente(estado, { id }, deps);
   if (!borrador) return { ok: false, error: 'No hay ningun gasto de foto pendiente de confirmar (o ha caducado: mandame otra vez el ticket).' };
@@ -444,13 +515,21 @@ export function confirmarBorrador({ id, correcciones } = {}, deps = {}) {
   return { ok: true, gasto: resultado.gasto, aviso: resultado.aviso, dudas: borrador.dudas };
 }
 
-export function descartarBorrador({ id } = {}, deps = {}) {
+export function confirmarBorrador(parametros = {}, deps = {}) {
+  return transaccionar(deps, () => confirmarBorradorImpl(parametros, deps));
+}
+
+function descartarBorradorImpl({ id } = {}, deps = {}) {
   const estado = estadoConBorradores(leerEstado(deps));
   const borrador = buscarBorradorPendiente(estado, { id }, deps);
   if (!borrador) return { ok: false, error: 'No habia ningun gasto de foto pendiente.' };
   borrador.estado = 'descartado';
   guardarEstado(estado, deps);
   return { ok: true, id: borrador.id };
+}
+
+export function descartarBorrador(parametros = {}, deps = {}) {
+  return transaccionar(deps, () => descartarBorradorImpl(parametros, deps));
 }
 
 export function interpretarRespuestaBorrador(texto) {
