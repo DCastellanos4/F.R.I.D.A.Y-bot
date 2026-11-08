@@ -152,25 +152,40 @@ test('Fallo de red sin status: conmutable al respaldo', async () => {
   assert.equal(r.degradado, true);
 });
 
-test('Mensaje a David cuando TODOS los modelos estan sin cuota: honesto y sin texto crudo', () => {
+test('Mensaje a David cuando TODOS los modelos estan sin cuota: honesto, sin texto crudo y sin afirmar nada sobre acciones', () => {
   const err = new Error('Todos los modelos configurados estan sin cuota o no disponibles ahora mismo (openai/gpt-oss-120b -> openai/gpt-oss-20b).');
   err.name = 'CuotaAgotadaError';
   const texto = mensajeErrorParaUsuario(err);
   assert.match(texto, /principal como el de respaldo/);
   assert.doesNotMatch(texto, /gpt-oss|429|organization/i, 'sin detalle tecnico ni de cuota');
+  assert.doesNotMatch(texto, /no se ha completado|ninguna accion/i, 'no afirma nada sobre acciones (no lo sabe desde aqui)');
 });
 
-test('Degradacion honesta en la respuesta de JARVIS: declara el respaldo y la no-duplicacion', async () => {
+test('Degradacion honesta en la respuesta de JARVIS: declara el respaldo y el motivo REAL (cuota)', async () => {
   const r = await consultarJarvis('que tiempo hace en Madrid?', [], {
     chatCompletion: async () => ({
       message: { role: 'assistant', content: 'Soleado, 22 grados, senor.' },
       model: RESPALDO,
       degradado: true,
-      failover: { modeloPrincipal: PRIMARIO, cadena: [PRIMARIO, RESPALDO], saltadosPorCircuito: [], intentos: 2 }
+      failover: { modeloPrincipal: PRIMARIO, motivoPrincipal: 'cuota', cadena: [PRIMARIO, RESPALDO], saltadosPorCircuito: [], intentos: 2 }
     })
   });
   assert.match(r, /modelo de respaldo/, 'declara que respondio el respaldo');
-  assert.match(r, /se ha ejecutado dos veces/, 'declara la no-duplicacion');
+  assert.match(r, /sin cuota ahora mismo/, 'motivo cuota declarado como cuota');
+  assert.doesNotMatch(r, /no responde ahora mismo/, 'no confunde cuota con fallo temporal');
+});
+
+test('Degradacion honesta: motivo temporal NO se declara como "sin cuota"', async () => {
+  const r = await consultarJarvis('que tiempo hace en Madrid?', [], {
+    chatCompletion: async () => ({
+      message: { role: 'assistant', content: 'Soleado, 22 grados, senor.' },
+      model: RESPALDO,
+      degradado: true,
+      failover: { modeloPrincipal: PRIMARIO, motivoPrincipal: 'temporal', cadena: [PRIMARIO, RESPALDO], saltadosPorCircuito: [], intentos: 3 }
+    })
+  });
+  assert.match(r, /no responde ahora mismo/, 'motivo temporal declarado como temporal');
+  assert.doesNotMatch(r, /sin cuota/, 'no afirma cuota si fue red/5xx');
 });
 
 test('Sin failover la respuesta no lleva nota de degradacion', async () => {
@@ -178,4 +193,94 @@ test('Sin failover la respuesta no lleva nota de degradacion', async () => {
     chatCompletion: async () => ({ message: { role: 'assistant', content: 'Soleado, 22 grados, senor.' } })
   });
   assert.doesNotMatch(r, /modelo de respaldo/);
+});
+
+// --- Integrados agente + router real (cliente guionizado) + herramienta de
+// escritura real con contador: certifican el flujo completo, no solo el LLM.
+import fs from 'node:fs';
+import { guardarMemoria } from '../../src/services/memoryService.js';
+
+const PASO_TOOL_MEMORIA = {
+  role: 'assistant',
+  content: '',
+  tool_calls: [{ id: 'c1', type: 'function', function: { name: 'guardar_memoria', arguments: { sujeto: 'clave failover xyz', dato: '42' } } }]
+};
+
+function clienteIntegrado(pasosPorModelo, registro) {
+  const contadores = new Map();
+  return {
+    chat: {
+      completions: {
+        create: async (payload) => {
+          registro.push(payload);
+          const pasos = pasosPorModelo[payload.model] || ['ok'];
+          const i = Math.min(contadores.get(payload.model) || 0, pasos.length - 1);
+          contadores.set(payload.model, (contadores.get(payload.model) || 0) + 1);
+          const paso = pasos[i];
+          if (paso instanceof Error) throw paso;
+          if (typeof paso === 'string') return { choices: [{ message: { role: 'assistant', content: paso }, finish_reason: 'stop' }] };
+          return { choices: [{ message: paso, finish_reason: paso.tool_calls ? 'tool_calls' : 'stop' }] };
+        }
+      }
+    }
+  };
+}
+
+function chatConRouterReal(cliente) {
+  return (peticion) => chatCompletion({
+    ...peticion,
+    provider: 'groq',
+    apiKey: 'gsk_test',
+    options: { ...(peticion.options || {}), crearCliente: () => cliente, esperar: async () => {} }
+  });
+}
+
+test('Integrado: herramienta escribe -> 429 en sintesis 120b -> 20b completa; escritura contador=1', async () => {
+  reiniciarCircuitoModelos();
+  const registro = [];
+  const cliente = clienteIntegrado({ [PRIMARIO]: [PASO_TOOL_MEMORIA, error429(3600)], [RESPALDO]: ['Anotado, senor.'] }, registro);
+  const rutaMem = `/tmp/test-failover-mem-a-${process.pid}.json`;
+  try { fs.unlinkSync(rutaMem); } catch { /* nada */ }
+  const r = await consultarJarvis('recuerda que la clave failover xyz es 42', [], {
+    chatCompletion: chatConRouterReal(cliente),
+    memoryRepository: { guardar: (datos) => guardarMemoria({ ...datos, rutaArchivo: rutaMem }) }
+  });
+  const contenido = fs.existsSync(rutaMem) ? fs.readFileSync(rutaMem, 'utf-8') : '';
+  assert.equal((contenido.match(/clave failover xyz/g) || []).length, 1, 'la escritura ocurrio EXACTAMENTE una vez');
+  assert.equal(registro.length, 3, '120b ronda tool, 120b sintesis 429, 20b sintesis');
+  assert.equal(registro[2].model, RESPALDO);
+  assert.deepEqual(registro[2].messages, registro[1].messages, 'la sintesis salta al respaldo con la MISMA peticion (resultado de la herramienta incluido)');
+  assert.match(r, /Anotado/, 'respuesta final del respaldo');
+  assert.match(r, /modelo de respaldo/, 'degradacion declarada');
+  assert.match(r, /sin cuota ahora mismo/, 'motivo cuota real');
+  try { fs.unlinkSync(rutaMem); } catch { /* nada */ }
+});
+
+test('Integrado: herramienta escribe y TODOS los modelos caen despues; contador=1 y mensaje de resultado parcial (sin invitar a repetir)', async () => {
+  reiniciarCircuitoModelos();
+  const registro = [];
+  const cliente = clienteIntegrado({ [PRIMARIO]: [PASO_TOOL_MEMORIA, error429(3600)], [RESPALDO]: [error429(3600)] }, registro);
+  const rutaMem = `/tmp/test-failover-mem-b-${process.pid}.json`;
+  try { fs.unlinkSync(rutaMem); } catch { /* nada */ }
+  const r = await consultarJarvis('recuerda que la clave failover xyz es 42', [], {
+    chatCompletion: chatConRouterReal(cliente),
+    memoryRepository: { guardar: (datos) => guardarMemoria({ ...datos, rutaArchivo: rutaMem }) }
+  });
+  const contenido = fs.existsSync(rutaMem) ? fs.readFileSync(rutaMem, 'utf-8') : '';
+  assert.equal((contenido.match(/clave failover xyz/g) || []).length, 1, 'la escritura ocurrio EXACTAMENTE una vez pese al fallo posterior');
+  assert.equal(registro.length, 3, 'tool 120b + sintesis 120b + sintesis 20b, sin bucles ni repeticion de la herramienta');
+  assert.match(r, /guardar_memoria/, 'la accion ejecutada se conserva y se nombra');
+  assert.match(r, /una sola vez/, 'declara que lo hecho no se repitio');
+  assert.match(r, /no hace falta que repita/, 'NO invita a repetir la peticion');
+  assert.doesNotMatch(r, /No se ha completado ninguna accion/, 'no niega la accion ya ejecutada');
+  try { fs.unlinkSync(rutaMem); } catch { /* nada */ }
+});
+
+test('Integrado: TODOS los modelos caen SIN ninguna herramienta previa: mensaje honesto de ninguna accion', async () => {
+  reiniciarCircuitoModelos();
+  const registro = [];
+  const cliente = clienteIntegrado({ [PRIMARIO]: [error429(3600)], [RESPALDO]: [error429(3600)] }, registro);
+  const r = await consultarJarvis('que tiempo hace en Madrid?', [], { chatCompletion: chatConRouterReal(cliente) });
+  assert.match(r, /No se ha completado ninguna accion/, 'cierto aqui: nada se ejecuto');
+  assert.match(r, /intentelo de nuevo/i, 'aqui SI se invita a reintentar');
 });

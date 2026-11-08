@@ -391,14 +391,17 @@ export async function chatCompletion({
   let modeloUsado = null;
   let ultimoError = null;
   let intentosTotales = 0;
+  let motivoSaltoPrincipal = null;
   const saltadosPorCircuito = [];
   for (const candidato of cadena) {
-    const aparcadoHasta = circuitoModelos.get(candidato) || 0;
-    if (aparcadoHasta > Date.now()) {
+    const aparcado = circuitoModelos.get(candidato);
+    if (aparcado && aparcado.hasta > Date.now()) {
       saltadosPorCircuito.push(candidato);
-      console.warn(`[RouterLLM] ${candidato} aparcado por circuito hasta ${new Date(aparcadoHasta).toISOString()}; se salta sin gastar llamada.`);
+      if (candidato === modeloPrincipal) motivoSaltoPrincipal = aparcado.motivo;
+      console.warn(`[RouterLLM] ${candidato} aparcado por circuito (${aparcado.motivo}) hasta ${new Date(aparcado.hasta).toISOString()}; se salta sin gastar llamada.`);
       continue;
     }
+    let motivoFallo = 'temporal';
     for (let intento = 1; intento <= MAX_INTENTOS_POR_MODELO; intento++) {
       intentosTotales++;
       try {
@@ -413,7 +416,8 @@ export async function chatCompletion({
         if (esperaMs > ESPERA_MAX_REINTENTO_MS) {
           // Cuota agotada a horizonte largo (p.ej. TPD diario): aparcar el
           // modelo en el circuito y saltar al siguiente SIN esperar aqui.
-          circuitoModelos.set(candidato, Date.now() + Math.min(esperaMs, 24 * 3600 * 1000));
+          motivoFallo = 'cuota';
+          circuitoModelos.set(candidato, { hasta: Date.now() + Math.min(esperaMs, 24 * 3600 * 1000), motivo: 'cuota' });
           console.warn(`[RouterLLM] ${candidato} sin cuota (retry-after ${esperaSugerida ?? 'desconocido'}s); aparcado y salto al siguiente modelo.`);
           break;
         }
@@ -422,6 +426,7 @@ export async function chatCompletion({
       }
     }
     if (modeloUsado) break;
+    if (candidato === modeloPrincipal) motivoSaltoPrincipal = motivoFallo;
   }
   if (!modeloUsado) {
     const detalle = ultimoError ? ` Ultimo error: ${String(ultimoError.message || ultimoError).slice(0, 200)}` : '';
@@ -474,7 +479,7 @@ export async function chatCompletion({
     provider: cloudConfig.provider,
     model: modeloUsado,
     degradado: modeloUsado !== modeloPrincipal,
-    failover: { modeloPrincipal, cadena, saltadosPorCircuito, intentos: intentosTotales },
+    failover: { modeloPrincipal, motivoPrincipal: modeloUsado !== modeloPrincipal ? (motivoSaltoPrincipal || 'temporal') : null, cadena, saltadosPorCircuito, intentos: intentosTotales },
     finishReason: res.choices?.[0]?.finish_reason || null,
     raw: res
   };
@@ -492,7 +497,7 @@ export async function chatCompletion({
 // para no gastar llamadas inutiles. No hay proactividad por cabeceras: las
 // ventanas RPM/TPM no dicen el saldo diario (sonda 8 nov 2026), la señal de
 // TPD es el 429 model-scoped con su retry-after.
-const circuitoModelos = new Map(); // modelo -> epochMs hasta el que esta aparcado
+const circuitoModelos = new Map(); // modelo -> { hasta: epochMs, motivo: 'cuota' | 'temporal' }
 const MAX_INTENTOS_POR_MODELO = 2;
 const ESPERA_MAX_REINTENTO_MS = 10000;
 

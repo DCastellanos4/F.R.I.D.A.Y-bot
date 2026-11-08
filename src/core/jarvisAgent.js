@@ -2088,7 +2088,20 @@ Directrices de selección:
     { role: 'user', content: mensajeUsuario }
   ];
 
-  let respuesta = await chatConRecuperacion400(chatImpl, {
+  // Cuota agotada en TODOS los modelos (router de failover): no explotar;
+  // se informa del resultado parcial exacto (acciones ya ejecutadas se
+  // conservan y NO se invita a repetirlas).
+  let errCuotaAgotada = null;
+  const chatAcotado = async (peticion, etiqueta) => {
+    try {
+      return await chatConRecuperacion400(chatImpl, peticion, etiqueta);
+    } catch (err) {
+      if (err && err.name === 'CuotaAgotadaError') { errCuotaAgotada = err; return null; }
+      throw err;
+    }
+  };
+
+  let respuesta = await chatAcotado({
     messages: mensajes,
     tools: herramientasActivas.length > 0 ? herramientasActivas : undefined,
     options: {
@@ -2112,7 +2125,7 @@ Directrices de selección:
   const accionesConEfectosEjecutadas = new Set();
 
   // Bucle acotado ReAct: Think -> Act -> Observe -> Decide (hasta MAX_RONDAS_HERRAMIENTAS)
-  while (respuesta.message.tool_calls && respuesta.message.tool_calls.length > 0) {
+  while (!errCuotaAgotada && respuesta && respuesta.message.tool_calls && respuesta.message.tool_calls.length > 0) {
     if (ronda >= MAX_RONDAS_HERRAMIENTAS) {
       console.warn(`[J.A.R.V.I.S.] Limite de ${MAX_RONDAS_HERRAMIENTAS} rondas de herramientas alcanzado; se responde con lo disponible.`);
       traza.reactSteps.push({
@@ -2259,7 +2272,7 @@ Directrices de selección:
     });
 
     console.log(`[J.A.R.V.I.S.] Sintetizando (ronda ${ronda}/${MAX_RONDAS_HERRAMIENTAS})...`);
-    respuesta = await chatConRecuperacion400(chatImpl, {
+    respuesta = await chatAcotado({
       messages: mensajes,
       tools: herramientasActivas.length > 0 ? herramientasActivas : undefined,
       options: {
@@ -2269,6 +2282,7 @@ Directrices de selección:
         temperature: 0.1
       }
     }, `sintesis ronda ${ronda}`);
+    if (!respuesta) break; // cuota agotada en todos los modelos: salir del bucle
 
     // Fase 4: DECIDE (Evaluacion de finalizacion o encadenamiento)
     const tieneMasHerramientas = Boolean(respuesta.message.tool_calls && respuesta.message.tool_calls.length > 0);
@@ -2286,7 +2300,7 @@ Directrices de selección:
   }
 
   // Bounded by max 5 rounds: forzar paso de formulacion final si no hay texto final
-  if (opciones.chatId !== 'chat-dorado@test' && ronda >= MAX_RONDAS_HERRAMIENTAS && (!respuesta.message.content || (respuesta.message.tool_calls && respuesta.message.tool_calls.length > 0))) {
+  if (!errCuotaAgotada && respuesta && opciones.chatId !== 'chat-dorado@test' && ronda >= MAX_RONDAS_HERRAMIENTAS && (!respuesta.message.content || (respuesta.message.tool_calls && respuesta.message.tool_calls.length > 0))) {
     console.warn(`[J.A.R.V.I.S.] Limite de ${MAX_RONDAS_HERRAMIENTAS} rondas alcanzado; forzando paso de formulacion final.`);
     try {
       const respuestaForzada = await chatConRecuperacion400(chatImpl, {
@@ -2312,7 +2326,20 @@ Directrices de selección:
     }
   }
 
-  let textoFinal = (respuesta.message.content || '').trim();
+  let textoFinal;
+  if (errCuotaAgotada || !respuesta) {
+    // TODOS los modelos sin cuota/no disponibles: resultado parcial exacto.
+    // Las acciones ya ejecutadas se conservan y se nombran; NO se invita a
+    // repetir la peticion (lo hecho esta hecho una sola vez).
+    const ejecutadasOk = traza.llamadas.filter((l) => l.resultado === 'ok').map((l) => l.nombre);
+    textoFinal = ejecutadasOk.length > 0
+      ? `Señor, he completado estas acciones: ${ejecutadasOk.join(', ')}. No he podido redactarle la respuesta final porque el modelo principal y el de respaldo estan sin cuota o no disponibles ahora mismo. Lo que esta hecho esta hecho una sola vez: no hace falta que repita la peticion.`
+      : 'Señor, no he podido responder: el modelo principal y el de respaldo estan sin cuota o no disponibles ahora mismo. No se ha completado ninguna accion; intentelo de nuevo en unos minutos.';
+    traza.cuotaAgotada = true;
+    console.warn('[J.A.R.V.I.S.] Cuota agotada en todos los modelos; se entrega resultado parcial exacto.');
+  } else {
+    textoFinal = (respuesta.message.content || '').trim();
+  }
 
   // Nunca se entrega silencio: si tras las rondas la respuesta quedo vacia,
   // se informa con exactitud de si se ejecuto algo o nada (sin afirmar exitos).
@@ -2326,7 +2353,7 @@ Directrices de selección:
 
   // Chequeo de consistencia: si la respuesta quedo cortada por el limite de
   // tokens, se pide una continuacion en lugar de entregarla mutilada.
-  if (esRespuestaTruncada(textoFinal, respuesta.finishReason)) {
+  if (!errCuotaAgotada && respuesta && esRespuestaTruncada(textoFinal, respuesta.finishReason)) {
     console.log('[J.A.R.V.I.S.] Respuesta truncada por limite de tokens; solicitando continuacion...');
     try {
       const continuacion = await chatImpl({
@@ -2379,10 +2406,13 @@ Directrices de selección:
     console.warn('[J.A.R.V.I.S. Guardrail] Error ejecutando guardrails de salida:', errGuard.message);
   }
 
-  if (failoverDetectado && typeof textoFinal === 'string' && textoFinal.trim()) {
-    // Degradacion honesta: David sabe que respondio el respaldo y que las
-    // acciones de ESTA peticion no se repitieron (conmutacion por ronda).
-    textoFinal += '\n\n(Nota: el modelo principal esta sin cuota o no responde; he respondido con el modelo de respaldo. Ninguna accion de esta peticion se ha ejecutado dos veces.)';
+  if (failoverDetectado && !errCuotaAgotada && typeof textoFinal === 'string' && textoFinal.trim()) {
+    // Degradacion honesta y MOTIVO real: cuota vs fallo temporal (no se
+    // afirma "sin cuota" si fue red/5xx). La no-duplicacion es estructural
+    // (conmutacion por ronda + registro de efectos de la peticion), no un
+    // lema: no se declara como garantia universal en texto.
+    const motivoTxt = failoverDetectado.motivoPrincipal === 'cuota' ? 'esta sin cuota ahora mismo' : 'no responde ahora mismo';
+    textoFinal += `\n\n(Nota: el modelo principal ${motivoTxt}; he respondido con el modelo de respaldo.)`;
     traza.failoverModelo = failoverDetectado;
   }
 
