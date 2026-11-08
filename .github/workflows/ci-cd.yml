@@ -100,6 +100,7 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
           # El secret ya se guarda en formato PEM valido; solo volcarlo con permisos.
           key=$(mktemp); chmod 600 "$key"
+          trap 'rm -f "$key"' EXIT
           printf '%s\n' "$ORACLE_SSH_PRIVATE_KEY" > "$key"
           # Namespace de temporales UNICO por despliegue: scripts, TAPs y
           # fixtures viven solo ahi; nada se escribe al /tmp compartido.
