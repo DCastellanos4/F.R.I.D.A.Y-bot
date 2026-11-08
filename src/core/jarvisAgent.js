@@ -1950,8 +1950,11 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
     const inicioLlm = Date.now();
     try {
       const r = await conSpan('llm_call', { modelo: String(peticion && peticion.model || 'desconocido') }, () => chatImplBase(peticion));
+      // El modelo REAL lo decide llmService (router con failover) y viaja en
+      // la respuesta; la peticion normalmente no lo trae. Sin esto el label
+      // salia siempre "desconocido" y P95/P99 por modelo no distinguia nada.
       registrarFinLLM({
-        modelo: peticion && peticion.model,
+        modelo: (r && r.model) || (peticion && peticion.model),
         sesion: opciones.chatId,
         duracionSeg: (Date.now() - inicioLlm) / 1000,
         usage: r && r.usage

@@ -156,6 +156,18 @@ test('metricas: latencias LLM/tool, tokens por sesion (hash, no chatId)', async 
   assert.ok(!reg.includes(CHAT_ID), 'metricas sin chatId en claro');
 });
 
+test('label modelo: el modelo REAL de la respuesta (router), no "desconocido" cuando la peticion no lo trae', async () => {
+  await iniciarObservabilidad({ forzarTrazas: false, forzarMetricas: true });
+  await consultarJarvis('hola', [], {
+    chatId: CHAT_ID,
+    chatCompletion: async () => ({ message: { role: 'assistant', content: 'Hola, senor.' }, model: 'openai/gpt-oss-120b', usage: { prompt_tokens: 3, completion_tokens: 2 } })
+  });
+  const reg = await atenderMetricasLocal();
+  assert.match(reg, /jarvis_llm_duracion_segundos_count\{[^}]*modelo="openai\/gpt-oss-120b"/);
+  assert.ok(!/jarvis_llm_duracion_segundos_count\{[^}]*modelo="desconocido"/.test(reg), 'sin serie desconocido');
+  assert.match(reg, /jarvis_llm_tokens_total\{[^}]*modelo="openai\/gpt-oss-120b"/);
+});
+
 async function atenderMetricasLocal() {
   return new Promise((resolve, reject) => {
     const req = { url: '/metrics', socket: { remoteAddress: '127.0.0.1' } };
