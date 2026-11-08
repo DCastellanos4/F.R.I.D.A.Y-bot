@@ -23,8 +23,12 @@ printf '{"name":"h","version":"1.0.0","lockfileVersion":3,"packages":{}}\n' > pa
 printf 'module.exports = { apps: [] };\n' > ecosystem.config.cjs
 mkdir -p deploy
 cp "$ROOT/deploy/deploy.sh" "$ROOT/deploy/snapshot.js" "$ROOT/deploy/quality-gate.mjs" deploy/
-# El workflow copia estos dos a /tmp en el VPS; se replica aqui.
-cp "$ROOT/deploy/snapshot.js" "$ROOT/deploy/quality-gate.mjs" /tmp/
+# Namespace de temporales PROPIO (como el workflow, pero bajo $BASE):
+# el deploy interno NUNCA toca el /tmp compartido ni el namespace del
+# despliegue exterior.
+DTMP_H="$BASE/dtmp" && mkdir -p "$DTMP_H"
+cp "$ROOT/deploy/snapshot.js" "$ROOT/deploy/quality-gate.mjs" "$DTMP_H/"
+export DEPLOY_TMP="$DTMP_H"
 git add -A && git commit -qm init
 git push -q "$BASE/origin.git" HEAD:main
 SHA=$(git rev-parse HEAD)
@@ -51,6 +55,7 @@ STATE="__STATE__"
 LOG="__BASE__/.pm2/logs/jarvis-whatsapp-out.log"
 mkdir -p "$(dirname "$LOG")"
 st() { cat "$STATE"; }
+echo "$(date +%s%N) pm2 $*" >> "${PM2_TRACE:-/dev/null}"
 case "$1" in
   jlist)
     case "$(st)" in
@@ -108,6 +113,8 @@ chmod +x "$BIN/node"
 
 export PATH="$BIN:/usr/bin:/bin"
 export DEPLOY_BASE="$BASE" REPO_URL="$BASE/origin.git" RELEASE_SHA="$SHA"
+# Traza completa de TODAS las llamadas pm2 del ensayo (auditoria).
+export PM2_TRACE="$BASE/pm2-calls.log"
 export VENTANA_SALUD=1 MIN_PASS_PCT=0
 
 cd "$BASE"

@@ -26,6 +26,18 @@ ESTADO=$BASE/jarvis-estado        # data/, auth_info_baileys/, .env compartidos
 BACKUPS=$BASE/backups
 LOCK=$BASE/.deploy.lock
 TS=$(date +%Y%m%d-%H%M%S)
+# Namespace de temporales POR INVOCACION: el workflow crea un mktemp unico
+# y lo pasa como DEPLOY_TMP. TODOS los ficheros de trabajo (scripts, TAPs,
+# fixtures, lock temporal) viven ahi y solo ahi: dos despliegues (o un
+# ensayo harness dentro de la suite) NUNCA comparten ruta. Sin DEPLOY_TMP
+# se cae a un mktemp propio, nunca al /tmp compartido.
+DTMP="${DEPLOY_TMP:-}"
+if [ -z "$DTMP" ]; then DTMP=$(mktemp -d /tmp/deploy-tmp-XXXXXX); fi
+mkdir -p "$DTMP"
+NECESARIOS="$DTMP/snapshot.js $DTMP/quality-gate.mjs"
+for f in $NECESARIOS; do
+  [ -f "$f" ] || { echo "PARADA: falta $f (el invocador debe copiar los scripts al namespace DEPLOY_TMP)." >&2; exit 1; }
+done
 SHA=${RELEASE_SHA:?PARADA: RELEASE_SHA ausente - se despliega solo el SHA probado en CI}
 CORTE=0
 
@@ -96,8 +108,8 @@ npm ci --no-audit --no-fund
 echo "== [4/7] Puerta en el servidor: criticos + suite aislados (fixtures temporales, sin datos reales ni sesion) =="
 # La carpeta de datos temporal termina en /data: varios tests comprueban la
 # forma de las rutas por defecto (.../data/<fichero>).
-mkdir -p /tmp/cicd-data-$TS/data
-export DAVIS_DATA_DIR=/tmp/cicd-data-$TS/data DAVIS_HISTORY_DIR=/tmp/cicd-history-$TS NODE_ENV=test
+mkdir -p "$DTMP/cicd-data-$TS/data"
+export DAVIS_DATA_DIR="$DTMP/cicd-data-$TS/data" DAVIS_HISTORY_DIR="$DTMP/cicd-history-$TS" NODE_ENV=test
 # Aislamiento de entorno de tests: deben correr con las MISMAS variables que
 # en CI (ninguna de produccion). El .env de la release es un ENLACE al estado
 # compartido y dotenv lo cargaba en cada proceso de test (contaminacion real:
@@ -108,14 +120,14 @@ unset DAVIS_OTEL_ENABLED DAVIS_OTEL_ENDPOINT DAVIS_OTEL_SERVICIO DAVIS_METRICS_E
 CRITICOS="tests/sector2/task0_foundations.test.js tests/sector2/task0_challenge.test.js tests/sector2/integration.test.js tests/sector2/task12_bash_console.test.js tests/sector2/task15_github_webhook.test.js tests/sector2/task16_backup.test.js tests/sector2/task21_memory_encryption.test.js tests/sector2/deploy_aislamiento.test.js tests/sector3/safefetch_unit.test.js tests/sector3/process_watchdog.test.js"
 # Lista explicita de ficheros: 'node --test <directorio>' NO es portable
 # (algunas versiones lo tratan como modulo y fallan).
-timeout 900 node --test --test-reporter=tap $CRITICOS > /tmp/criticos-$TS.tap || true
-timeout 900 node tests/run_all.js > /tmp/suite-$TS.tap || true
+timeout 900 node --test --test-reporter=tap $CRITICOS > "$DTMP/criticos-$TS.tap" || true
+timeout 900 node tests/run_all.js > "$DTMP/suite-$TS.tap" || true
 # Los timeouts/errores del runner NO se enmascaran: la puerta falla cerrada
 # si falta el resumen TAP o no se ejecuto nada. '|| true' solo evita que
 # set -e oculte el motivo; quien decide es la puerta.
-node deploy/quality-gate.mjs --critical /tmp/criticos-$TS.tap --suite /tmp/suite-$TS.tap --min-pct "${MIN_PASS_PCT:-95}" \
+node "$DTMP/quality-gate.mjs" --critical "$DTMP/criticos-$TS.tap" --suite "$DTMP/suite-$TS.tap" --min-pct "${MIN_PASS_PCT:-95}" \
   || { echo "PARADA: puerta no superada en servidor; ANTES del corte, el bot sigue con la release anterior." >&2; exit 1; }
-rm -rf /tmp/cicd-data-$TS /tmp/cicd-history-$TS
+rm -rf "$DTMP/cicd-data-$TS" "$DTMP/cicd-history-$TS"
 
 echo "== [5/7] Snapshot cifrado del estado (obligatorio, DBK1 GCM autenticado) =="
 PASS="${DAVIS_BACKUP_KEY:-${BACKUP_PASSPHRASE:-}}"
@@ -149,12 +161,21 @@ soltar_writers() {
 }
 trap soltar_writers EXIT
 $PM2 stop jarvis-api jarvis-whatsapp >/dev/null 2>&1 || true
-# Verificacion estricta: cada writer conocido debe quedar 'stopped'. Cualquier
-# otro estado (online, stopping, errored, launching...) significa posible
-# escritor residual o proceso a medio parar: NO se copia (mejor parar antes
-# del corte con el bot en marcha que snapshot incoherente). Un proceso
-# ausente de jlist no es writer y no bloquea.
-if $PM2 jlist | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);const mal=['jarvis-whatsapp','jarvis-api'].filter(n=>{const p=j.find(x=>x.name===n);return p&&p.pm2_env.status!=='stopped'});if(mal.length){console.error('writers no parados del todo: '+mal.join(','));process.exit(1)}})"; then
+# Espera ACOTADA con polling: 'pm2 stop' es asincrono y jlist puede mostrar
+# 'stopping' durante unos segundos. Se espera hasta 30s a que cada writer
+# conocido quede 'stopped'. Cualquier otro estado pasado el plazo (online,
+# stopping, errored, launching, churn de autorestart) significa posible
+# escritor residual: NO se copia (mejor parar antes del corte con el bot en
+# marcha que snapshot incoherente). Un proceso ausente de jlist no es writer
+# y no bloquea. NUNCA se relaja a aceptar un writer activo.
+WRITERS_PARADOS=0
+ULTIMO_ESTADO_WRITERS=""
+for i in $(seq 1 30); do
+  ULTIMO_ESTADO_WRITERS=$($PM2 jlist | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);const mal=['jarvis-whatsapp','jarvis-api'].filter(n=>{const p=j.find(x=>x.name===n);return p&&p.pm2_env.status!=='stopped'});if(mal.length){console.log('writers no parados del todo: '+mal.join(','));process.exit(1)}})" 2>&1) && { WRITERS_PARADOS=1; break; }
+  sleep 1
+done
+[ "$WRITERS_PARADOS" = "1" ] || [ -z "$ULTIMO_ESTADO_WRITERS" ] || echo "$ULTIMO_ESTADO_WRITERS" >&2
+if [ "$WRITERS_PARADOS" = "1" ]; then
   SNAP_PARADOS=1
 else
   echo "PARADA: no se pudieron parar los writers; snapshot cancelado. ANTES del corte: el bot sigue con la release anterior." >&2
@@ -169,7 +190,7 @@ fi
 umask 077
 SNAP_TMP="$BACKUPS/.pre-deploy-$TS.dbk1.tmp"
 RC=0
-tar -czf - -C "$ESTADO" . | PASS="$PASS" node /tmp/snapshot.js > "$SNAP_TMP" || RC=$?
+tar -czf - -C "$ESTADO" . | PASS="$PASS" node "$DTMP/snapshot.js" > "$SNAP_TMP" || RC=$?
 if [ "$RC" -ne 0 ] || [ ! -s "$SNAP_TMP" ]; then
   rm -f "$SNAP_TMP"
   echo "PARADA: snapshot fallo (rc=$RC). El temporal se borro: no queda punto de restauracion falso." >&2

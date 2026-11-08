@@ -19,6 +19,13 @@ import { PROJECT_ROOT } from '../../src/config/paths.js';
 
 const HARNESS = path.join(PROJECT_ROOT, 'tests', 'harness', 'deploy_snapshot_harness.sh');
 
+// OPT-IN EXPLICITO: este ensayo lanza un deploy.sh completo con stubs y NO
+// debe correr dentro de la puerta del servidor VPS (paso 4 de deploy.sh) ni
+// en run_all por defecto: el 8 nov 2026 ejecutado alli ensucio /tmp del VPS
+// con TAPs fabricados. CI lo corre en runner aislado con la variable.
+const HABILITADO = process.env.DAVIS_HARNESS_DEPLOY === '1';
+const quiz = HABILITADO ? test : test.skip;
+
 function correr(escenario) {
   try {
     const salida = execFileSync('bash', [HARNESS, escenario], { encoding: 'utf8', timeout: 120000 });
@@ -28,7 +35,7 @@ function correr(escenario) {
   }
 }
 
-test('harness A: snapshot con tar fallido -> PARADA, procesos recuperados, sin punto de restauracion falso', { timeout: 120000 }, () => {
+quiz('harness A: snapshot con tar fallido -> PARADA, procesos recuperados, sin punto de restauracion falso', { timeout: 120000 }, () => {
   const { rc, salida } = correr('A');
   assert.notEqual(rc, 0, 'el despliegue debe FALLAR (no maquillar el snapshot)');
   assert.match(salida, /pm2-final=online/, `el trap rearranco los writers tras el fallo:\n${salida}`);
@@ -36,7 +43,7 @@ test('harness A: snapshot con tar fallido -> PARADA, procesos recuperados, sin p
   assert.match(salida, /symlink=\(no existe\)/, `sin corte: el symlink nunca se toco:\n${salida}`);
 });
 
-test('harness B: despliegue feliz -> dbk1 valido 0600, corte y procesos online', { timeout: 120000 }, () => {
+quiz('harness B: despliegue feliz -> dbk1 valido 0600, corte y procesos online', { timeout: 120000 }, () => {
   const { rc, salida } = correr('B');
   assert.equal(rc, 0, salida);
   assert.match(salida, /pm2-final=online/);
@@ -44,7 +51,7 @@ test('harness B: despliegue feliz -> dbk1 valido 0600, corte y procesos online',
   assert.match(salida, /symlink=.*releases\//, `corte realizado:\n${salida}`);
 });
 
-test('harness C: writer a medio parar (stopping) -> PARADA antes de copiar, sin tar ni corte', { timeout: 120000 }, () => {
+quiz('harness C: writer a medio parar (stopping) -> PARADA antes de copiar, sin tar ni corte', { timeout: 120000 }, () => {
   const { rc, salida } = correr('C');
   assert.notEqual(rc, 0);
   assert.match(salida, /writers no parados del todo/, salida);
@@ -52,7 +59,7 @@ test('harness C: writer a medio parar (stopping) -> PARADA antes de copiar, sin 
   assert.match(salida, /symlink=\(no existe\)/, salida);
 });
 
-test('harness D: writers ya parados a proposito + tar falla -> estado parado RESPETADO (no se arrancan)', { timeout: 120000 }, () => {
+quiz('harness D: writers ya parados a proposito + tar falla -> estado parado RESPETADO (no se arrancan)', { timeout: 120000 }, () => {
   const { rc, salida } = correr('D');
   assert.notEqual(rc, 0);
   assert.match(salida, /pm2-final=stopped/, `un fallo de snapshot NO debe arrancar lo que estaba parado deliberadamente:\n${salida}`);
@@ -60,7 +67,7 @@ test('harness D: writers ya parados a proposito + tar falla -> estado parado RES
   assert.match(salida, /backups: \(sin dbk1\)/, salida);
 });
 
-test('harness E: arranque de la nueva release falla TRAS el corte -> ESTADO PARCIAL explicito, sin auto-revert, restauracion manual segura', { timeout: 120000 }, () => {
+quiz('harness E: arranque de la nueva release falla TRAS el corte -> ESTADO PARCIAL explicito, sin auto-revert, restauracion manual segura', { timeout: 120000 }, () => {
   const { rc, salida } = correr('E');
   assert.notEqual(rc, 0);
   assert.match(salida, /ESTADO PARCIAL TRAS EL CORTE/, salida);

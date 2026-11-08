@@ -62,6 +62,8 @@ jobs:
             tests/sector2/deploy_aislamiento.test.js \
             tests/sector3/safefetch_unit.test.js \
             tests/sector3/process_watchdog.test.js | tee criticos.tap
+      - name: Harness de despliegue (opt-in explicito, runner aislado; NO corre en la puerta del VPS)
+        run: DAVIS_HARNESS_DEPLOY=1 node --test tests/sector3/deploy_snapshot_harness.test.js
       - name: Suite completa (TAP a fichero)
         shell: bash
         run: |
@@ -99,9 +101,14 @@ jobs:
           # El secret ya se guarda en formato PEM valido; solo volcarlo con permisos.
           key=$(mktemp); chmod 600 "$key"
           printf '%s\n' "$ORACLE_SSH_PRIVATE_KEY" > "$key"
+          # Namespace de temporales UNICO por despliegue: scripts, TAPs y
+          # fixtures viven solo ahi; nada se escribe al /tmp compartido.
+          DTMP=$(ssh -i "$key" -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes "$ORACLE_SSH_DESTINO" \
+            "mktemp -d /tmp/deploy-tmp-XXXXXXXX")
+          [ -n "$DTMP" ] || { echo "BLOQUEADO: no se pudo crear el namespace temporal en el VPS" >&2; exit 1; }
           scp -i "$key" -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
             deploy/deploy.sh deploy/snapshot.js deploy/quality-gate.mjs \
-            "$ORACLE_SSH_DESTINO:/tmp/"
+            "$ORACLE_SSH_DESTINO:$DTMP/"
           ssh -i "$key" -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes "$ORACLE_SSH_DESTINO" \
-            "RELEASE_SHA=$RELEASE_SHA bash /tmp/deploy.sh"
+            "DEPLOY_TMP=$DTMP RELEASE_SHA=$RELEASE_SHA bash $DTMP/deploy.sh"
           rm -f "$key"
