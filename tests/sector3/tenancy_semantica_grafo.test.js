@@ -69,3 +69,17 @@ test('catalogo real completo: NINGUNA herramienta ejecutable por usuario/tenant 
     assert.equal(puedeEjecutarHerramienta({ tenantId: undefined, herramienta: h, catalogo: NOMBRES_HERRAMIENTAS_JARVIS }).permitido, true, `propietario: ${h}`);
   }
 });
+
+test('aislarOpcionesTenant: fuerza rutas y chatId del tenant, ignora overrides; propietario intacto', async () => {
+  const { aislarOpcionesTenant } = await import('../../src/core/tenancy.js');
+  const o = { chatId: 'c1', rutaArchivoGrafo: '/x' };
+  assert.equal(aislarOpcionesTenant(o, BASE), o, 'sin tenant: mismo objeto');
+  assert.equal(aislarOpcionesTenant({ ...o, tenantId: 'propietario' }, BASE).chatId, 'c1');
+  const t = aislarOpcionesTenant({ tenantId: 'sint-a', chatId: 'c1', rutaArchivoGrafo: '/etc/passwd', storePath: '/otro/brain.json', rutaArchivoMemorias: '/otro/m.json', vectorsPath: '/otro/v.json' }, BASE);
+  assert.equal(t.chatId, 't:sint-a:c1');
+  assert.equal(t.rutaArchivoGrafo, path.join(BASE, 'tenants', 'sint-a', 'knowledge_graph.json'));
+  assert.equal(t.rutaArchivoMemorias, path.join(BASE, 'tenants', 'sint-a', 'brain_memory.json'));
+  assert.equal(t.vectorsPath, path.join(BASE, 'tenants', 'sint-a', 'knowledge_vectors.json'));
+  assert.equal(t.storePath, undefined);
+  assert.throws(() => aislarOpcionesTenant({ tenantId: '../x' }, BASE));
+});

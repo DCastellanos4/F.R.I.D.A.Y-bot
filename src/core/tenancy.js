@@ -115,3 +115,25 @@ export function claveChatTenant(tenantId, chatId) {
   afirmarTenantId(tenantId);
   return `t:${tenantId}:${String(chatId)}`;
 }
+
+/**
+ * Opciones de una consulta con el ambito de un tenant NO propietario. FUERZA
+ * (no respeta lo que venga en `opciones`) la clave de conversacion y las rutas
+ * de memoria semantica, vectores y grafo del tenant. Para el propietario o sin
+ * tenant devuelve las opciones tal cual. Cubre solo esos almacenes: el resto de
+ * ficheros de datos siguen sin aislar (por eso la compuerta sigue cerrada).
+ */
+export function aislarOpcionesTenant(opciones, dataDir) {
+  const tid = opciones && opciones.tenantId;
+  if (tid === undefined || tid === null || tid === TENANT_PROPIETARIO) return opciones;
+  afirmarTenantId(tid);
+  return {
+    ...opciones,
+    chatId: claveChatTenant(tid, opciones.chatId),
+    rutaArchivoMemorias: rutaDatosTenant(dataDir, tid, 'brain_memory.json'),
+    storePath: undefined,
+    vectorsPath: rutaDatosTenant(dataDir, tid, 'knowledge_vectors.json'),
+    rutaVectores: undefined,
+    rutaArchivoGrafo: rutaDatosTenant(dataDir, tid, 'knowledge_graph.json')
+  };
+}

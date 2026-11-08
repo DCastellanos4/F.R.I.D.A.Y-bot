@@ -37,7 +37,8 @@ import { consultarClima } from '../services/weatherService.js';
 import { chatCompletion, esRespuestaTruncada } from './llmService.js';
 import { clasificarIntencionConModelo, seleccionarDominiosConModelo, comprobarYAvisarSalud, UMBRAL_CONFIANZA } from './intentRouterService.js';
 import { puedeEjecutarHerramienta } from '../services/rbacService.js';
-import { tenantsHabilitados } from './tenancy.js';
+import { tenantsHabilitados, aislarOpcionesTenant } from './tenancy.js';
+import { DATA_DIR as DATA_DIR_TENANCY } from '../config/paths.js';
 import { medirUso } from '../services/usageLedgerService.js';
 import { conSpan, fijarAtributosSpan, hashSesion, registrarFinLLM, registrarFinTool, registrarFinConsulta } from '../observability/telemetry.js';
 import { buscarEpisodios } from '../services/episodicMemoryService.js';
@@ -2730,6 +2731,7 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
     if (!tenantsHabilitados()) return 'Acceso no disponible para este usuario.';
     const rol = typeof opciones.rolDeTenant === 'function' ? opciones.rolDeTenant(tid) : null;
     if (rol !== 'usuario') return 'Acceso no disponible para este usuario.';
+    opciones = aislarOpcionesTenant(opciones, DATA_DIR_TENANCY);
   }
   return conSpan('consulta', { sesion: hashSesion(opciones && opciones.chatId) }, () => consultarJarvisInterna(mensajeUsuario, historial, opciones));
 }
