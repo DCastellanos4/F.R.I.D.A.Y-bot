@@ -320,7 +320,7 @@ export async function conSpan(nombre, atributos, fn) {
   if (!estado.trazasActivas || !estado.tracer) return fn();
   return estado.tracer.startActiveSpan(nombre, { attributes: sanitizarAtributos(atributos) }, async (span) => {
     try {
-      const res = await fn();
+      const res = await fn(span);
       return res;
     } catch (err) {
       registrarErrorEnSpan(span, err);
@@ -329,6 +329,12 @@ export async function conSpan(nombre, atributos, fn) {
       span.end();
     }
   });
+}
+
+/** Fija atributos (mismos filtros de whitelist) en un span ya abierto. No-op sin span. */
+export function fijarAtributosSpan(span, atributos) {
+  if (!span || typeof span.setAttributes !== 'function') return;
+  span.setAttributes(sanitizarAtributos(atributos));
 }
 
 /** Whitelist de claves + solo escalares + recorte. Cualquier clave no

@@ -168,8 +168,8 @@ test('label modelo: el modelo REAL de la respuesta (router), no "desconocido" cu
   assert.match(reg, /jarvis_llm_tokens_total\{[^}]*modelo="openai\/gpt-oss-120b"/);
 });
 
-test('label modelo: respaldo por failover etiqueta el modelo EFECTIVO; fallo con metadato acotado; sin secretos', async () => {
-  await iniciarObservabilidad({ forzarTrazas: false, forzarMetricas: true });
+test('label modelo: respaldo por failover etiqueta el modelo EFECTIVO; fallo con metadato acotado; sin secretos (span y metricas)', async () => {
+  await iniciarObservabilidad({ forzarTrazas: true, forzarMetricas: true, spanProcessor: processor });
   const PRINCIPAL = 'openai/gpt-oss-120b';
   const RESPALDO = 'llama-3.3-70b-versatile';
   let modo = 'principal';
@@ -183,6 +183,12 @@ test('label modelo: respaldo por failover etiqueta el modelo EFECTIVO; fallo con
     modo = m;
     try { await consultarJarvis(`consulta ${m}`, [], { chatId: CHAT_ID, chatCompletion: llm }); } catch { /* el error LLM puede propagarse */ }
   }
+  const modelosSpan = exporter.getFinishedSpans().filter((sp) => sp.name === 'llm_call').map((sp) => sp.attributes['modelo']);
+  assert.ok(modelosSpan.includes(PRINCIPAL), `span: exito del principal (${modelosSpan})`);
+  assert.ok(modelosSpan.includes(RESPALDO), `span: respaldo bajo el respaldo (${modelosSpan})`);
+  assert.ok(modelosSpan.includes('cadena_agotada'), `span: cadena agotada (${modelosSpan})`);
+  assert.ok(!modelosSpan.includes('desconocido'), `span: sin desconocido (${modelosSpan})`);
+  assert.ok(!JSON.stringify(exporter.getFinishedSpans().map((sp) => sp.attributes)).includes('secreto-sk-abc123'), 'span: sin mensaje de error');
   const reg = await atenderMetricasLocal();
   const filas = reg.split('\n').filter((x) => x.startsWith('jarvis_llm_duracion_segundos_count{'));
   const cuenta = (modelo, res) => {

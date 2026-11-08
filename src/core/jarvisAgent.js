@@ -36,7 +36,7 @@ import {
 import { consultarClima } from '../services/weatherService.js';
 import { chatCompletion, esRespuestaTruncada } from './llmService.js';
 import { clasificarIntencionConModelo, seleccionarDominiosConModelo, comprobarYAvisarSalud, UMBRAL_CONFIANZA } from './intentRouterService.js';
-import { conSpan, hashSesion, registrarFinLLM, registrarFinTool, registrarFinConsulta } from '../observability/telemetry.js';
+import { conSpan, fijarAtributosSpan, hashSesion, registrarFinLLM, registrarFinTool, registrarFinConsulta } from '../observability/telemetry.js';
 import { buscarEpisodios } from '../services/episodicMemoryService.js';
 import { registrarCandidatura, listarCandidaturas, actualizarCandidatura, resumenCandidaturas } from '../services/applicationTrackerService.js';
 import { crearPlanEstudio, listarPlanes, registrarAvance, resumenPlan, programarRecordatoriosPlan } from '../services/studyPlannerService.js';
@@ -1948,13 +1948,27 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
     // Observabilidad: span + metricas por llamada LLM (latencia P95/P99 y
     // tokens por sesion). Atributos: solo modelo; NUNCA mensajes.
     const inicioLlm = Date.now();
+    // Un unico criterio de modelo para span y metricas. Exito: modelo EFECTIVO de
+    // la respuesta (el router lo decide dentro de llmService; la peticion
+    // normalmente no lo trae). Fallo: metadato acotado del router (modelo que
+    // fallo o "cadena_agotada"), nunca el mensaje del error.
+    const modeloExito = (r) => (r && r.model) || (peticion && peticion.model);
+    const modeloFallo = (e) => (e && e.modeloFallido)
+      || (e && e.failover ? 'cadena_agotada' : null)
+      || (peticion && peticion.model);
     try {
-      const r = await conSpan('llm_call', { modelo: String(peticion && peticion.model || 'desconocido') }, () => chatImplBase(peticion));
-      // El modelo REAL lo decide llmService (router con failover) y viaja en
-      // la respuesta; la peticion normalmente no lo trae. Sin esto el label
-      // salia siempre "desconocido" y P95/P99 por modelo no distinguia nada.
+      const r = await conSpan('llm_call', { modelo: String((peticion && peticion.model) || 'desconocido') }, async (span) => {
+        try {
+          const resp = await chatImplBase(peticion);
+          fijarAtributosSpan(span, { modelo: String(modeloExito(resp) || 'desconocido') });
+          return resp;
+        } catch (eSpan) {
+          fijarAtributosSpan(span, { modelo: String(modeloFallo(eSpan) || 'desconocido') });
+          throw eSpan;
+        }
+      });
       registrarFinLLM({
-        modelo: (r && r.model) || (peticion && peticion.model),
+        modelo: modeloExito(r),
         sesion: opciones.chatId,
         duracionSeg: (Date.now() - inicioLlm) / 1000,
         usage: r && r.usage
@@ -1962,15 +1976,8 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
       if (r && r.degradado && r.failover) failoverDetectado = r.failover;
       return r;
     } catch (errLlm) {
-      // Atribucion del fallo con metadato acotado del router: modelo concreto
-      // que fallo (error no conmutable), o "cadena_agotada" si fallaron todos
-      // los de la cadena. Nunca el mensaje del error. Sin metadato: el de la
-      // peticion o "desconocido".
-      const modeloFallo = (errLlm && errLlm.modeloFallido)
-        || (errLlm && errLlm.failover ? 'cadena_agotada' : null)
-        || (peticion && peticion.model);
       registrarFinLLM({
-        modelo: modeloFallo,
+        modelo: modeloFallo(errLlm),
         sesion: opciones.chatId,
         duracionSeg: (Date.now() - inicioLlm) / 1000,
         error: errLlm
