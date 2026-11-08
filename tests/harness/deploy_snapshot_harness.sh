@@ -8,6 +8,9 @@
 set -uo pipefail
 
 ESCENARIO=${1:?A|B|C|D|E}
+# node REAL resuelto ANTES de acotar el PATH (en CI, setup-node lo instala
+# fuera de /usr/bin): el node falso delega siempre a este binario.
+REAL_NODE=$(command -v node) || { echo "harness: falta node en PATH" >&2; exit 2; }
 # Raiz del repo ANTES de cualquier cd (deploy.sh vive aqui).
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BASE=$(mktemp -d /tmp/deploy-harness-XXXXXX)
@@ -99,7 +102,7 @@ cat > "$BIN/node" <<'NODEEOF'
 # quality-gate.mjs y one-liners al node real.
 for a in "$@"; do
   case "$a" in
-    *snapshot.js|*quality-gate.mjs|-e) exec /usr/bin/node "$@" ;;
+    *snapshot.js|*quality-gate.mjs|-e) exec __REAL_NODE__ "$@" ;;
   esac
 done
 if [ "${1:-}" = "--test" ] || [[ "$*" == *"--test"* ]] || [[ "$*" == *run_all.js* ]]; then
@@ -107,8 +110,9 @@ if [ "${1:-}" = "--test" ] || [[ "$*" == *"--test"* ]] || [[ "$*" == *run_all.js
   echo "# tests 3"; echo "# pass 3"; echo "# fail 0"; echo "# skipped 0"
   exit 0
 fi
-exec /usr/bin/node "$@"
+exec __REAL_NODE__ "$@"
 NODEEOF
+sed -i "s|__REAL_NODE__|$REAL_NODE|g" "$BIN/node"
 chmod +x "$BIN/node"
 
 export PATH="$BIN:/usr/bin:/bin"
