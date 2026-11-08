@@ -55,3 +55,17 @@ test('radar de ofertas: radarDeps forzado al tenant, sin cola global; el radarDe
   assert.equal(o.radarDeps.rutaVistos, path.join(DIR, 'tenants', 'sint-a', 'job_radar_seen.json'));
   assert.equal(o.radarDeps.enqueue({}), false);
 });
+
+test('programadores y monitores: un tenant con TODAS las herramientas en su lista blanca sigue denegado antes de programar nada', async () => {
+  const { puedeEjecutarHerramienta } = await import('../../src/services/rbacService.js');
+  const todas = ['crear_recordatorio', 'programar_snooze', 'registrar_aviso_llegada', 'vigilar_producto', 'vigilar_ruta',
+    'configurar_repaso_flashcards', 'programar_recordatorios_estudio', 'configurar_radar_ofertas', 'escanear_ofertas_empleo',
+    'configurar_digest_semanal', 'ejecutar_skill', 'trigger_encrypted_backup'];
+  for (const h of todas) {
+    const d = puedeEjecutarHerramienta({ tenantId: 'sint-a', herramienta: h, rolDe: () => 'usuario', permitidasUsuario: todas });
+    assert.equal(d.permitido, false, `${h} debe estar denegada a tenants (${d.motivo})`);
+    assert.equal(d.motivo, 'solo_propietario', h);
+  }
+  // control: el propietario no cambia
+  assert.equal(puedeEjecutarHerramienta({ tenantId: 'propietario', herramienta: 'crear_recordatorio' }).permitido, true);
+});
