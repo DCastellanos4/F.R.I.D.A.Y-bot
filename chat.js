@@ -1,5 +1,7 @@
 import readline from 'readline';
-import { consultarJarvis } from './src/core/jarvisAgent.js';
+// Canal CLI sobre el hexagono: mismo puerto de entrada que WhatsApp.
+import { procesarMensajeEntrante } from './src/composition/container.js';
+import { crearInboundMessage } from './src/ports/inbound/InboundMessage.js';
 import { confirmAndExecute } from './src/system/bashConsoleService.js';
 
 const rl = readline.createInterface({
@@ -41,9 +43,13 @@ function promptUsuario() {
 
       console.log('\n[D.A.V.I.S.] FRIDAY está evaluando...');
       const inicio = Date.now();
-      const respuesta = await consultarJarvis(texto, historial, {
+      const inbound = crearInboundMessage({ userId: 'cli-local', text: texto, channel: 'cli' });
+      const respuesta = await procesarMensajeEntrante(inbound, {
+        historial,
+        opciones: {
         otpDelivery: async ({ otpCode, ttlSeconds, command }) => {
           console.log(`\n[2FA] Codigo OTP para "${command}": ${otpCode} (valido ${ttlSeconds}s). Escribe: confirmar otp ${otpCode}`);
+        }
         }
       });
       const tiempo = ((Date.now() - inicio) / 1000).toFixed(1);

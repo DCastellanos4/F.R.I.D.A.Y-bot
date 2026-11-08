@@ -14,6 +14,9 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 import { crearInboundMessage } from '../../src/ports/inbound/InboundMessage.js';
 import { afirmarLLMProvider } from '../../src/ports/outbound/LLMProviderPort.js';
@@ -141,6 +144,21 @@ test('el adaptador de canal envia por el socket con la forma historica', async (
   assert.equal(canal.canal, 'whatsapp');
   await canal.enviarTexto('jid-1', 'hola', { quoted: 'msg' });
   assert.deepEqual(envios, [['jid-1', { text: 'hola' }, { quoted: 'msg' }]]);
+});
+
+test('la ruta de persistencia es inyectable en guardar y buscar (base para SQLite)', async () => {
+  const { crearJsonMemoryRepository } = await import('../../src/adapters/outbound/persistence/jsonMemoryRepository.js');
+  const repo = crearJsonMemoryRepository();
+  const rutaTmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'davis-repo-')), 'mem_test.json');
+  const res = repo.guardar({ sujeto: 'inyeccion_ruta', dato: 'valor inyectado' }, { rutaArchivo: rutaTmp });
+  assert.equal(res.ok, true);
+  assert.ok(fs.existsSync(rutaTmp), 'guardar debio escribir en la ruta inyectada');
+  const encontradas = repo.buscar('inyeccion_ruta', { rutaArchivo: rutaTmp });
+  assert.equal(encontradas.length, 1);
+  assert.equal(encontradas[0].dato, 'valor inyectado');
+  const olvido = repo.olvidar('inyeccion_ruta', { rutaArchivo: rutaTmp });
+  assert.equal(olvido.ok, true);
+  assert.equal(repo.buscar('inyeccion_ruta', { rutaArchivo: rutaTmp }).length, 0);
 });
 
 test('el contenedor por defecto cablea los adaptadores historicos', () => {

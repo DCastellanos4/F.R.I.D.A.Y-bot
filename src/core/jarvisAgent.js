@@ -1458,14 +1458,14 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
           sujeto: args.sujeto,
           dato: args.dato,
           categoria: args.categoria
-        });
+        }, { rutaArchivo: opciones.rutaArchivoMemorias });
         if (res.ok) {
           resultadoTool = `Dato guardado con éxito en el Second Brain. Sujeto: "${res.memoria.sujeto}". Detalle: "${res.memoria.dato}". Fecha: ${res.memoria.fechaLocal}.`;
         } else {
           resultadoTool = `Error al guardar en la memoria: ${res.error}`;
         }
       } else if (nombreFuncion === 'buscar_memoria') {
-        const memorias = repoMemoriaDe(opciones).buscar(args.consulta);
+        const memorias = repoMemoriaDe(opciones).buscar(args.consulta, { rutaArchivo: opciones.rutaArchivoMemorias });
         if (memorias.length === 0) {
           resultadoTool = `No encontré ningún recuerdo previo sobre "${args.consulta}" en el Second Brain, señor.`;
         } else {
@@ -1483,7 +1483,7 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
         // argumento "confirmado" se ignora deliberadamente. La confirmacion
         // llega fuera de banda (mensaje directo de David) via
         // destructiveActionService, como el OTP de los comandos bash.
-        const res = repoMemoriaDe(opciones).olvidar(args.criterio, { confirmado: false });
+        const res = repoMemoriaDe(opciones).olvidar(args.criterio, { confirmado: false, rutaArchivo: opciones.rutaArchivoMemorias });
         if (res.requiereConfirmacion) {
           const idConfirmacion = opciones.chatId
             ? registrarBorradoMasivoPendiente(opciones.chatId, String(args.criterio), res.total)

@@ -70,16 +70,27 @@ const pollVoteStore = new Map();
 /**
  * Sends a message with ephemeral TTL (auto-delete timer).
  *
- * @param {object} sock - Baileys socket instance
+ * @param {object} canal - MessageChannelPort (enviarInteractivo) o socket Baileys en transicion
  * @param {string} remoteJid - WhatsApp destination JID
  * @param {object|string} content - Message content payload
  * @param {number} expirationSeconds - TTL in seconds (e.g., 86400 for 24h, 604800 for 7d, 0 for off)
  * @returns {Promise<object>} Message receipt
  */
-export async function sendEphemeralMessage(sock, remoteJid, content, expirationSeconds) {
-  if (!sock || typeof sock.sendMessage !== 'function') {
-    throw new Error('Invalid socket instance provided');
+// Puerto de canal: las funciones interactivas aceptan un MessageChannelPort
+// (metodo enviarInteractivo) o, en transicion, un socket Baileys crudo
+// (sendMessage). El core deja de exigir conocer Baileys.
+function resolverEnvioInteractivo(canal) {
+  if (canal && typeof canal.enviarInteractivo === 'function') {
+    return (jid, payload, opts) => canal.enviarInteractivo(jid, payload, opts);
   }
+  if (canal && typeof canal.sendMessage === 'function') {
+    return (jid, payload, opts) => canal.sendMessage(jid, payload, opts);
+  }
+  throw new Error('Invalid channel or socket instance provided');
+}
+
+export async function sendEphemeralMessage(canal, remoteJid, content, expirationSeconds) {
+  const enviar = resolverEnvioInteractivo(canal);
   if (typeof remoteJid !== 'string' || remoteJid.trim().length === 0) {
     throw new Error('Remote JID must be a non-empty string');
   }
@@ -93,7 +104,7 @@ export async function sendEphemeralMessage(sock, remoteJid, content, expirationS
   const payload = typeof content === 'string' ? { text: content } : { ...content };
   assertZeroEmojis(payload, 'Ephemeral payload');
 
-  return await sock.sendMessage(remoteJid, payload, {
+  return await enviar(remoteJid, payload, {
     ephemeralExpiration: expirationSeconds
   });
 }
@@ -104,7 +115,7 @@ export const sendEphemeral = sendEphemeralMessage;
 /**
  * Sends native confirmation buttons for critical actions.
  *
- * @param {object} sock - Baileys socket instance
+ * @param {object} canal - MessageChannelPort (enviarInteractivo) o socket Baileys en transicion
  * @param {string} remoteJid - WhatsApp destination JID
  * @param {object} options
  * @param {string} options.text - Main prompt text
@@ -112,10 +123,8 @@ export const sendEphemeral = sendEphemeralMessage;
  * @param {Array<{ id: string, text: string }>} options.buttons - Array of button definitions
  * @returns {Promise<object>} Message receipt
  */
-export async function sendButtons(sock, remoteJid, options) {
-  if (!sock || typeof sock.sendMessage !== 'function') {
-    throw new Error('Invalid socket instance provided');
-  }
+export async function sendButtons(canal, remoteJid, options) {
+  const enviar = resolverEnvioInteractivo(canal);
   if (typeof remoteJid !== 'string' || remoteJid.trim().length === 0) {
     throw new Error('Remote JID must be a non-empty string');
   }
@@ -149,13 +158,13 @@ export async function sendButtons(sock, remoteJid, options) {
     buttons: formattedButtons
   };
 
-  return await sock.sendMessage(remoteJid, payload);
+  return await enviar(remoteJid, payload);
 }
 
 /**
  * Sends an interactive selection list with sections and rows.
  *
- * @param {object} sock - Baileys socket instance
+ * @param {object} canal - MessageChannelPort (enviarInteractivo) o socket Baileys en transicion
  * @param {string} remoteJid - WhatsApp destination JID
  * @param {object} options
  * @param {string} options.text - Message prompt text
@@ -165,10 +174,8 @@ export async function sendButtons(sock, remoteJid, options) {
  * @param {Array<{ title: string, rows: Array<{ id: string, title: string, description?: string }> }>} options.sections
  * @returns {Promise<object>} Message receipt
  */
-export async function sendList(sock, remoteJid, options) {
-  if (!sock || typeof sock.sendMessage !== 'function') {
-    throw new Error('Invalid socket instance provided');
-  }
+export async function sendList(canal, remoteJid, options) {
+  const enviar = resolverEnvioInteractivo(canal);
   if (typeof remoteJid !== 'string' || remoteJid.trim().length === 0) {
     throw new Error('Remote JID must be a non-empty string');
   }
@@ -213,7 +220,7 @@ export async function sendList(sock, remoteJid, options) {
     sections: formattedSections
   };
 
-  return await sock.sendMessage(remoteJid, payload);
+  return await enviar(remoteJid, payload);
 }
 
 /**
@@ -265,7 +272,7 @@ export function generateVCard(contactInfo) {
 /**
  * Sends a digital vCard (.vcf) contact card through Baileys.
  *
- * @param {object} sock - Baileys socket instance
+ * @param {object} canal - MessageChannelPort (enviarInteractivo) o socket Baileys en transicion
  * @param {string} remoteJid - WhatsApp destination JID
  * @param {object} contactInfo
  * @param {string} contactInfo.displayName - Full contact name
@@ -273,10 +280,8 @@ export function generateVCard(contactInfo) {
  * @param {string} [contactInfo.organization] - Company or organization name
  * @returns {Promise<object>} Message receipt
  */
-export async function sendVCard(sock, remoteJid, contactInfo) {
-  if (!sock || typeof sock.sendMessage !== 'function') {
-    throw new Error('Invalid socket instance provided');
-  }
+export async function sendVCard(canal, remoteJid, contactInfo) {
+  const enviar = resolverEnvioInteractivo(canal);
   if (typeof remoteJid !== 'string' || remoteJid.trim().length === 0) {
     throw new Error('Remote JID must be a non-empty string');
   }
@@ -293,13 +298,13 @@ export async function sendVCard(sock, remoteJid, contactInfo) {
     }
   };
 
-  return await sock.sendMessage(remoteJid, payload);
+  return await enviar(remoteJid, payload);
 }
 
 /**
  * Sends a native WhatsApp poll.
  *
- * @param {object} sock - Baileys socket instance
+ * @param {object} canal - MessageChannelPort (enviarInteractivo) o socket Baileys en transicion
  * @param {string} remoteJid - WhatsApp destination JID
  * @param {object} pollOptions
  * @param {string} pollOptions.name - Poll question/title
@@ -307,10 +312,8 @@ export async function sendVCard(sock, remoteJid, contactInfo) {
  * @param {number} [pollOptions.selectableCount=1] - Maximum selections allowed
  * @returns {Promise<object>} Message receipt
  */
-export async function sendPoll(sock, remoteJid, pollOptions) {
-  if (!sock || typeof sock.sendMessage !== 'function') {
-    throw new Error('Invalid socket instance provided');
-  }
+export async function sendPoll(canal, remoteJid, pollOptions) {
+  const enviar = resolverEnvioInteractivo(canal);
   if (typeof remoteJid !== 'string' || remoteJid.trim().length === 0) {
     throw new Error('Remote JID must be a non-empty string');
   }
@@ -358,7 +361,7 @@ export async function sendPoll(sock, remoteJid, pollOptions) {
     }
   };
 
-  return await sock.sendMessage(remoteJid, payload);
+  return await enviar(remoteJid, payload);
 }
 
 /**

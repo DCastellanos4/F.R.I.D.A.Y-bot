@@ -13,6 +13,10 @@
  * @property {string} canal  Nombre del canal en minusculas ('whatsapp', ...).
  * @property {(destinatario: string, texto: string, opciones?: Object) => Promise<any>}
  *   enviarTexto  Envia un mensaje de texto ya normalizado para el canal.
+ * @property {(destinatario: string, payload: Object, opciones?: Object) => Promise<any>}
+ *   [enviarInteractivo]  Opcional: envia un payload rico nativo del canal
+ *   (botones, listas, encuestas, tarjetas). Solo lo implementan canales
+ *   que soportan mensajes interactivos.
  */
 
 /**

@@ -89,9 +89,10 @@ function leerMemorias(deps = {}) {
   }
 }
 
-function guardarMemorias(lista) {
+function guardarMemorias(lista, deps = {}) {
+  const ruta = deps.rutaArchivo || ARCHIVO_MEMORIA;
   try {
-    fs.writeFileSync(ARCHIVO_MEMORIA, JSON.stringify(lista, null, 2), 'utf-8');
+    fs.writeFileSync(ruta, JSON.stringify(lista, null, 2), 'utf-8');
     // El indice vectorial (RAG) queda desactualizado tras cada escritura:
     // se invalida aqui y la propia busqueda semantica lo reconstruye en el
     // siguiente uso comprobando la firma del archivo de memorias.
@@ -182,12 +183,15 @@ function sonElMismoHecho(memoriaExistente, nuevaMemoria) {
 /**
  * Guarda o actualiza un hecho en el Second Brain
  */
-export function guardarMemoria({ sujeto, dato, categoria = 'general', tags = [] }) {
+export function guardarMemoria({ sujeto, dato, categoria = 'general', tags = [], rutaArchivo } = {}) {
   if (!sujeto || !dato) {
     return { ok: false, error: 'Se requiere sujeto y dato para guardar en la memoria.' };
   }
 
-  const lista = leerMemorias();
+  // La ruta es inyectable (puerto de persistencia): sin override, el
+  // archivo historico; con override, el repositorio decide.
+  const depsRuta = rutaArchivo ? { rutaArchivo } : {};
+  const lista = leerMemorias(depsRuta);
   const id = `mem_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
   const formatoLocal = new Date().toLocaleString('es-ES', {
@@ -236,13 +240,13 @@ export function guardarMemoria({ sujeto, dato, categoria = 'general', tags = [] 
   if (idxExistente !== -1) {
     const idAnterior = lista[idxExistente].id;
     lista[idxExistente] = { ...memoriaAlmacenada, id: idAnterior };
-    guardarMemorias(lista);
+    guardarMemorias(lista, depsRuta);
     console.log(`[Memoria] [Memoria Actualizada] "${nuevaMemoria.sujeto}": ${datoParaLog}`);
     return { ok: true, accion: 'actualizada', memoria: descifrarMemoria(lista[idxExistente]) };
   }
 
   lista.push(memoriaAlmacenada);
-  guardarMemorias(lista);
+  guardarMemorias(lista, depsRuta);
   console.log(`[Memoria] [Memoria Guardada] "${nuevaMemoria.sujeto}": ${datoParaLog}`);
 
   return { ok: true, accion: 'creada', memoria: nuevaMemoria };
@@ -251,8 +255,8 @@ export function guardarMemoria({ sujeto, dato, categoria = 'general', tags = [] 
 /**
  * Busca datos en el Second Brain utilizando scoring semántico y de similitud
  */
-export function buscarMemorias(consulta) {
-  const lista = leerMemorias();
+export function buscarMemorias(consulta, deps = {}) {
+  const lista = leerMemorias(deps);
   if (lista.length === 0) return [];
   if (!consulta || typeof consulta !== 'string') return lista.slice(-5);
 
@@ -327,7 +331,8 @@ export function listarMemorias(categoria = null, deps = {}) {
  * Elimina una o todas las memorias guardadas
  */
 export function olvidarMemoria(criterio, opciones = {}) {
-  const lista = leerMemorias();
+  const depsRuta = opciones.rutaArchivo ? { rutaArchivo: opciones.rutaArchivo } : {};
+  const lista = leerMemorias(depsRuta);
   const rawCrit = (criterio || '').toString().trim().toLowerCase();
 
   // Comprobación de comodín ANTES de normalizar
@@ -343,7 +348,7 @@ export function olvidarMemoria(criterio, opciones = {}) {
       };
     }
     const total = lista.length;
-    guardarMemorias([]);
+    guardarMemorias([], depsRuta);
     console.log(`[Memoria] [Memoria Vaciada] Se eliminaron todos los recuerdos (${total}) tras confirmacion explicita.`);
     return { ok: true, mensaje: `Se han eliminado todos los recuerdos del Second Brain (${total} registros).` };
   }
@@ -360,7 +365,7 @@ export function olvidarMemoria(criterio, opciones = {}) {
   }
 
   const [eliminada] = lista.splice(idx, 1);
-  guardarMemorias(lista);
+  guardarMemorias(lista, depsRuta);
   const datoLog = esCifrada(eliminada) ? '[cifrado]' : eliminada.dato;
   console.log(`[Memoria] [Memoria Olvidada] "${eliminada.sujeto}": ${datoLog}`);
   return { ok: true, memoria: descifrarMemoria(eliminada), mensaje: `Recuerdo olvidado con éxito: "${eliminada.sujeto}".` };

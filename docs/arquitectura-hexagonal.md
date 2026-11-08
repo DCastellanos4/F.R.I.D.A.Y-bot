@@ -45,15 +45,35 @@ produccion y expone `procesarMensajeEntrante(inbound, { historial, opciones })`,
 el punto de entrada unico. `whatsappBot.js` ya no importa el agente: traduce
 cada mensaje con su adaptador de entrada y llama al procesador.
 
-## Conectar un canal nuevo cuesta 1 archivo
+## Conectar un canal nuevo
+
+El coste de dominio de un canal nuevo es 1 archivo adaptador:
 
 1. Crear `src/adapters/inbound/<canal>/<canal>InboundAdapter.js` que traduzca
    el formato nativo a `crearInboundMessage({ userId, text, channel })`.
 2. Llamar a `procesarMensajeEntrante` del contenedor.
 3. (Opcional) un adaptador `MessageChannelPort` para las respuestas.
 
-El cerebro no se toca. Cubierto por `tests/sector3/hexagonal_ports.test.js`,
-que prueba un canal "telegram" funcionando sin una sola linea de WhatsApp.
+El cerebro no se toca. Lo probado HOY: el contrato del puerto con un canal
+sintetico (`tests/sector3/hexagonal_ports.test.js`) y un canal CLI real y
+funcional (`chat.js`, canal 'cli') entrando por el mismo puerto que
+WhatsApp. Una integracion Telegram completa (polling/webhook, formato de
+respuestas, reconexiones) es trabajo de transporte adicional en su propio
+adaptador; el dominio ya esta preparado, el transporte no esta incluido.
+
+## Pureza del core (regresion cubierta)
+
+`tests/sector3/core_purity.test.js` falla si `src/core` vuelve a importar
+Baileys/whatsappBot o si los puertos importan infraestructura. El envio
+interactivo (botones, listas, encuestas) acepta el puerto de canal;
+la ruta de persistencia de memoria es inyectable en las 4 operaciones
+(guardar/buscar/listar/olvidar), base de la futura migracion a SQLite.
+
+Trabajo restante conocido: la orquestacion de especialistas de
+`whatsappBot.js` (voz, tickets, historial, watchdogs) es logica de capa de
+canal y sigue importando servicios directamente; mover cada especialista
+detras de su propio puerto es una evolucion incremental, no parte de este
+corte.
 
 ## Precedencia de inyeccion
 

@@ -17,6 +17,8 @@ export function crearWhatsAppChannelAdapter(sock) {
   return afirmarMessageChannel(Object.freeze({
     canal: 'whatsapp',
     enviarTexto: (destinatario, texto, opciones = {}) =>
-      sock.sendMessage(destinatario, { text: texto }, opciones)
+      sock.sendMessage(destinatario, { text: texto }, opciones),
+    enviarInteractivo: (destinatario, payload, opciones = {}) =>
+      sock.sendMessage(destinatario, payload, opciones)
   }));
 }
