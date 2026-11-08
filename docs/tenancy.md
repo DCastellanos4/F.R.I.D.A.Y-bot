@@ -36,7 +36,7 @@ Actualizacion: `tracked_items.json` (sniper) y `alerts_queue.json` llevan dueño
 
 Actualizacion (rutas por servicio y singletons):
 - Con ruta de tenant forzada y probado con sentinel dir (`tenancy_servicios_ruta`): contactos, habitos, compra, quedadas, ideas, snoozes, entregas, procesos, fechas, llegada, menus, viajes, flashcards, recordatorios (crear), candidaturas, planes, traductor, transporte, entrevistas. Esto prueba que el servicio respeta la ruta recibida, no que el despacho sea seguro: los recordatorios solo se envian desde el fichero global, asi que uno de tenant nunca se envia (falla cerrado).
-- Sigue sin ruta/aislamiento: `usuarios.json`, `job_radar*.json`, monitores flashcard/radar, `ops_config.json`, `manifiesto.json`, `watchdog_state.json`, `metricas*.jsonl`, `*.log`, `skills.json`, `recomendador.json`, `digest_cerebro.json`, `modo_nocturno.json`, `hogar_config.json`. Siguen abiertos hasta probarse o excluirse expresamente del alcance seguro.
+- Sigue sin ruta/aislamiento: `usuarios.json` (solo lo usa importar/exportar del propietario), monitores flashcard/radar, `ops_config.json`, `manifiesto.json`, `watchdog_state.json`, `metricas*.jsonl`, `*.log`, `skills.json`, `recomendador.json`, `digest_cerebro.json`, `modo_nocturno.json`, `hogar_config.json`. Siguen abiertos hasta probarse o excluirse expresamente del alcance seguro.
 - Singletons por defecto (memoria, finanzas, libro de uso): probada la alternancia propietario/tenants y la concurrencia de microtareas dentro de un proceso (`tenancy_singletons_importexport`). No prueba concurrencia entre procesos pm2 para memoria/finanzas (el runner de migraciones si la tiene).
 - Atribucion de tokens: `medirUso` con un `tenantId` presente pero invalido ya NO se anota al propietario: no se mide (test). Sin tenantId sigue siendo el propietario.
 
@@ -46,3 +46,5 @@ Actualizacion (buscar_recuerdo_semantico y notas):
 - Defecto corregido: la denegacion RBAC devolvia un string en vez de `{texto}`, asi que el modelo recibia un resultado de herramienta vacio. Seguia fallando cerrado, pero sin mensaje.
 - Defecto corregido: `listar_notas_recientes` pasaba un objeto como `limit` e ignoraba categoria; ahora `listRecentNotes(limite, {category, carpetaNotas})`.
 - Pendiente: `ejecutar_skill` sin E2E.
+
+Actualizacion (multiproceso y radar): `tenancy_multiproceso` lanza 4 procesos Node reales sobre una DB WAL (2 sobre el propietario, 1 por tenant sintetico) con memoria y finanzas: sin perdida y sin mezcla; mutacion (memoryService sin transaccion) hace fallar el test. Radar de ofertas: `aislarOpcionesTenant` fuerza `radarDeps` (config y vistos del tenant, sin cola global); no hay E2E por el agente porque sus herramientas estan denegadas a tenants (`terceros/host`). Los monitores en segundo plano (flashcards, radar) siguen sin ambito de tenant.

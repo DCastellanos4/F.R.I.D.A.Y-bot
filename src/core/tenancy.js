@@ -171,6 +171,8 @@ export function aislarOpcionesTenant(opciones, dataDir) {
     crearRecordatorioEstudio: () => ({ ok: false, error: 'recordatorios no disponibles para este usuario' }),
     chatId: claveChatTenant(tid, opciones.chatId),
     rutaArchivoMemorias: rutaDatosTenant(dataDir, tid, 'brain_memory.json'),
+    // Radar de ofertas: config y vistos propios; sin cola global de alertas del propietario.
+    radarDeps: { rutaConfig: rutaDatosTenant(dataDir, tid, 'job_radar.json'), rutaVistos: rutaDatosTenant(dataDir, tid, 'job_radar_seen.json'), enqueue: () => false },
     carpetaNotas: rutaDatosTenant(dataDir, tid, 'notes'),
     carpetaDiario: rutaDatosTenant(dataDir, tid, 'diario'),
     storePath: undefined,

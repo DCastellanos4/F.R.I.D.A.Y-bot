@@ -48,3 +48,10 @@ test('getNoteByPath: no lee fuera de la carpeta de notas indicada', async () => 
   await assert.rejects(() => getNoteByPath(ajeno, { carpetaNotas: op.carpetaNotas }), /outside/);
   await assert.rejects(() => getNoteByPath(path.join(op.carpetaNotas, '..', '..', '..', 'secreto.md'), { carpetaNotas: op.carpetaNotas }), /outside/);
 });
+
+test('radar de ofertas: radarDeps forzado al tenant, sin cola global; el radarDeps del llamador se descarta', () => {
+  const o = aislarOpcionesTenant({ tenantId: 'sint-a', radarDeps: { rutaConfig: path.join(DIR, 'job_radar.json'), enqueue: () => 'global' } }, DIR);
+  assert.equal(o.radarDeps.rutaConfig, path.join(DIR, 'tenants', 'sint-a', 'job_radar.json'));
+  assert.equal(o.radarDeps.rutaVistos, path.join(DIR, 'tenants', 'sint-a', 'job_radar_seen.json'));
+  assert.equal(o.radarDeps.enqueue({}), false);
+});
