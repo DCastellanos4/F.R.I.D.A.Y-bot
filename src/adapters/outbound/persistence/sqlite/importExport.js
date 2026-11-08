@@ -32,7 +32,15 @@ function leerJsonSiExiste(ruta, valorDefecto) {
 }
 
 function estadoTablas(db) {
-  const contar = (tabla) => db.prepare(`SELECT COUNT(*) AS n FROM ${tabla}`).get().n;
+  // Solo filas del PROPIETARIO: la importacion JSON historica es del
+  // propietario; las filas de otros tenants ni la bloquean ni cuentan en su
+  // verificacion de integridad. Tablas sin columna tenant_id: conteo total.
+  const contar = (tabla) => {
+    const conTenant = db.prepare(`PRAGMA table_info(${tabla})`).all().some((c) => c.name === 'tenant_id');
+    return conTenant
+      ? db.prepare(`SELECT COUNT(*) AS n FROM ${tabla} WHERE tenant_id = ?`).get('propietario').n
+      : db.prepare(`SELECT COUNT(*) AS n FROM ${tabla}`).get().n;
+  };
   return {
     memorias: contar('memorias'),
     gastos: contar('finanzas_gastos'),
