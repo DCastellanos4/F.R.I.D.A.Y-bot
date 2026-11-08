@@ -9,7 +9,7 @@ const DIR=fs.mkdtempSync(path.join(os.tmpdir(),'tenant-catalog-'));
 process.env.DAVIS_DATA_DIR=DIR;
 const { consultarJarvisEnAmbito }=await import('../../src/core/jarvisAgent.js');
 const { CLASIFICACION_HERRAMIENTAS }=await import('../../src/services/rbacService.js');
-const allow=CLASIFICACION_HERRAMIENTAS.datos_tenant;
+const allow=[...CLASIFICACION_HERRAMIENTAS.datos_tenant];
 const controlUso={autorizar:()=>({permitido:true})};
 async function tool(tid,name,args={}) {
  const cap=[];let n=0;
@@ -71,4 +71,29 @@ test('memoria E2E read/write/delete con SQLite OWNER real registrado por defecto
   assert.ok(!fs.readFileSync(path.join(DIR,'tenants','sint-a','brain_memory.json'),'utf8').includes('DATO-SOLO-A-SQLITE'),'borra A realmente');
   assert.equal(JSON.stringify(owner.leer()),antes,'borrar A no modifica owner SQLite');
  }finally{registrarStoreMemoriasPorDefecto(null);registrarFuenteMemoriasPorDefecto(null);db.close();}
+});
+
+test('sin_estado: 4 herramientas reales por agente, fuentes publicas simuladas SOLO en transporte, sin red ni callbacks privados',async()=>{
+ const {default:Parser}=await import('rss-parser');const {default:https}=await import('node:https');const {EventEmitter}=await import('node:events');
+ const parse=Parser.prototype.parseURL,fetchAnterior=globalThis.fetch,request=https.request;
+ let rss=0,http=0;
+ Parser.prototype.parseURL=async()=>{rss++;return {items:[{title:'PUBLICO titular deportivo regional',contentSnippet:'PUBLICO marcador de datos de prueba',link:'https://example.com/publico',pubDate:new Date().toISOString()}]};};
+ globalThis.fetch=async()=>({status:200});
+ https.request=(url)=>{
+  assert.equal(new URL(url).hostname,'priceradars.com');http++;
+  const req=new EventEmitter();req.destroy=(e)=>{if(e)req.emit('error',e);};req.end=()=>process.nextTick(()=>{
+   const res=new EventEmitter();res.statusCode=200;res.headers={};res.resume=()=>{};req.emit('response',res);
+   res.emit('data',Buffer.from(JSON.stringify({products:[{name:'public-product-test',lowestPrice:1200,currency:'EUR',inStock:true,deeplink:'https://example.com/public-product-test'}],totalCount:1})));res.emit('end');
+  });return req;
+ };
+ try {
+  // No se cambian clases ni ejecutores. Lista del agente se limita a clases aptas actuales.
+  const oldAllow=[...allow];allow.push(...CLASIFICACION_HERRAMIENTAS.sin_estado);
+  try {
+   const noticias=await tool('sint-a','obtener_noticias_actuales',{categoria:'deportes'});assert.match(noticias,/PUBLICO/);
+   await tool('sint-a','resumen_deportivo',{limite:1});assert.ok(rss>=2,'RSS real consumido por las dos herramientas');
+   const compra=await tool('sint-a','buscar_producto',{consulta:'public-product-test'});assert.match(compra,/public-product-test/);assert.equal(http,1);
+   const depurar=await tool('sint-a','guiar_depuracion',{fallo:'PUBLICO error de sintaxis',contexto:'PUBLICO codigo de prueba'});assert.ok(depurar.length>0);
+  }finally{allow.splice(0,allow.length,...oldAllow);}
+ }finally{Parser.prototype.parseURL=parse;globalThis.fetch=fetchAnterior;https.request=request;}
 });
