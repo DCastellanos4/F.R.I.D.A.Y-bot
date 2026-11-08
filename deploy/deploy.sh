@@ -109,6 +109,11 @@ echo "== [4/7] Puerta en el servidor: criticos + suite aislados (fixtures tempor
 # La carpeta de datos temporal termina en /data: varios tests comprueban la
 # forma de las rutas por defecto (.../data/<fichero>).
 mkdir -p "$DTMP/cicd-data-$TS/data"
+# TMPDIR de los tests DENTRO del namespace: os.tmpdir() (mkdtemp de la suite)
+# ya no escribe en el /tmp compartido. Se limpia solo este subdirectorio,
+# cuando los procesos de test ya terminaron (ejecucion en primer plano).
+mkdir -p "$DTMP/tmp-tests-$TS"
+export TMPDIR="$DTMP/tmp-tests-$TS"
 export DAVIS_DATA_DIR="$DTMP/cicd-data-$TS/data" DAVIS_HISTORY_DIR="$DTMP/cicd-history-$TS" NODE_ENV=test
 # Aislamiento de entorno de tests: deben correr con las MISMAS variables que
 # en CI (ninguna de produccion). El .env de la release es un ENLACE al estado
@@ -116,12 +121,15 @@ export DAVIS_DATA_DIR="$DTMP/cicd-data-$TS/data" DAVIS_HISTORY_DIR="$DTMP/cicd-h
 # DAVIS_METRICS_HOST=172.30.50.1 -> bind al bridge -> ECONNREFUSED loopback).
 # El cierre de esa via vive en src/config/config.js (NODE_ENV=test no carga
 # .env del estado ni del repo); aqui se limpia lo heredado del shell SSH.
-unset DAVIS_OTEL_ENABLED DAVIS_OTEL_ENDPOINT DAVIS_OTEL_SERVICIO DAVIS_METRICS_ENABLED DAVIS_METRICS_HOST DAVIS_METRICS_REDES_PERMITIDAS DAVIS_METRICS_PUERTO DAVIS_METRICS_PUERTO_WS DAVIS_METRICS_PUERTO_API
+unset DAVIS_HARNESS_DEPLOY DAVIS_TEST_REAL_EXEC DAVIS_OTEL_ENABLED DAVIS_OTEL_ENDPOINT DAVIS_OTEL_SERVICIO DAVIS_METRICS_ENABLED DAVIS_METRICS_HOST DAVIS_METRICS_REDES_PERMITIDAS DAVIS_METRICS_PUERTO DAVIS_METRICS_PUERTO_WS DAVIS_METRICS_PUERTO_API
 CRITICOS="tests/sector2/task0_foundations.test.js tests/sector2/task0_challenge.test.js tests/sector2/integration.test.js tests/sector2/task12_bash_console.test.js tests/sector2/task15_github_webhook.test.js tests/sector2/task16_backup.test.js tests/sector2/task21_memory_encryption.test.js tests/sector2/deploy_aislamiento.test.js tests/sector3/safefetch_unit.test.js tests/sector3/process_watchdog.test.js"
 # Lista explicita de ficheros: 'node --test <directorio>' NO es portable
 # (algunas versiones lo tratan como modulo y fallan).
 timeout 900 node --test --test-reporter=tap $CRITICOS > "$DTMP/criticos-$TS.tap" || true
 timeout 900 node tests/run_all.js > "$DTMP/suite-$TS.tap" || true
+# Procesos de test terminados: limpiar SOLO el TMPDIR propio (guarda de ruta).
+case "$TMPDIR" in "$DTMP"/tmp-tests-*) rm -rf -- "$TMPDIR" ;; esac
+unset TMPDIR
 # Los timeouts/errores del runner NO se enmascaran: la puerta falla cerrada
 # si falta el resumen TAP o no se ejecuto nada. '|| true' solo evita que
 # set -e oculte el motivo; quien decide es la puerta.
