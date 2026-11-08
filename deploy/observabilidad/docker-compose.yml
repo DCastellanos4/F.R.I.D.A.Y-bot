@@ -26,6 +26,10 @@
 # bridge entra por otra interfaz); 172.30.50.1 solo es alcanzable desde
 # esta subred interna y el propio host. NUNCA 0.0.0.0.
 #
+# Secretos (NO en el repo, entorno del que ejecuta compose; con sudo hace
+# falta `sudo --preserve-env=GRAFANA_ADMIN_PASSWORD,GRAFANA_RENDERER_TOKEN`):
+#   GRAFANA_ADMIN_PASSWORD, GRAFANA_RENDERER_TOKEN
+#
 # Uso (executor, en el VPS):
 #   cd deploy/observabilidad && docker compose up -d
 #   En jarvis-estado/.env: DAVIS_OTEL_ENABLED=true
@@ -83,6 +87,10 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Define GRAFANA_ADMIN_PASSWORD en el entorno (nunca en el repo)}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # Renderizado de paneles a imagen (capturas): servicio renderer interno.
+      GF_RENDERING_SERVER_URL: http://renderer:8081/render
+      GF_RENDERING_CALLBACK_URL: http://grafana:3000/
+      GF_RENDERING_RENDERER_TOKEN: ${GRAFANA_RENDERER_TOKEN:?Define GRAFANA_RENDERER_TOKEN en el entorno (nunca en el repo)}
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - davis-grafana-data:/var/lib/grafana
@@ -91,6 +99,22 @@ services:
     depends_on:
       - prometheus
       - jaeger
+      - renderer
+
+  renderer:
+    # Solo red interna (sin ports): lo usa Grafana para renderizar paneles.
+    # Chromium headless es pesado: limites duros de memoria y CPU para que
+    # un panel degenerado no afecte al bot (comparte el VPS).
+    image: grafana/grafana-image-renderer:v5.12.10
+    container_name: davis-renderer
+    restart: unless-stopped
+    networks:
+      - observabilidad
+    environment:
+      AUTH_TOKEN: ${GRAFANA_RENDERER_TOKEN:?Define GRAFANA_RENDERER_TOKEN en el entorno (nunca en el repo)}
+      GOMEMLIMIT: 512MiB
+    mem_limit: 4g
+    cpus: 2
 
 volumes:
   davis-prometheus-data:
