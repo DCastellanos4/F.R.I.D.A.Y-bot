@@ -310,7 +310,7 @@ export function analizarIntencion(mensaje) {
     finanzas: /(\bgastos?\b|\bgast[eé]\b|\btickets?\b|recibo(s)?|suscripci[oó]n(es)?|presupuesto(s)?|\bfinanzas\b|cu[aá]nto\s+(he\s+|llevo\s+)?gastado|renovaci[oó]n\s+de)/i,
     procesos: /(\bvigil\w*\s+(el\s+|un\s+)?proceso|proceso\s+(caido|vivo|muerto|parado)|procesos\s+del\s+(vps|servidor)|vigilancia\s+de\s+procesos)/i,
     // Transporte publico de Madrid (bloque extra aprobado por David, 5 nov 2026)
-    transporte: /(\bcercan[ií]as\b|\bEMT\b|parada\s+(de\s+)?(bus|autob[uú]s|emt)|pr[oó]xim[oa]s?\s+(bus|autob[uú]s|tren(es)?|cercan[ií]as|ave)|cu[aá]ndo\s+(llega|viene|pasa|sale)n?\s+(el\s+|mi\s+)?(bus|autob[uú]s|tren|cercan[ií]as|ave)|cu[aá]nto\s+(falta|tarda)n?\s+(el\s+|mi\s+)?(bus|autob[uú]s|tren|cercan[ií]as)|trenes?\s+(de|desde|hacia|a)\s+\w)/i,
+    transporte: /(\bcercan[ií]as\b|\bEMT\b|parada\s+(de\s+)?(bus|autob[uú]s|emt)|pr[oó]xim[oa]s?\s+(bus|autob[uú]s|tren(es)?|cercan[ií]as|ave)|cu[aá]ndo\s+(llega|viene|pasa|sale)n?\s+(el\s+|mi\s+)?(bus|autob[uú]s|tren|cercan[ií]as|ave)|cu[aá]nto\s+(falta|tarda)n?\s+(el\s+|mi\s+)?(bus|autob[uú]s|tren|cercan[ií]as)|trenes?\s+(de|desde|hacia|a)\s+\w|trenes?\s+que\s+(?:salen|sale|llegan|llega|vienen|viene|parten|parte|pasan|pasa|hay)|(?:qu[eé]|cu[aá]les|dime|hay|tienes|busco|quiero|sabes)\s+[^.?!]{0,30}\btrenes?\b[^.?!]{0,30}\b(?:de|desde|hacia|para)\s+\w)/i,
     // Segundo cerebro: contactos, busqueda semantica, digest, wiki, captura web y preguntas a documentos
     cerebro: /(contacto\s+de|agenda\s+de\s+contactos|qu[eé]\s+(s[eé]|tengo)\s+(de|sobre)\s+\w|busca(r)?\s+(en\s+)?(mis\s+)?(recuerdos|memorias|notas)|digest|resumen\s+(de\s+)?(mi\s+)?segundo\s+cerebro|\bwiki\b|guarda(r)?\s+(esta\s+)?(p[aá]gina|pagina|web|enlace)\s+en\s+(mis\s+)?notas|captura(r)?\s+(esta\s+)?(p[aá]gina|web)|qu[eé]\s+dicen\s+mis\s+(apuntes|notas|documentos)|pregunta\s+(a|sobre)\s+mis\s+(apuntes|notas|documentos))/i,
     // Bienestar (nº 43-50): diario, habitos, menus, compra, recomendaciones, quedadas, deporte y modo nocturno
@@ -1884,17 +1884,19 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
     } else if (clasificacion) {
       herramientasActivas = [];
       traza.via = 'desambiguacion';
-      directivaDesambiguacion = '\n\n[DIRECTIVA DE DESAMBIGUACION: No esta claro que necesita David. NO inventes acciones, datos ni confirmaciones: pidele una aclaracion breve y concreta, ofreciendo como mucho dos opciones, antes de actuar.]';
+      directivaDesambiguacion = '\n\n[DIRECTIVA DE DESAMBIGUACION: No esta claro que necesita David. NO inventes acciones, datos ni confirmaciones: pidele una aclaracion breve y concreta, ofreciendo como mucho dos opciones, antes de actuar. NUNCA afirmes que un servicio requiere clave, token, permiso o configuracion salvo que el resultado de una herramienta lo haya indicado.]';
       console.log(`[RouterModelo] Confianza insuficiente (${clasificacion.confianza}); se pide desambiguacion sin herramientas.`);
     } else {
-      // El catalogo completo supera el limite de 128 herramientas del
-      // proveedor: volcarlo romperia TODA respuesta con un 400. Sin
-      // clasificador se aplica el mismo criterio honesto que con confianza
-      // baja: ninguna herramienta y una aclaracion breve.
-      herramientasActivas = [];
-      traza.via = 'desambiguacion';
-      directivaDesambiguacion = '\n\n[DIRECTIVA DE DESAMBIGUACION: No esta claro que necesita David. NO inventes acciones, datos ni confirmaciones: pidele una aclaracion breve y concreta, ofreciendo como mucho dos opciones, antes de actuar.]';
-      console.log('[RouterModelo] Clasificador no disponible; desambiguacion sin herramientas (el catalogo completo supera el limite 128 del proveedor).');
+      // Clasificador no disponible: red de seguridad robusta. Quedarse sin
+      // herramientas dejaba al modelo improvisando (en produccion llego a
+      // afirmar falsamente que Renfe requiere clave/token). Se ofrece el
+      // catalogo completo ACOTADO al limite del proveedor (el catalogo son
+      // 140 herramientas y el limite 128: volcarlo sin acotar reproduciria
+      // el 400), con una directiva de seleccion prudente.
+      herramientasActivas = limitarHerramientasParaProveedor(herramientasJarvis);
+      traza.via = 'catalogo_acotado';
+      directivaDesambiguacion = '\n\n[DIRECTIVA DE SELECCION PRUDENTE: el reconocimiento automatico de intencion no esta disponible. Usa una herramienta SOLO si la peticion encaja claramente con ella; si no encaja con claridad, pidele una aclaracion breve y concreta, ofreciendo como mucho dos opciones. NO inventes acciones, datos ni confirmaciones. NUNCA afirmes que un servicio requiere clave, token, permiso o configuracion salvo que el resultado de una herramienta lo haya indicado: Renfe/Cercanias funciona con datos abiertos sin credenciales, y de la EMT solo se dice que falta el alta si la herramienta responde config-required.]';
+      console.log('[RouterModelo] Clasificador no disponible; catalogo acotado al limite del proveedor como red de seguridad.');
     }
   }
 

@@ -198,7 +198,7 @@ export const casosDorados = [
       { clasifica: 'ERROR' },
       { texto: 'No termino de entenderlo, senor.' }
     ],
-    esperado: { sinHerramientas: true, clasificador: true, directivaDesambiguacion: true, ofrecidasCero: true, responde: true }
+    esperado: { sinHerramientas: true, clasificador: true, directivaDesambiguacion: true, ofrecidasAcotadas: true, responde: true }
   },
   {
     id: 'G28-cache-clasificador',
@@ -493,5 +493,21 @@ export const casosDorados = [
     entrada: 'buenas noches, que tal?',
     pasos: [{ texto: 'Buenas noches, David. Todo en orden.' }],
     esperado: { sinHerramientas: true, clasificador: false }
+  },
+  // Regresion Renfe (8 nov 2026): frases naturales reales de David que el
+  // regex de transporte no reconocia; sin clasificador disponible caian al
+  // camino sin herramientas y el modelo improvisaba (afirmo falsamente que
+  // Renfe requiere clave/token). Deben enrutar directo a transporte.
+  {
+    id: 'R26-real-trenes-salen-de',
+    entrada: 'dime los trenes que salen ahora mismo de aranjuez',
+    pasos: [{ llama: 'proximas_llegadas_transporte', args: { parada: 'aranjuez', tipo: 'cercanias' } }, { texto: 'Cercanias desde Aranjuez: C3 a las 10:41.' }],
+    esperado: { invoca: ['proximas_llegadas_transporte'], clasificador: false }
+  },
+  {
+    id: 'R27-real-trenes-hacia-desde',
+    entrada: 'que trenes hay ahora mismo hacia madrid desde aranjuez',
+    pasos: [{ llama: 'proximas_llegadas_transporte', args: { parada: 'aranjuez', tipo: 'cercanias' } }, { texto: 'Hacia Madrid desde Aranjuez: C3 a las 10:41.' }],
+    esperado: { invoca: ['proximas_llegadas_transporte'], clasificador: false }
   }
 ];

@@ -3,8 +3,10 @@
  * Regresion del fallo de produccion "400 'tools': maximum number of items
  * is 128" (catalogo 136 > limite del proveedor). Prueba la entrada real por
  * procesarMensajesEntrantes con LLM simulado y el limitador del boundary:
- *  - Mensaje generico sin clasificador: nunca se vuelca el catalogo; se pide
- *    una aclaracion sin herramientas.
+ *  - Mensaje generico sin clasificador: se ofrece el catalogo ACOTADO al
+ *    limite del proveedor (nunca >128, nunca 0) con directiva de seleccion
+ *    prudente; el modelo no improvisa sin herramientas (regresion Renfe del
+ *    8 nov 2026: sin herramientas afirmo falsamente que faltaba una clave).
  *  - Generico con clasificador disponible, multi-intencion, URL y un caso
  *    especial: siempre <=128 y con las herramientas correctas (incluidas las
  *    nuevas 50).
@@ -62,13 +64,20 @@ function fabricaChat(modoClasificador, captura, respuestaFinal = 'Aclarame que n
   };
 }
 
-test('Regresion 400: mensaje generico SIN clasificador no vuelca el catalogo (<=128, sin herramientas) y pide aclaracion', async () => {
+test('Regresion 400 y Renfe: mensaje generico SIN clasificador ofrece el catalogo ACOTADO (<=128, nunca 0) con directiva prudente', async () => {
   const enviados = [];
-  const captura = { listas: [] };
+  const captura = { listas: [], sistema: '' };
+  const chat = fabricaChat('basura', captura);
   await bot.procesarMensajesEntrantes(sockSimulado(enviados), {
     type: 'notify',
     messages: [mensajeEntrante('mandale una cosa de esas cuando puedas', 'LIM-1')]
-  }, { chatCompletion: fabricaChat('basura', captura) });
+  }, {
+    chatCompletion: async (args) => {
+      const sistema = args.messages[0]?.content || '';
+      if (!sistema.includes('Clasifica la intencion')) captura.sistema = sistema;
+      return chat(args);
+    }
+  });
 
   assert.ok(enviados.length > 0, 'el handler respondio');
   assert.ok(captura.listas.length > 0, 'el LLM principal fue llamado');
@@ -76,7 +85,31 @@ test('Regresion 400: mensaje generico SIN clasificador no vuelca el catalogo (<=
     assert.ok(lista.length <= LIMITE_HERRAMIENTAS_PROVEEDOR, `payload de ${lista.length} herramientas supera el limite`);
   }
   const ultima = captura.listas[captura.listas.length - 1];
-  assert.equal(ultima.length, 0, 'sin clasificador no se ofrecen herramientas (fallback honesto)');
+  assert.ok(
+    ultima.length > 0 && ultima.length <= LIMITE_HERRAMIENTAS_PROVEEDOR,
+    `sin clasificador se ofrece el catalogo acotado al limite (nunca 0, nunca >128); ofrecidas: ${ultima.length}`
+  );
+  assert.ok(
+    captura.sistema.includes('NUNCA afirmes que un servicio requiere clave'),
+    'la directiva prudente prohibe inventar requisitos de credenciales'
+  );
+});
+
+test('Regresion Renfe (8 nov 2026): frases naturales de tren enrutan a transporte sin clasificador', async () => {
+  const { seleccionarHerramientasPorIntencion } = await import('../../src/core/jarvisAgent.js');
+  // Frases exactas que David envio y el regex de transporte no reconocia.
+  const frases = [
+    'dime los trenes que salen ahora mismo de aranjuez',
+    'que trenes hay ahora mismo hacia madrid desde aranjuez'
+  ];
+  for (const frase of frases) {
+    const sel = seleccionarHerramientasPorIntencion(frase);
+    const nombres = sel.map((t) => t.function.name);
+    assert.ok(
+      nombres.includes('proximas_llegadas_transporte'),
+      `falta proximas_llegadas_transporte para: "${frase}" (ofrecidas: ${nombres.join(', ')})`
+    );
+  }
 });
 
 test('Regresion 400: mensaje generico CON clasificador recibe solo las herramientas de la intencion', async () => {

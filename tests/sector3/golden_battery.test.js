@@ -20,7 +20,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { consultarJarvisAislado as consultarJarvis } from '../helpers/jarvisAislado.js';
-import { herramientasJarvis } from '../../src/core/tools.js';
+import { herramientasJarvis, LIMITE_HERRAMIENTAS_PROVEEDOR } from '../../src/core/tools.js';
 import { casosDorados } from './golden_dataset.js';
 
 const MARCA_CLASIFICADOR = 'Clasifica la intencion principal';
@@ -60,7 +60,7 @@ function construirLlmGuionizado(caso, observaciones) {
     observaciones.herramientasOfrecidas.push(Array.isArray(tools) ? tools.length : 0);
     if (Array.isArray(messages)) {
       const sistema = messages.find((m) => m.role === 'system');
-      if (sistema && sistema.content.includes('DIRECTIVA DE DESAMBIGUACION')) {
+      if (sistema && (sistema.content.includes('DIRECTIVA DE DESAMBIGUACION') || sistema.content.includes('DIRECTIVA DE SELECCION PRUDENTE'))) {
         observaciones.directivaVista = true;
       }
       if (observaciones.historialEsperado) {
@@ -222,12 +222,11 @@ for (const caso of casosDorados) {
     if (esperado.directivaDesambiguacion) {
       assert.ok(obs.directivaVista, `${caso.id}: debia inyectarse la directiva de desambiguacion`);
     }
-    if (esperado.ofrecidasCero) {
+    if (esperado.ofrecidasAcotadas) {
       const ofrecidasPrincipal = obs.herramientasOfrecidas[0];
-      assert.equal(
-        ofrecidasPrincipal,
-        0,
-        `${caso.id}: con clasificador caido no deben ofrecerse herramientas (politica de confianza baja); ofrecidas: ${ofrecidasPrincipal}`
+      assert.ok(
+        ofrecidasPrincipal > 0 && ofrecidasPrincipal <= LIMITE_HERRAMIENTAS_PROVEEDOR,
+        `${caso.id}: con clasificador caido debe ofrecerse el catalogo acotado al limite del proveedor (nunca 0, nunca >${LIMITE_HERRAMIENTAS_PROVEEDOR}); ofrecidas: ${ofrecidasPrincipal}`
       );
     }
     if (esperado.llamadasLlmTotal) {
