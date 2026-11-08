@@ -83,3 +83,20 @@ test('aislarOpcionesTenant: fuerza rutas y chatId del tenant, ignora overrides; 
   assert.equal(t.storePath, undefined);
   assert.throws(() => aislarOpcionesTenant({ tenantId: '../x' }, BASE));
 });
+
+test('aislarOpcionesTenant: TODAS las rutas personales del agente quedan bajo tenants/<id>/ aunque vengan overrides', async () => {
+  const { aislarOpcionesTenant, RUTAS_DATOS_TENANT } = await import('../../src/core/tenancy.js');
+  const sucio = { tenantId: 'sint-a' };
+  for (const k of Object.keys(RUTAS_DATOS_TENANT)) sucio[k] = `/datos-del-propietario/${k}.json`;
+  const t = aislarOpcionesTenant(sucio, BASE);
+  for (const [k, nombre] of Object.entries(RUTAS_DATOS_TENANT)) {
+    assert.equal(t[k], path.join(BASE, 'tenants', 'sint-a', nombre), k);
+  }
+  assert.ok(Object.keys(RUTAS_DATOS_TENANT).length >= 25);
+  // Todas las opciones ruta* que lee jarvisAgent estan cubiertas o excluidas a proposito
+  const src = fs.readFileSync(new URL('../../src/core/jarvisAgent.js', import.meta.url), 'utf-8');
+  const usadas = [...new Set([...src.matchAll(/opciones\.(ruta[A-Za-z]+)/g)].map((m) => m[1]))];
+  const excluidas = new Set(['rutaArchivoMemorias', 'rutaVectores', 'rutaArchivoGrafo', 'rutaArchivoProgramados', 'rutaArchivoIdempotencia', 'rutaArchivoMetricas', 'rutaCacheHorariosRenfe', 'rutaCacheEstacionesRenfe']);
+  const sinCubrir = usadas.filter((k) => !(k in RUTAS_DATOS_TENANT) && !excluidas.has(k));
+  assert.deepEqual(sinCubrir, [], 'toda ruta personal nueva debe mapearse o excluirse explicitamente');
+});

@@ -123,6 +123,37 @@ export function claveChatTenant(tenantId, chatId) {
  * tenant devuelve las opciones tal cual. Cubre solo esos almacenes: el resto de
  * ficheros de datos siguen sin aislar (por eso la compuerta sigue cerrada).
  */
+// Opciones de ruta del agente que apuntan a ficheros de datos PERSONALES, con el
+// nombre de fichero propio de cada tenant. Se fuerzan para no propietarios.
+export const RUTAS_DATOS_TENANT = Object.freeze({
+  rutaArchivoFinanzas: 'finanzas.json',
+  rutaArchivoFlashcards: 'flashcards.json',
+  rutaConfigFlashcards: 'flashcards_config.json',
+  rutaPlanesEstudio: 'study_plans.json',
+  rutaArchivoViajes: 'viajes_vigilados.json',
+  rutaArchivoTransporte: 'transporte.json',
+  rutaArchivoProcesos: 'procesos_vigilados.json',
+  rutaArchivoFechas: 'fechas_senaladas.json',
+  rutaArchivoContactos: 'contactos.json',
+  rutaArchivoCompra: 'compra.json',
+  rutaArchivoCandidaturas: 'applications.json',
+  rutaConfigHogar: 'hogar_config.json',
+  rutaConfigOps: 'ops_config.json',
+  rutaArchivoSnoozes: 'snoozes.json',
+  rutaArchivoQuedadas: 'quedadas.json',
+  rutaArchivoMenus: 'menus.json',
+  rutaArchivoLlegada: 'avisos_llegada.json',
+  rutaArchivoIdeas: 'ideas.json',
+  rutaArchivoHabitos: 'habitos.json',
+  rutaArchivoEntregas: 'entregas.json',
+  rutaArchivoTraductor: 'traductor.json',
+  rutaArchivoRecordatorios: 'reminders.json',
+  rutaArchivoRecomendador: 'recomendador.json',
+  rutaArchivoNocturno: 'modo_nocturno.json',
+  rutaArchivoEntrevistas: 'entrevistas.json',
+  rutaArchivoDigest: 'digest_cerebro.json'
+});
+
 export function aislarOpcionesTenant(opciones, dataDir) {
   const tid = opciones && opciones.tenantId;
   if (tid === undefined || tid === null || tid === TENANT_PROPIETARIO) return opciones;
@@ -130,8 +161,11 @@ export function aislarOpcionesTenant(opciones, dataDir) {
   // Puertos inyectados que contienen datos del PROPIETARIO (repositorio de memorias
   // SQLite del contenedor, buscador de memorias, contactos): un tenant no los hereda.
   const { memoryRepository, obtenerMemorias, contactosConocidos, ...resto } = opciones;
+  const rutasPersonales = {};
+  for (const [clave, nombre] of Object.entries(RUTAS_DATOS_TENANT)) rutasPersonales[clave] = rutaDatosTenant(dataDir, tid, nombre);
   return {
     ...resto,
+    ...rutasPersonales,
     chatId: claveChatTenant(tid, opciones.chatId),
     rutaArchivoMemorias: rutaDatosTenant(dataDir, tid, 'brain_memory.json'),
     storePath: undefined,
