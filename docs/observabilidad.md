@@ -40,11 +40,14 @@ Reconciliacion de conectividad: un listener bindeado a 127.0.0.1 en el
 host NO es alcanzable desde un contenedor (el bridge entra por otra
 interfaz; `host.docker.internal` resuelve a 172.30.50.1, no a loopback).
 Por eso el bot bindea sus listeners de metricas a la IP GATEWAY del bridge
-(`DAVIS_METRICS_HOST=172.30.50.1`): alcanzable solo desde la subred
-interna y el propio host, NUNCA 0.0.0.0 indiscriminado. El origen del
-scrape es una IP de 172.30.50.0/24, autorizada por la whitelist CIDR
-estricta `DAVIS_METRICS_REDES_PERMITIDAS=172.30.50.0/24` en
-`jarvis-estado/.env`. La auth del API no se debilita: /metrics no pide
+(`DAVIS_METRICS_HOST=172.30.50.1`), NUNCA 0.0.0.0 indiscriminado. Matiz
+honesto: bindear a la IP del bridge no garantiza por si solo que solo la
+subred acceda; la restriccion real la aportan el firewall restrictivo del
+VPS (sin apertura externa) mas la whitelist CIDR estricta
+`DAVIS_METRICS_REDES_PERMITIDAS=172.30.50.0/24` en `jarvis-estado/.env`.
+El scrape usa la IP EXPLICITA 172.30.50.1 (prometheus.yml): no
+host.docker.internal, cuyo host-gateway resuelve al bridge POR DEFECTO
+(172.17.0.1), no al de esta red. La auth del API no se debilita: /metrics no pide
 token y se protege por origen; el fail-closed 503 del resto del API esta
 intacto y la ruta /metrics va antes del gate API_TOKEN, deliberado. La
 ruta /metrics del puerto 3000 sigue siendo solo localhost (no la scrapea

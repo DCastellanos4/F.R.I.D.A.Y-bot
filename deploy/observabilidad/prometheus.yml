@@ -3,19 +3,21 @@ global:
   evaluation_interval: 15s
 
 # Prometheus corre en la red bridge interna (172.30.50.0/24) y scrapea los
-# listeners loopback del host via host.docker.internal. El bot solo acepta
-# el scrape desde esa subred (DAVIS_METRICS_REDES_PERMITIDAS).
+# listeners del bot en la IP EXPLICITA del gateway de esa red (172.30.50.1).
+# No se usa host.docker.internal: host-gateway resuelve al bridge POR
+# DEFECTO (172.17.0.1), no al de esta red. El bot solo acepta el scrape
+# desde esa subred (DAVIS_METRICS_REDES_PERMITIDAS).
 scrape_configs:
   - job_name: jarvis-whatsapp
     static_configs:
-      - targets: ["host.docker.internal:9464"]
+      - targets: ["172.30.50.1:9464"]
         labels:
           proceso: whatsapp
     metrics_path: /metrics
 
   - job_name: jarvis-api
     static_configs:
-      - targets: ["host.docker.internal:9465"]
+      - targets: ["172.30.50.1:9465"]
         labels:
           proceso: api
     metrics_path: /metrics

@@ -63,10 +63,9 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=30d"
-    extra_hosts:
-      # Scrape de los listeners loopback del host (9464/9465 del bot).
-      - "host.docker.internal:host-gateway"
     # Sin ports: Prometheus solo es alcanzable desde la red interna (Grafana).
+    # Scrape a la IP EXPLICITA del gateway de esta red (172.30.50.1; ver
+    # prometheus.yml): host-gateway resolveria al bridge por defecto.
 
   grafana:
     image: grafana/grafana:11.2.0
