@@ -267,7 +267,7 @@ test('importacion: todo-o-nada, idempotente, JSON intactos y marca de origen', (
 
   const primera = importarJsonASqlite(db, { rutaMemorias, rutaFinanzas, memoryStore, financeStore });
   assert.equal(primera.ok, true);
-  assert.deepEqual(primera.importados, { memorias: 2, gastos: 1, suscripciones: 1 });
+  assert.deepEqual(primera.importados, { memorias: 2, gastos: 1, suscripciones: 1, usuarios: 0 });
 
   // Los JSON de origen quedan byte a byte intactos.
   assert.equal(fs.readFileSync(rutaMemorias, 'utf-8'), bytesMemoriasAntes);
@@ -322,6 +322,7 @@ test('exportacion: volcado actual con integridad verificable, sin sobrescribir',
   const persistencia = crearPersistenciaSqlite({ rutaDb });
   guardarMemoria({ sujeto: 'equipo', dato: 'portatil lenovo', store: persistencia.memoryStore });
   registrarGasto({ importe: 3.2, comercio: 'Cafe', categoria: 'ocio' }, { store: persistencia.financeStore });
+  persistencia.userRepository.registrarContacto('+34611111111');
 
   const dirExport = path.join(dir, 'export-1');
   const resultado = exportarSqliteAJson(persistencia.db, {
@@ -332,6 +333,8 @@ test('exportacion: volcado actual con integridad verificable, sin sobrescribir',
   assert.equal(resultado.ok, true);
   assert.equal(resultado.manifiesto.conteos.memorias, 1);
   assert.equal(resultado.manifiesto.conteos.gastos, 1);
+  assert.equal(resultado.manifiesto.conteos.usuarios, 1);
+  assert.equal(JSON.parse(fs.readFileSync(resultado.rutaUsuarios, 'utf-8'))[0].telefono, '+34611111111');
 
   // Integridad verificable: el hash del manifiesto corresponde al archivo.
   const contenido = fs.readFileSync(resultado.rutaMemorias, 'utf-8');
@@ -350,10 +353,12 @@ test('exportacion: volcado actual con integridad verificable, sin sobrescribir',
   const persistencia2 = crearPersistenciaSqlite({
     rutaDb: path.join(dir, 'restaurada.db'),
     rutaMemoriasJson: resultado.rutaMemorias,
-    rutaFinanzasJson: resultado.rutaFinanzas
+    rutaFinanzasJson: resultado.rutaFinanzas,
+    rutaUsuariosJson: resultado.rutaUsuarios
   });
   assert.equal(persistencia2.memoryStore.leer().length, 1);
   assert.equal(persistencia2.financeStore.leer().gastos.length, 1);
+  assert.equal(persistencia2.userRepository.obtener('+34611111111').telefono, '+34611111111');
 
   persistencia.cerrar();
   persistencia2.cerrar();

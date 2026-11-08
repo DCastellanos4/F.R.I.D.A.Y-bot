@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Recuperacion SQLite -> JSON: vuelca el estado ACTUAL de la base
- * (incluidas las escrituras posteriores a la migracion) a un directorio
+ * (incluidas las escrituras posteriores a la migracion: memorias,
+ * finanzas con borradores y usuarios) a un directorio
  * nuevo con manifiesto de integridad (conteos + sha256).
  *
  * Procedimiento de vuelta a JSON:

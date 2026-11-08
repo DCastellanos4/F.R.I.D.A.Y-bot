@@ -39,7 +39,8 @@ function estadoTablas(db) {
     suscripciones: contar('finanzas_suscripciones'),
     presupuestos: contar('finanzas_presupuestos'),
     borradores: contar('finanzas_borradores'),
-    config: contar('finanzas_config')
+    config: contar('finanzas_config'),
+    usuarios: contar('usuarios')
   };
 }
 
@@ -54,7 +55,7 @@ function hayDatos(conteos) {
  *          escribirMemoria?: (lista) => void, escribirFinanzas?: (estado) => void}} fuentes
  *        Inyectables para pruebas; por defecto lee/escribe via los stores.
  */
-export function importarJsonASqlite(db, { rutaMemorias, rutaFinanzas, memoryStore, financeStore } = {}) {
+export function importarJsonASqlite(db, { rutaMemorias, rutaFinanzas, rutaUsuarios = null, memoryStore, financeStore } = {}) {
   const origen = db.prepare("SELECT valor FROM meta WHERE clave = 'origen'").get();
   if (origen) {
     return { ok: true, yaImportado: true, origen: origen.valor, importados: null };
@@ -72,11 +73,13 @@ export function importarJsonASqlite(db, { rutaMemorias, rutaFinanzas, memoryStor
 
   const memorias = rutaMemorias ? leerJsonSiExiste(rutaMemorias, []) : [];
   const finanzas = rutaFinanzas ? leerJsonSiExiste(rutaFinanzas, null) : null;
+  const usuarios = rutaUsuarios ? leerJsonSiExiste(rutaUsuarios, []) : [];
 
   const esperados = {
     memorias: Array.isArray(memorias) ? memorias.length : 0,
     gastos: finanzas && Array.isArray(finanzas.gastos) ? finanzas.gastos.length : 0,
-    suscripciones: finanzas && Array.isArray(finanzas.suscripciones) ? finanzas.suscripciones.length : 0
+    suscripciones: finanzas && Array.isArray(finanzas.suscripciones) ? finanzas.suscripciones.length : 0,
+    usuarios: Array.isArray(usuarios) ? usuarios.length : 0
   };
 
   db.transaction(() => {
@@ -90,6 +93,14 @@ export function importarJsonASqlite(db, { rutaMemorias, rutaFinanzas, memoryStor
         borradores: Array.isArray(finanzas.borradores) ? finanzas.borradores : []
       });
     }
+    if (esperados.usuarios > 0) {
+      const insUsuario = db.prepare(
+        'INSERT INTO usuarios (telefono, primer_contacto, ultimo_acceso) VALUES (?, ?, ?)'
+      );
+      for (const u of usuarios) {
+        insUsuario.run(u.telefono, u.primerContacto, u.ultimoAcceso);
+      }
+    }
     // Verificacion de integridad DENTRO de la transaccion: si los
     // conteos no coinciden con la fuente, se hace rollback y no queda
     // importacion parcial ni marca.
@@ -100,7 +111,7 @@ export function importarJsonASqlite(db, { rutaMemorias, rutaFinanzas, memoryStor
       }
     }
     db.prepare("INSERT INTO meta (clave, valor) VALUES ('origen', ?)").run(
-      esperados.memorias + esperados.gastos + esperados.suscripciones > 0 ? 'importada' : 'nueva'
+      esperados.memorias + esperados.gastos + esperados.suscripciones + esperados.usuarios > 0 ? 'importada' : 'nueva'
     );
     db.prepare("INSERT INTO meta (clave, valor) VALUES ('importada_en', ?)").run(new Date().toISOString());
     db.prepare("INSERT INTO meta (clave, valor) VALUES ('conteos_importacion', ?)").run(JSON.stringify(esperados));
@@ -148,13 +159,17 @@ export function exportarSqliteAJson(db, { dirDestino, memoryStore, financeStore 
   }
   const memorias = memoryStore.leer();
   const finanzas = financeStore.leer();
+  const usuarios = db.prepare('SELECT telefono, primer_contacto AS primerContacto, ultimo_acceso AS ultimoAcceso FROM usuarios ORDER BY primer_contacto').all();
 
   const jsonMemorias = JSON.stringify(memorias, null, 2);
   const jsonFinanzas = JSON.stringify(finanzas, null, 2);
+  const jsonUsuarios = JSON.stringify(usuarios, null, 2);
   const rutaMemorias = path.join(dirDestino, 'brain_memory.json');
   const rutaFinanzas = path.join(dirDestino, 'finanzas.json');
+  const rutaUsuarios = path.join(dirDestino, 'usuarios.json');
   escribirAtomico(rutaMemorias, jsonMemorias);
   escribirAtomico(rutaFinanzas, jsonFinanzas);
+  escribirAtomico(rutaUsuarios, jsonUsuarios);
 
   const manifiesto = {
     exportadoEn: new Date().toISOString(),
@@ -163,13 +178,15 @@ export function exportarSqliteAJson(db, { dirDestino, memoryStore, financeStore 
       gastos: finanzas.gastos.length,
       suscripciones: finanzas.suscripciones.length,
       presupuestos: Object.keys(finanzas.presupuestos).length,
-      borradores: finanzas.borradores.length
+      borradores: finanzas.borradores.length,
+      usuarios: usuarios.length
     },
     sha256: {
       'brain_memory.json': crypto.createHash('sha256').update(jsonMemorias).digest('hex'),
-      'finanzas.json': crypto.createHash('sha256').update(jsonFinanzas).digest('hex')
+      'finanzas.json': crypto.createHash('sha256').update(jsonFinanzas).digest('hex'),
+      'usuarios.json': crypto.createHash('sha256').update(jsonUsuarios).digest('hex')
     }
   };
   escribirAtomico(path.join(dirDestino, 'manifiesto.json'), JSON.stringify(manifiesto, null, 2));
-  return { ok: true, rutaMemorias, rutaFinanzas, manifiesto };
+  return { ok: true, rutaMemorias, rutaFinanzas, rutaUsuarios, manifiesto };
 }

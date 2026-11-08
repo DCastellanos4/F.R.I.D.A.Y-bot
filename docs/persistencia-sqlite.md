@@ -77,11 +77,14 @@ obsoleto. La recuperacion exporta el estado actual de la base:
 1. `pm2 stop` del bot.
 2. `DAVIS_SQLITE_PATH=... node scripts/exportar-sqlite-a-json.js`
    crea `data/export-recuperacion/<fecha>/` con `brain_memory.json`,
-   `finanzas.json` y `manifiesto.json` (conteos + sha256). Nunca
+   `finanzas.json`, `usuarios.json` y `manifiesto.json` (conteos +
+   sha256). Nunca
    sobrescribe exportaciones previas ni los JSON activos.
 3. Verifica el manifiesto y revisa los JSON exportados.
 4. Copia los JSON verificados sobre los activos de `data/` (guardando
-   copia de los anteriores).
+   copia de los anteriores). `usuarios.json` no tiene consumidor JSON
+   historico: queda como registro para la futura multi-tenancy y para
+   reimportar a una base nueva.
 5. `DAVIS_PERSISTENCE=json` y arranca.
 
 `scripts/migrar-json-a-sqlite.js` hace la migracion explicita en la

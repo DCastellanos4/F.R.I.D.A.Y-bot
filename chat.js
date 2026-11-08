@@ -1,5 +1,7 @@
 import readline from 'readline';
 // Canal CLI sobre el hexagono: mismo puerto de entrada que WhatsApp.
+// config.js primero: carga el .env (DAVIS_PERSISTENCE, etc.) antes del contenedor.
+import './src/config/config.js';
 import { procesarMensajeEntrante } from './src/composition/container.js';
 import { crearInboundMessage } from './src/ports/inbound/InboundMessage.js';
 import { confirmAndExecute } from './src/system/bashConsoleService.js';

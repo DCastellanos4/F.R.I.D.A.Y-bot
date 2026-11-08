@@ -18,7 +18,7 @@ import { crearSqliteFinanceStore } from './sqliteFinanceStore.js';
 import { crearSqliteUserRepository } from './sqliteUserRepository.js';
 import { importarJsonASqlite, comprobarEstadoConsistente } from './importExport.js';
 
-export function crearPersistenciaSqlite({ rutaDb, rutaMemoriasJson = null, rutaFinanzasJson = null } = {}) {
+export function crearPersistenciaSqlite({ rutaDb, rutaMemoriasJson = null, rutaFinanzasJson = null, rutaUsuariosJson = null } = {}) {
   if (!rutaDb) throw new Error('crearPersistenciaSqlite requiere rutaDb.');
   const db = abrirBaseDatos(rutaDb);
   ejecutarMigraciones(db);
@@ -39,6 +39,7 @@ export function crearPersistenciaSqlite({ rutaDb, rutaMemoriasJson = null, rutaF
     importacion = importarJsonASqlite(db, {
       rutaMemorias: rutaMemoriasJson,
       rutaFinanzas: rutaFinanzasJson,
+      rutaUsuarios: rutaUsuariosJson,
       memoryStore,
       financeStore
     });
