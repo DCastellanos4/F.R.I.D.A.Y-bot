@@ -10,27 +10,24 @@
  *
  * Strict Policy: Zero Emojis.
  */
-import { consultarJarvis } from './jarvisAgent.js';
+import { consultarJarvis, consultarJarvisEnAmbito } from './jarvisAgent.js';
 import { afirmarLLMProvider } from '../ports/outbound/LLMProviderPort.js';
 import { afirmarMemoryRepository } from '../ports/outbound/MemoryRepositoryPort.js';
 import { conSpan, hashSesion } from '../observability/telemetry.js';
 
-export function crearMessageProcessor({ llmProvider, memoryRepository, metricasClasificador, crearStoreMetricas, rutaArchivoIdempotenciaDefecto } = {}) {
+export function crearMessageProcessor({ llmProvider, memoryRepository, metricasClasificador, crearStoreMetricas, rutaArchivoIdempotenciaDefecto, accesoTenants = null } = {}) {
   if (llmProvider !== undefined) afirmarLLMProvider(llmProvider);
   if (memoryRepository !== undefined) afirmarMemoryRepository(memoryRepository);
 
-  return Object.freeze({
-    /**
-     * @param {import('../ports/inbound/InboundMessage.js').InboundMessage} inbound
-     * @param {Object} [ctx]
-     * @param {Array} [ctx.historial]  Historial del chat en formato agente.
-     * @param {Object} [ctx.opciones]  Opciones historicas de consultarJarvis;
-     *                                 una clave explicita aqui tiene prioridad
-     *                                 sobre los puertos del contenedor.
-     * @returns {Promise<string>} Respuesta de texto del agente.
-     */
-    async procesarMensajeEntrante(inbound, { historial = [], opciones = {} } = {}) {
-      const opcionesConPuertos = { ...opciones };
+  async function procesar(inbound, { historial = [], opciones = {} } = {}, enAmbito = false) {
+      let acceso = null;
+      if (accesoTenants) {
+        try { acceso = await accesoTenants.resolver(inbound); } catch { return 'Acceso no disponible para este usuario.'; }
+        if (!acceso) return 'Acceso no disponible para este usuario.';
+      }
+      // Si se instala acceso autenticado, sus parametros de seguridad ganan
+      // SIEMPRE a las opciones del llamador. Ningun texto/metadata elige tenant.
+      const opcionesConPuertos = { ...opciones, ...(acceso || {}) };
 
       if (llmProvider) {
         if (typeof opcionesConPuertos.chatCompletion !== 'function') {
@@ -69,7 +66,15 @@ export function crearMessageProcessor({ llmProvider, memoryRepository, metricasC
       return conSpan('mensaje_entrante', {
         canal: String(inbound.channel || 'desconocido').slice(0, 30),
         sesion: hashSesion(inbound.userId)
-      }, () => consultarJarvis(inbound.text, historial, opcionesConPuertos));
+      }, () => (enAmbito ? consultarJarvisEnAmbito : consultarJarvis)(inbound.text, historial, opcionesConPuertos));
+  }
+  return Object.freeze({
+    procesarMensajeEntrante: (inbound, ctx) => procesar(inbound, ctx, false),
+    // Ruta interna de ensayo: mismo acceso autenticado, omite solo gate publico.
+    // No se instala ni expone en ningun canal productivo.
+    procesarMensajeEnAmbito: (inbound, ctx) => {
+      if (!accesoTenants) throw new Error('Ensayo tenant requiere acceso autenticado.');
+      return procesar(inbound, ctx, true);
     }
   });
 }

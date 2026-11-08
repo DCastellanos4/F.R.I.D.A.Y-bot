@@ -140,6 +140,7 @@ function guardarMemorias(lista, deps = {}) {
       store.guardar(lista);
     } else {
       const ruta = deps.rutaArchivo || ARCHIVO_MEMORIA;
+      fs.mkdirSync(path.dirname(ruta), { recursive: true });
       fs.writeFileSync(ruta, JSON.stringify(lista, null, 2), 'utf-8');
     }
     // El indice vectorial (RAG) queda desactualizado tras cada escritura:

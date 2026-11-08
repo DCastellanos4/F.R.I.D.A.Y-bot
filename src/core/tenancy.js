@@ -164,7 +164,7 @@ export function aislarOpcionesTenant(opciones, dataDir) {
   // Solo puertos operativos confiables. Ningun callback/destino de datos del
   // contenedor del propietario ni opcion desconocida se hereda por spread.
   const resto = {};
-  for (const k of ['tenantId', 'chatCompletion', 'llmProvider', 'controlUso', 'rolDeTenant', 'permitidasUsuario',
+  for (const k of ['tenantId', 'chatCompletion', 'llmProvider', 'controlUso', 'rolDeTenant', 'permitidasUsuario', 'permisosDeTenant',
     'maxRondasHerramientas', 'retornarObjeto', 'retornarTraza', 'topKMemorias', 'minScoreMemoria']) {
     if (Object.prototype.hasOwnProperty.call(opciones, k)) resto[k] = opciones[k];
   }

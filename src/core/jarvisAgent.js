@@ -838,6 +838,7 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
     herramienta: nombreFuncion,
     catalogo: NOMBRES_HERRAMIENTAS_JARVIS,
     rolDe: opciones.rolDeTenant,
+    permisosDe: opciones.permisosDeTenant,
     // Solo inyectable por codigo interno (pruebas E2E); sin ella, la lista vacia por defecto.
     ...(Array.isArray(opciones.permitidasUsuario) ? { permitidasUsuario: opciones.permitidasUsuario } : {})
   });
@@ -2219,6 +2220,7 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
     herramientasActivas = herramientasActivas.filter((h) => puedeEjecutarHerramienta({
       tenantId: opciones.tenantId, herramienta: h.function?.name || h.name,
       rolDe: opciones.rolDeTenant,
+    permisosDe: opciones.permisosDeTenant,
       ...(Array.isArray(opciones.permitidasUsuario) ? { permitidasUsuario: opciones.permitidasUsuario } : {})
     }).permitido);
   }

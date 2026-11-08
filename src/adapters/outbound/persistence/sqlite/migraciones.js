@@ -186,6 +186,17 @@ export const MIGRACIONES = [
         iniciada_en TEXT NOT NULL
       );
     `
+  },
+  {
+    version: 5,
+    nombre: '005_permisos_tenant',
+    sql: `
+      CREATE TABLE tenant_herramientas (
+        tenant_id TEXT NOT NULL REFERENCES tenants(id),
+        herramienta TEXT NOT NULL,
+        PRIMARY KEY (tenant_id,herramienta)
+      );
+    `
   }
 ];
 

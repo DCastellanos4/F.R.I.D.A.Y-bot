@@ -5,6 +5,7 @@
  *
  * Strict Policy: Zero Emojis.
  */
+import { CLASES_APTAS_TENANT, claseDeHerramienta } from '../../../../services/rbacService.js';
 import { TENANT_PROPIETARIO, afirmarTenantId } from '../../../../core/tenancy.js';
 
 const ROLES = new Set(['propietario', 'usuario']);
@@ -16,6 +17,11 @@ export function crearSqliteTenantRepository(db, deps = {}) {
   const insIdent = db.prepare('INSERT INTO identidades (tenant_id, canal, identificador, creada_en) VALUES (?, ?, ?, ?)');
   const getIdent = db.prepare('SELECT tenant_id FROM identidades WHERE canal = ? AND identificador = ?');
 
+  const permisos = db.prepare('SELECT herramienta FROM tenant_herramientas WHERE tenant_id = ? ORDER BY herramienta');
+  const quitarPermisos = db.prepare('DELETE FROM tenant_herramientas WHERE tenant_id = ?');
+  const ponerPermiso = db.prepare('INSERT INTO tenant_herramientas (tenant_id,herramienta) VALUES (?,?)');
+  const estado = db.prepare('UPDATE tenants SET estado = ? WHERE id = ?');
+
   return Object.freeze({
     /** Alta explicita. No permite crear otro 'propietario'. */
     registrarTenant({ id, nombre, rol = 'usuario' } = {}) {
@@ -25,6 +31,18 @@ export function crearSqliteTenantRepository(db, deps = {}) {
       if (typeof nombre !== 'string' || !nombre.trim()) throw new Error('nombre requerido.');
       insTenant.run(id, nombre.trim().slice(0, 80), rol, 'activo', ahora());
       return getTenant.get(id);
+    },
+    configurarPermisos(id, herramientas) {
+      afirmarTenantId(id);
+      if (id === TENANT_PROPIETARIO || !getTenant.get(id)) throw new Error('Solo tenants registrados no propietarios.');
+      if (!Array.isArray(herramientas) || herramientas.some(h => !CLASES_APTAS_TENANT.includes(claseDeHerramienta(h)))) throw new Error('Capacidad fuera del catalogo apto.');
+      db.transaction(() => { quitarPermisos.run(id); for (const h of new Set(herramientas)) ponerPermiso.run(id,h); }).immediate();
+    },
+    leerPermisos(id) { afirmarTenantId(id); return permisos.all(id).map(f => f.herramienta); },
+    establecerEstado(id, valor) {
+      afirmarTenantId(id);
+      if (id === TENANT_PROPIETARIO || !['activo','suspendido'].includes(valor)) throw new Error('Estado/tenant invalido.');
+      if (estado.run(valor,id).changes !== 1) throw new Error('Tenant inexistente.');
     },
     obtener(id) {
       afirmarTenantId(id);

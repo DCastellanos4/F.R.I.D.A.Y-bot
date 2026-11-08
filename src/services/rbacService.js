@@ -106,7 +106,8 @@ export function puedeEjecutarHerramienta({
   herramienta,
   catalogo = null,
   permitidasUsuario = HERRAMIENTAS_PERMITIDAS_USUARIO_POR_DEFECTO,
-  rolDe = null
+  rolDe = null,
+  permisosDe = null
 } = {}) {
   if (tenantId === undefined || tenantId === null || tenantId === TENANT_PROPIETARIO) {
     return { permitido: true, motivo: 'propietario' };
@@ -119,7 +120,8 @@ export function puedeEjecutarHerramienta({
   const clase = claseDeHerramienta(herramienta);
   if (clase === null) return { permitido: false, motivo: 'sin_clasificar' };
   if (!CLASES_APTAS_TENANT.includes(clase)) return { permitido: false, motivo: 'solo_propietario' };
-  return permitidasUsuario.includes(herramienta)
+  const permitidas = typeof permisosDe === 'function' ? permisosDe(tenantId) : permitidasUsuario;
+  return Array.isArray(permitidas) && permitidas.includes(herramienta)
     ? { permitido: true, motivo: 'lista_blanca' }
     : { permitido: false, motivo: 'no_en_lista_blanca' };
 }

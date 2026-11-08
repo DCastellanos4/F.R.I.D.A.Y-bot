@@ -89,6 +89,7 @@ export function crearContenedor(overrides = {}) {
     memoryRepository,
     metricasClasificador,
     crearStoreMetricas: crearJsonlClassifierMetricsStore,
+    accesoTenants: overrides.accesoTenants || null,
     rutaArchivoIdempotenciaDefecto: overrides.rutaArchivoIdempotenciaDefecto ?? rutaIdempTest
   });
   const procesarBase = processor.procesarMensajeEntrante;
