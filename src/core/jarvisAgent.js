@@ -1846,11 +1846,19 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
   // LLM inyectable (pruebas con bateria dorada) o el real por defecto
   // Puerto de salida LLM: una funcion chatCompletion explicita gana; si no,
   // el proveedor inyectado por el contenedor; si no, el modulo historico.
-  const chatImpl = typeof opciones.chatCompletion === 'function'
+  const chatImplBase = typeof opciones.chatCompletion === 'function'
     ? opciones.chatCompletion
     : (opciones.llmProvider && typeof opciones.llmProvider.chatCompletion === 'function'
         ? (peticion) => opciones.llmProvider.chatCompletion(peticion)
         : chatCompletion);
+  // Vigila si alguna llamada se resolvio con el modelo de respaldo (router
+  // de failover de llmService) para declararlo honestamente en la respuesta.
+  let failoverDetectado = null;
+  const chatImpl = async (peticion) => {
+    const r = await chatImplBase(peticion);
+    if (r && r.degradado && r.failover) failoverDetectado = r.failover;
+    return r;
+  };
 
   // Memoria episodica: recupera fragmentos antiguos verbatim de ESTE chat
   // que la ventana y la condensacion ya no cubren, si aportan al mensaje.
@@ -2369,6 +2377,13 @@ Directrices de selección:
     }
   } catch (errGuard) {
     console.warn('[J.A.R.V.I.S. Guardrail] Error ejecutando guardrails de salida:', errGuard.message);
+  }
+
+  if (failoverDetectado && typeof textoFinal === 'string' && textoFinal.trim()) {
+    // Degradacion honesta: David sabe que respondio el respaldo y que las
+    // acciones de ESTA peticion no se repitieron (conmutacion por ronda).
+    textoFinal += '\n\n(Nota: el modelo principal esta sin cuota o no responde; he respondido con el modelo de respaldo. Ninguna accion de esta peticion se ha ejecutado dos veces.)';
+    traza.failoverModelo = failoverDetectado;
   }
 
   const respuestaLimpia = limpiarRespuestaJarvis(textoFinal);

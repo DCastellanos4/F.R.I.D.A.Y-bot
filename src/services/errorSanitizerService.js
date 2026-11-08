@@ -37,6 +37,9 @@ export function esErrorDeLimite(textoError) {
  */
 export function mensajeErrorParaUsuario(err, { contexto = 'solicitud', numero } = {}) {
   const crudo = String(err?.message || err || '');
+  if (err?.name === 'CuotaAgotadaError') {
+    return 'Señor, tanto el modelo principal como el de respaldo han llegado a su limite temporal. No se ha completado ninguna accion nueva; intentelo de nuevo en unos minutos.';
+  }
   if (esErrorDeLimite(crudo)) {
     const espera = extraerEsperaReintento(crudo);
     return espera

@@ -361,17 +361,22 @@ export async function chatCompletion({
   }
 
   // Cloud OpenAI-Compatible Provider
-  const { client, cloudConfig } = getOpenAIClient({
-    provider: activeProvider,
-    model: modelOverride,
-    apiKey: apiKeyOverride,
-    baseUrl: baseUrlOverride
-  });
-  const model = modelOverride || cloudConfig.model;
+  // options.crearCliente / options.esperar: inyeccion para pruebas (un cliente
+  // guionizado y esperas instantaneas); en produccion no se pasan.
+  const { client, cloudConfig } = typeof options.crearCliente === 'function'
+    ? { client: options.crearCliente(), cloudConfig: resolveCloudConfig({ provider: activeProvider, model: modelOverride, apiKey: apiKeyOverride, baseUrl: baseUrlOverride }) }
+    : getOpenAIClient({ provider: activeProvider, model: modelOverride, apiKey: apiKeyOverride, baseUrl: baseUrlOverride });
+  const esperar = typeof options.esperar === 'function' ? options.esperar : (ms) => new Promise((r) => setTimeout(r, ms));
+  const modeloPrincipal = modelOverride || cloudConfig.model;
+  const cadena = [modeloPrincipal];
+  if (cloudConfig.provider === 'groq' || (cloudConfig.baseUrl || '').includes('groq.com')) {
+    for (const m of modelosRespaldoGroq()) {
+      if (!cadena.includes(m)) cadena.push(m);
+    }
+  }
   const preparedMessages = prepareMessagesForProvider(messages, false);
 
-  const payload = {
-    model,
+  const payloadBase = {
     messages: preparedMessages,
     temperature: options.temperature !== undefined ? options.temperature : (tools && tools.length > 0 ? 0.0 : 0.7),
     ...((tools && tools.length > 0) ? { seed: options.seed ?? 42 } : {}),
@@ -379,10 +384,54 @@ export async function chatCompletion({
   };
 
   if (tools && tools.length > 0) {
-    payload.tools = limitarHerramientasParaProveedor(tools, messages);
+    payloadBase.tools = limitarHerramientasParaProveedor(tools, messages);
   }
 
-  const res = await client.chat.completions.create(payload);
+  let res = null;
+  let modeloUsado = null;
+  let ultimoError = null;
+  let intentosTotales = 0;
+  const saltadosPorCircuito = [];
+  for (const candidato of cadena) {
+    const aparcadoHasta = circuitoModelos.get(candidato) || 0;
+    if (aparcadoHasta > Date.now()) {
+      saltadosPorCircuito.push(candidato);
+      console.warn(`[RouterLLM] ${candidato} aparcado por circuito hasta ${new Date(aparcadoHasta).toISOString()}; se salta sin gastar llamada.`);
+      continue;
+    }
+    for (let intento = 1; intento <= MAX_INTENTOS_POR_MODELO; intento++) {
+      intentosTotales++;
+      try {
+        res = await client.chat.completions.create({ ...payloadBase, model: candidato });
+        modeloUsado = candidato;
+        break;
+      } catch (err) {
+        ultimoError = err;
+        if (!esErrorConmutable(err)) throw err;
+        const esperaSugerida = segundosRetryAfter(err);
+        const esperaMs = (esperaSugerida ?? 1) * 1000;
+        if (esperaMs > ESPERA_MAX_REINTENTO_MS) {
+          // Cuota agotada a horizonte largo (p.ej. TPD diario): aparcar el
+          // modelo en el circuito y saltar al siguiente SIN esperar aqui.
+          circuitoModelos.set(candidato, Date.now() + Math.min(esperaMs, 24 * 3600 * 1000));
+          console.warn(`[RouterLLM] ${candidato} sin cuota (retry-after ${esperaSugerida ?? 'desconocido'}s); aparcado y salto al siguiente modelo.`);
+          break;
+        }
+        console.warn(`[RouterLLM] ${candidato} fallo temporal (intento ${intento}/${MAX_INTENTOS_POR_MODELO}); reintento en ${esperaMs} ms.`);
+        if (intento < MAX_INTENTOS_POR_MODELO) await esperar(esperaMs);
+      }
+    }
+    if (modeloUsado) break;
+  }
+  if (!modeloUsado) {
+    const detalle = ultimoError ? ` Ultimo error: ${String(ultimoError.message || ultimoError).slice(0, 200)}` : '';
+    const err = new Error(`Todos los modelos configurados estan sin cuota o no disponibles ahora mismo (${cadena.join(' -> ')}).${detalle}`);
+    err.name = 'CuotaAgotadaError';
+    throw err;
+  }
+  if (modeloUsado !== modeloPrincipal) {
+    console.warn(`[RouterLLM] Respuesta con modelo de respaldo: ${modeloUsado} (principal ${modeloPrincipal} no disponible).`);
+  }
   const choice = res.choices?.[0]?.message;
 
   if (!choice) {
@@ -423,10 +472,59 @@ export async function chatCompletion({
       tool_calls: toolCalls
     },
     provider: cloudConfig.provider,
-    model,
+    model: modeloUsado,
+    degradado: modeloUsado !== modeloPrincipal,
+    failover: { modeloPrincipal, cadena, saltadosPorCircuito, intentos: intentosTotales },
     finishReason: res.choices?.[0]?.finish_reason || null,
     raw: res
   };
+}
+
+// --- Router de modelos con failover (aprobado por David, 8 nov 2026) ---
+// Alcance: SOLO Groq (sin nuevos proveedores ni cuentas). Primario = modelo
+// configurado; respaldo por defecto openai/gpt-oss-20b (GROQ_MODELOS_RESPALDO
+// lo sobrescribe, lista separada por comas). Salta por 429 o fallo temporal
+// (5xx/red), NUNCA por 400 (fallo de la peticion, reintentar no arregla).
+// La conmutacion es por RONDA: se reenvia la MISMA peticion (mismos mensajes,
+// mismas herramientas) al respaldo, asi las herramientas ya ejecutadas no se
+// repiten y una sintesis bloqueada por 429 puede completarse sin reejecutar
+// nada. Circuito en memoria: un 429 con retry-after largo aparca el modelo
+// para no gastar llamadas inutiles. No hay proactividad por cabeceras: las
+// ventanas RPM/TPM no dicen el saldo diario (sonda 8 nov 2026), la señal de
+// TPD es el 429 model-scoped con su retry-after.
+const circuitoModelos = new Map(); // modelo -> epochMs hasta el que esta aparcado
+const MAX_INTENTOS_POR_MODELO = 2;
+const ESPERA_MAX_REINTENTO_MS = 10000;
+
+/** Solo para pruebas: limpia el circuito de modelos aparcados. */
+export function reiniciarCircuitoModelos() {
+  circuitoModelos.clear();
+}
+
+function modelosRespaldoGroq() {
+  const crudo = process.env.GROQ_MODELOS_RESPALDO || 'openai/gpt-oss-20b';
+  return crudo.split(',').map((m) => m.trim()).filter(Boolean);
+}
+
+function esErrorConmutable(err) {
+  const status = err?.status ?? err?.statusCode ?? err?.response?.status;
+  if (status === 429) return true;
+  if (typeof status === 'number' && status >= 500 && status < 600) return true;
+  if (status == null) {
+    const texto = `${err?.name || ''} ${err?.code || ''} ${err?.message || ''}`;
+    if (/timeout|connection|network|econn|eai_again|socket|fetch failed/i.test(texto)) return true;
+  }
+  return false;
+}
+
+function segundosRetryAfter(err) {
+  const h = err?.headers;
+  const bruto = typeof h?.get === 'function' ? h.get('retry-after') : (h?.['retry-after'] ?? h?.['Retry-After']);
+  if (bruto == null) return null;
+  const n = Number(bruto);
+  if (Number.isFinite(n)) return Math.max(0, n);
+  const fecha = Date.parse(bruto);
+  return Number.isFinite(fecha) ? Math.max(0, Math.round((fecha - Date.now()) / 1000)) : null;
 }
 
 /**
