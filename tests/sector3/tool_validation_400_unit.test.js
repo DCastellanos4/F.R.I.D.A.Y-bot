@@ -89,5 +89,6 @@ test('Respuesta vacia tras agotar rondas: fallback honesto que declara si hubo e
   const ejecutores = { listar_recordatorios: async () => 'No tienes recordatorios.' };
   const respuesta = await consultarJarvis('dime todos mis recordatorios', [], { chatCompletion: chatFalso, ejecutores });
   assert.ok(respuesta.length > 0, 'nunca se entrega silencio');
-  assert.match(respuesta, /NO se ha realizado ninguna accion/i, 'solo lecturas: declara que no hubo acciones con efectos');
+  assert.match(respuesta, /No tienes recordatorios/, 'solo lecturas: los datos ya disponibles se entregan directos');
+  assert.doesNotMatch(respuesta, /SI se ejecuto|una sola vez/i, 'ninguna insinuacion de escritura por una consulta');
 });

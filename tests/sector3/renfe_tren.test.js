@@ -467,3 +467,43 @@ assert.match(msgToolRenfe.content, /Aranjuez/);
 assert.doesNotMatch(msgToolRenfe.content, /codigo/i, 'no pide codigo ni menciona codigos a David');
 console.log('OK 16/16 frase 2 exacta con argumentos inventados (agente)');
 console.log('renfe_tren.test.js OK (grounding de argumentos)');
+
+// 17) Frase 3 del smoke (8 nov 2026): tool Renfe de LECTURA correcta pero
+// sintesis del modelo de respaldo VACIA -> salida determinista segura con
+// horarios/destinos, sin LLM extra, sin reejecutar la tool, sin efectos
+// falsos ni peticion de otra ronda.
+const depsRecI = depsRec('i', feedVacio);
+try { fs.unlinkSync(depsRecI.rutaCache); } catch { /* nada */ }
+try { fs.unlinkSync(depsRecI.rutaArchivo); } catch { /* nada */ }
+fs.rmSync(depsRecI.rutaCacheHorarios, { recursive: true, force: true });
+const registroRenfeVacia = [];
+let llamadasRenfeVacia = 0;
+const clienteRenfeVacia = {
+  chat: { completions: { create: async (payload) => {
+    registroRenfeVacia.push(payload);
+    llamadasRenfeVacia += 1;
+    if (llamadasRenfeVacia === 1) {
+      return { choices: [{ message: { role: 'assistant', content: '', tool_calls: [{ id: 't1', type: 'function', function: { name: 'proximas_llegadas_transporte', arguments: { parada: 'aranjuez' } } }] }, finish_reason: 'tool_calls' }] };
+    }
+    return { choices: [{ message: { role: 'assistant', content: '' }, finish_reason: 'stop' }] };
+  } } }
+};
+const rVacia = await consultarJarvisRenfe('dime los trenes que salen ahora mismo de aranjuez', [], {
+  chatCompletion: async (peticion) => {
+    const cruda = await clienteRenfeVacia.chat.completions.create(peticion);
+    return { message: cruda.choices[0].message, model: 'test-falso' };
+  },
+  rutaArchivoTransporte: depsRecI.rutaArchivo,
+  fetchFnTransporte: depsRecI.fetchFn,
+  fetchFnCercanias: depsRecI.fetchFnCercanias,
+  rutaCacheEstacionesRenfe: depsRecI.rutaCache,
+  rutaCacheHorariosRenfe: depsRecI.rutaCacheHorarios,
+  ahoraTransporte: ahoraSabado
+});
+assert.strictEqual(llamadasRenfeVacia, 2, 'sin LLM extra ni reejecucion de la tool');
+assert.match(rVacia, /salidas programadas/i, 'salida determinista con horarios');
+assert.match(rVacia, /15:50|16:00/, 'horarios reales presentes');
+assert.match(rVacia, /Madrid-Atocha/, 'destinos presentes');
+assert.doesNotMatch(rVacia, /SI se ejecuto|una sola vez|pideme un resumen|reformula/i, 'sin efectos falsos ni peticion de otra ronda');
+console.log('OK 17/17 frase 3: sintesis vacia -> datos Renfe deterministas');
+console.log('renfe_tren.test.js OK (sintesis vacia Renfe)');

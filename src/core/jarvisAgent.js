@@ -616,18 +616,29 @@ const HERRAMIENTAS_IDEMPOTENTES = new Set([
 // guardado" cuando esta confirmado).
 const MARCAS_FALLO_PAYLOAD = /^\s*(error\b|no se pudo|no pude|no he podido|no se ha podido|no se ha registrado|no fue posible|fallo\b|falló)/i;
 
+// Consultas por semantica real (leidas del codigo, no del nombre solamente):
+// herramientas de lectura que no siempre estan en HERRAMIENTAS_IDEMPOTENTES
+// (proximas_llegadas_transporte, listar_*, buscar_*, etc.). Una consulta
+// NUNCA se declara como efecto; su payload ya es texto seguro para David.
+const HERRAMIENTAS_CONSULTA_EXTRA = /^(proximas_llegadas_transporte|listar_|buscar_|consultar_|ver_|verificar_|leer_|estado_|estadisticas_|obtener_|resumir_|resumen_|sugerir_|recomendar_|analizar_|estimar_|actividad_|informe_|revisar_|preguntar_|explicar_|navegar_y_leer|guiar_depuracion|auditar_dependencias|iniciar_simulacro_entrevista)/;
+
+function esConsulta(nombreFuncion) {
+  return HERRAMIENTAS_IDEMPOTENTES.has(nombreFuncion) || HERRAMIENTAS_CONSULTA_EXTRA.test(nombreFuncion);
+}
+
 function describirEfectoConfirmado(nombreFuncion, resultadoTool) {
-  if (HERRAMIENTAS_IDEMPOTENTES.has(nombreFuncion)) return null; // consulta: sin efectos
+  if (esConsulta(nombreFuncion)) return null; // consulta: sin efectos
   if (typeof resultadoTool !== 'string' || !resultadoTool.trim()) return null;
   if (MARCAS_FALLO_PAYLOAD.test(resultadoTool)) return null; // el payload indica fallo
   if (nombreFuncion === 'guardar_memoria' || nombreFuncion === 'guardar_nota_personal') return 'la informacion se ha guardado';
   if (nombreFuncion === 'olvidar_memoria') return 'el dato se ha borrado';
   if (/^(enviar_|programar_mensaje_whatsapp|crear_encuesta_whatsapp)/.test(nombreFuncion)) return 'el envio esta hecho';
   if (/^(cancelar_|eliminar_|vaciar_|dejar_vigilar|tachar_)/.test(nombreFuncion)) return 'la cancelacion o eliminacion esta hecha';
-  if (/^(registrar_|anotar_|crear_quedada|crear_flashcard|escribir_diario|marcar_habito|anadir_compra|agregar_contacto_vip)/.test(nombreFuncion)) return 'el registro se ha guardado';
+  if (/^(registrar_|anotar_|crear_quedada|crear_flashcard|escribir_diario|marcar_habito|anadir_compra|agregar_contacto_vip|planificar_)/.test(nombreFuncion)) return 'el registro se ha guardado';
   if (/^(configurar_|activar_|desactivar_|vigilar_|poner_menu|actualizar_|priorizar_)/.test(nombreFuncion)) return 'el cambio esta aplicado';
   if (nombreFuncion === 'execute_bash_command') return 'el comando se ha ejecutado';
-  return 'la accion solicitada esta hecha';
+  if (/^(generar_|capturar_|descargar_|encender_|controlar_|manage_|trigger_|crear_|ejecutar_|proponer_|iniciar_|redactar_)/.test(nombreFuncion)) return 'la accion solicitada esta hecha';
+  return null; // herramienta no clasificada: nunca se afirma un efecto
 }
 
 // Herramientas que envian contenido a terceros. Antes de ejecutarlas, el
@@ -2267,7 +2278,10 @@ Directrices de selección:
         const esNoReconocida = resultadoTool === 'Función no reconocida.' || resultadoTool === 'Funcion no reconocida.';
         const resultadoEstado = esNoReconocida ? 'no_reconocida' : 'ok';
         const efecto = resultadoEstado === 'ok' ? describirEfectoConfirmado(nombreFuncion, resultadoTool) : null;
-        traza.llamadas.push({ nombre: nombreFuncion, ronda, resultado: resultadoEstado, ...(efecto ? { efecto } : {}) });
+        const datos = !efecto && resultadoEstado === 'ok' && esConsulta(nombreFuncion) && typeof resultadoTool === 'string' && resultadoTool.trim()
+          ? resultadoTool.slice(0, 2000)
+          : null;
+        traza.llamadas.push({ nombre: nombreFuncion, ronda, resultado: resultadoEstado, ...(efecto ? { efecto } : {}), ...(datos ? { datos } : {}) });
         resultadosRonda.push({ id: llamada.id, name: nombreFuncion, result: resultadoTool, status: resultadoEstado });
       } catch (errTool) {
         resultadoTool = describirErrorHerramienta(nombreFuncion, errTool, HERRAMIENTAS_IDEMPOTENTES.has(nombreFuncion));
@@ -2359,9 +2373,17 @@ Directrices de selección:
     // Las acciones ya ejecutadas se conservan y se nombran; NO se invita a
     // repetir la peticion (lo hecho esta hecho una sola vez).
     const efectosConfirmados = traza.llamadas.filter((l) => l.efecto).map((l) => l.efecto);
-    textoFinal = efectosConfirmados.length > 0
-      ? `Señor, antes de quedarme sin respuesta deje hecho esto: ${efectosConfirmados.join('; ')}. No he podido redactarle la respuesta final porque el modelo principal y el de respaldo estan sin cuota o no disponibles ahora mismo. Lo que esta hecho esta hecho una sola vez: no hace falta que repita la peticion.`
-      : 'Señor, no he podido responder: el modelo principal y el de respaldo estan sin cuota o no disponibles ahora mismo. No se ha completado ninguna accion; intentelo de nuevo en unos minutos.';
+    const datosConsulta = [...traza.llamadas].reverse().find((l) => l.datos)?.datos || null;
+    if (datosConsulta) {
+      // Consulta con datos ya disponibles: se entregan directos (salida
+      // determinista de la propia herramienta); no se pide otra ronda.
+      textoFinal = `Señor, no he podido redactarle el cierre porque el modelo principal y el de respaldo estan sin cuota o no disponibles ahora mismo, pero los datos que pidio son estos:\n\n${datosConsulta}`
+        + (efectosConfirmados.length > 0 ? `\n\nAntes de esto deje hecho: ${efectosConfirmados.join('; ')} (una sola vez; no hace falta que repita la peticion).` : '');
+    } else if (efectosConfirmados.length > 0) {
+      textoFinal = `Señor, antes de quedarme sin respuesta deje hecho esto: ${efectosConfirmados.join('; ')}. No he podido redactarle la respuesta final porque el modelo principal y el de respaldo estan sin cuota o no disponibles ahora mismo. Lo que esta hecho esta hecho una sola vez: no hace falta que repita la peticion.`;
+    } else {
+      textoFinal = 'Señor, no he podido responder: el modelo principal y el de respaldo estan sin cuota o no disponibles ahora mismo. No se ha completado ninguna accion; intentelo de nuevo en unos minutos.';
+    }
     traza.cuotaAgotada = true;
     console.warn('[J.A.R.V.I.S.] Cuota agotada en todos los modelos; se entrega resultado parcial exacto.');
   } else {
@@ -2371,10 +2393,19 @@ Directrices de selección:
   // Nunca se entrega silencio: si tras las rondas la respuesta quedo vacia,
   // se informa con exactitud de si se ejecuto algo o nada (sin afirmar exitos).
   if (!textoFinal) {
-    const huboEfectos = accionesConEfectosEjecutadas.size > 0;
-    textoFinal = huboEfectos
-      ? 'No he podido redactar el cierre de tu peticion, senor. Ten en cuenta que alguna de las acciones anteriores SI se ejecuto; pideme un resumen si quieres repasar que se hizo.'
-      : 'No he podido completar tu peticion, senor, y NO se ha realizado ninguna accion. Intentalo de nuevo en unos minutos o reformula lo que necesitas.';
+    // Mismo control de efectos confirmados que la rama de cuota agotada:
+    // una consulta (Renfe, memoria...) NUNCA se insinua como escritura y
+    // sus datos ya disponibles se entregan directos, sin pedir otra ronda.
+    const efectosConfirmados = traza.llamadas.filter((l) => l.efecto).map((l) => l.efecto);
+    const datosConsulta = [...traza.llamadas].reverse().find((l) => l.datos)?.datos || null;
+    if (datosConsulta) {
+      textoFinal = `Señor, no he podido redactarle el cierre, pero los datos que pidio son estos:\n\n${datosConsulta}`
+        + (efectosConfirmados.length > 0 ? `\n\nAntes de esto deje hecho: ${efectosConfirmados.join('; ')} (una sola vez; no hace falta que repita la peticion).` : '');
+    } else if (efectosConfirmados.length > 0) {
+      textoFinal = `No he podido redactar el cierre de tu peticion, senor. Antes de esto deje hecho: ${efectosConfirmados.join('; ')} (una sola vez; no hace falta que repita la peticion).`;
+    } else {
+      textoFinal = 'No he podido completar tu peticion, senor, y NO se ha realizado ninguna accion. Intentalo de nuevo en unos minutos o reformula lo que necesitas.';
+    }
     console.warn('[J.A.R.V.I.S.] Respuesta vacia tras las rondas de herramientas; se entrega fallback honesto.');
   }
 

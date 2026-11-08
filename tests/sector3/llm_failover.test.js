@@ -286,7 +286,7 @@ test('Integrado: TODOS los modelos caen SIN ninguna herramienta previa: mensaje 
   assert.match(r, /intentelo de nuevo/i, 'aqui SI se invita a reintentar');
 });
 
-test('Integrado: consulta sin efectos + caida total -> se invita a reintentar (nada quedo escrito)', async () => {
+test('Integrado: consulta sin efectos + caida total -> se entrega el dato disponible (aqui: que no hay nada), sin efectos falsos', async () => {
   reiniciarCircuitoModelos();
   const registro = [];
   const pasoConsulta = { role: 'assistant', content: '', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'buscar_memoria', arguments: { consulta: 'talla de zapatillas' } } }] };
@@ -295,9 +295,9 @@ test('Integrado: consulta sin efectos + caida total -> se invita a reintentar (n
     chatCompletion: chatConRouterReal(cliente),
     memoryRepository: { buscar: () => [] }
   });
-  assert.match(r, /No se ha completado ninguna accion/, 'una consulta no es un efecto: repetir es seguro y se dice');
-  assert.match(r, /intentelo de nuevo/i);
-  assert.doesNotMatch(r, /una sola vez/, 'sin consultas en la lista de efectos');
+  assert.match(r, /No encontré ningún recuerdo/, 'la respuesta de la consulta (vacia) tambien es dato util y se entrega');
+  assert.doesNotMatch(r, /una sola vez|se ha guardado/i, 'sin efectos falsos');
+  assert.doesNotMatch(r, /No se ha completado ninguna accion/, 'no se niega el dato disponible');
 });
 
 test('Integrado: payload de FALLO con resultado ok NO se declara como efecto', async () => {
@@ -310,4 +310,31 @@ test('Integrado: payload de FALLO con resultado ok NO se declara como efecto', a
   });
   assert.doesNotMatch(r, /se ha guardado|una sola vez/, 'un ok con payload de error no es efecto confirmado');
   assert.match(r, /No se ha completado ninguna accion/, 'honesto: nada confirmado');
+});
+
+test('Integrado: consulta -> sintesis VACIA (20b): datos directos, sin insinuar escritura ni pedir otra ronda', async () => {
+  reiniciarCircuitoModelos();
+  const registro = [];
+  const pasoConsulta = { role: 'assistant', content: '', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'buscar_memoria', arguments: { consulta: 'talla de zapatillas' } } }] };
+  const sintesisVacia = { role: 'assistant', content: '' };
+  const cliente = clienteIntegrado({ [PRIMARIO]: [pasoConsulta, sintesisVacia] }, registro);
+  const r = await consultarJarvis('que talla de zapatillas tengo guardada?', [], {
+    chatCompletion: chatConRouterReal(cliente),
+    memoryRepository: { buscar: () => [{ sujeto: 'talla zapatillas', dato: '44', fechaLocal: '08/11/2026, 10:00' }] }
+  });
+  assert.match(r, /44/, 'los datos ya disponibles se entregan directos');
+  assert.doesNotMatch(r, /SI se ejecuto|se ha guardado|una sola vez|pideme un resumen/i, 'ninguna insinuacion de escritura ni peticion de otra ronda');
+});
+
+test('Integrado: consulta -> sintesis con cuota AGOTADA: datos directos, sin invitar a repetir la consulta', async () => {
+  reiniciarCircuitoModelos();
+  const registro = [];
+  const pasoConsulta = { role: 'assistant', content: '', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'buscar_memoria', arguments: { consulta: 'talla de zapatillas' } } }] };
+  const cliente = clienteIntegrado({ [PRIMARIO]: [pasoConsulta, error429(3600)], [RESPALDO]: [error429(3600)] }, registro);
+  const r = await consultarJarvis('que talla de zapatillas tengo guardada?', [], {
+    chatCompletion: chatConRouterReal(cliente),
+    memoryRepository: { buscar: () => [{ sujeto: 'talla zapatillas', dato: '44', fechaLocal: '08/11/2026, 10:00' }] }
+  });
+  assert.match(r, /44/, 'los datos ya disponibles se entregan aun con cuota agotada');
+  assert.doesNotMatch(r, /se ha guardado|una sola vez|No se ha completado ninguna accion/i, 'sin efectos falsos ni "ninguna accion" (los datos existen)');
 });
