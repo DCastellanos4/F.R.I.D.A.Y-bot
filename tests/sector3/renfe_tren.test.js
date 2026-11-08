@@ -507,3 +507,70 @@ assert.match(rVacia, /Madrid-Atocha/, 'destinos presentes');
 assert.doesNotMatch(rVacia, /SI se ejecuto|una sola vez|pideme un resumen|reformula/i, 'sin efectos falsos ni peticion de otra ronda');
 console.log('OK 17/17 frase 3: sintesis vacia -> datos Renfe deterministas');
 console.log('renfe_tren.test.js OK (sintesis vacia Renfe)');
+
+// 18) Guardia de capacidad (falsedad REAL de produccion, 8 nov 2026 12:22):
+// el modelo afirmo "No dispongo de acceso en tiempo real a la API de Renfe;
+// sin la clave API y el token configurados no puedo obtener los trenes".
+// Esa afirmacion NUNCA se entrega: se ejecuta la consulta y se dan datos.
+const depsRecJ = depsRec('j', feedVacio);
+try { fs.unlinkSync(depsRecJ.rutaCache); } catch { /* nada */ }
+try { fs.unlinkSync(depsRecJ.rutaArchivo); } catch { /* nada */ }
+fs.rmSync(depsRecJ.rutaCacheHorarios, { recursive: true, force: true });
+function clienteFalsedad(textoFalso) {
+  let n = 0;
+  return { chat: { completions: { create: async (payload) => {
+    n += 1;
+    if (n === 1 && textoFalso === null) {
+      return { choices: [{ message: { role: 'assistant', content: '', tool_calls: [{ id: 't1', type: 'function', function: { name: 'proximas_llegadas_transporte', arguments: { parada: 'aranjuez' } } }] }, finish_reason: 'tool_calls' }] };
+    }
+    return { choices: [{ message: { role: 'assistant', content: textoFalso || 'Los horarios, señor.' }, finish_reason: 'stop' }] };
+  } } }, llamadas: () => n };
+}
+const FALSO_RENFE = 'No dispongo de acceso en tiempo real a la API de Renfe; sin la clave API y el token configurados no puedo obtener los trenes que salen ahora de Aranjuez.';
+function opcionesGuardia(cliente, deps) {
+  return {
+    chatCompletion: async (peticion) => {
+      const cruda = await cliente.chat.completions.create(peticion);
+      return { message: cruda.choices[0].message, model: 'test-falso' };
+    },
+    rutaArchivoTransporte: deps.rutaArchivo,
+    fetchFnTransporte: deps.fetchFn,
+    fetchFnCercanias: deps.fetchFnCercanias,
+    rutaCacheEstacionesRenfe: deps.rutaCache,
+    rutaCacheHorariosRenfe: deps.rutaCacheHorarios,
+    ahoraTransporte: ahoraSabado
+  };
+}
+// 18a: afirmacion falsa SIN ejecutar la herramienta -> la guardia la ejecuta
+const cA = clienteFalsedad(FALSO_RENFE);
+const rA = await consultarJarvisRenfe('que trenes salen ahora de aranjuez', [], opcionesGuardia(cA, depsRecJ));
+assert.doesNotMatch(rA, /no dispongo|sin la clave|no puedo obtener/i, 'la falsedad no se entrega');
+assert.match(rA, /no necesita clave ni token/, 'correccion explicita');
+assert.match(rA, /salidas programadas/i, 'datos GTFS entregados');
+assert.match(rA, /Madrid-Atocha/, 'destinos reales');
+assert.strictEqual(cA.llamadas(), 1, 'sin LLM extra: la guardia no llama al modelo');
+console.log('OK 18a falsedad sin tool -> guardia ejecuta y corrige');
+// 18b: herramienta ejecutada ok y la sintesis AUN ASI afirma incapacidad -> datos reutilizados, sin reejecutar
+const cB = clienteFalsedad(null);
+cB.chat.completions.createOriginal = null;
+let nB = 0;
+cB.chat.completions.create = async (payload) => {
+  nB += 1;
+  if (nB === 1) return { choices: [{ message: { role: 'assistant', content: '', tool_calls: [{ id: 't1', type: 'function', function: { name: 'proximas_llegadas_transporte', arguments: { parada: 'aranjuez' } } }] }, finish_reason: 'tool_calls' }] };
+  return { choices: [{ message: { role: 'assistant', content: FALSO_RENFE }, finish_reason: 'stop' }] };
+};
+const rB = await consultarJarvisRenfe('que trenes salen ahora de aranjuez', [], opcionesGuardia(cB, depsRecJ));
+assert.doesNotMatch(rB, /no dispongo|sin la clave/i, 'la falsedad no contradice los datos');
+assert.match(rB, /salidas programadas/i, 'datos reutilizados');
+console.log('OK 18b tool ok + falsedad -> datos reutilizados');
+// 18c: EMT config-required legitimo NO se toca
+const cC = clienteFalsedad('Para la EMT hace falta configurar el acceso gratuito de MobilityLabs; en cuanto lo actives te doy las llegadas.');
+const rC = await consultarJarvisRenfe('cuando llega el bus 132 a mi parada', [], opcionesGuardia(cC, depsRecJ));
+assert.match(rC, /MobilityLabs/, 'el config-required legitimo de EMT se conserva');
+console.log('OK 18c EMT config-required legitimo intacto');
+// 18d: consulta NO de trenes con incapacidad generica NO se toca
+const cD = clienteFalsedad('No puedo acceder a ese dispositivo sin la configuracion previa.');
+const rD = await consultarJarvisRenfe('enciende mi pc', [], opcionesGuardia(cD, depsRecJ));
+assert.match(rD, /No puedo acceder a ese dispositivo/, 'otras respuestas no se tocan');
+console.log('OK 18d consulta no-tren intacta');
+console.log('renfe_tren.test.js OK (guardia de capacidad)');

@@ -678,6 +678,45 @@ const CLAVES_ARGS_SENSIBLES = /numero|telefono|tel$|mensaje|nota|dato|contenido|
 // Puerto de salida (arquitectura hexagonal): si el contenedor inyecta un
 // memoryRepository, el core habla con ese puerto; si no, los modulos
 // historicos actuan como adaptador por defecto. Comportamiento identico.
+// Dependencias de transporte extraidas de las opciones (rama de tool y
+// guardia de capacidad comparten exactamente la misma fuente).
+function depsTransporteDe(opciones) {
+  return { rutaArchivo: opciones.rutaArchivoTransporte, fetchFn: opciones.fetchFnTransporte, fetchFnEmt: opciones.fetchFnEmt, fetchFnCercanias: opciones.fetchFnCercanias, clientIdEmt: opciones.clientIdEmt, passKeyEmt: opciones.passKeyEmt, rutaCache: opciones.rutaCacheEstacionesRenfe, rutaCacheHorarios: opciones.rutaCacheHorariosRenfe, ahora: opciones.ahoraTransporte };
+}
+
+// Texto determinista de salidas/llegadas: es lo que ve David cuando la
+// sintesis falla o la guardia de capacidad sustituye una afirmacion falsa.
+function textoResultadoTransporte(res) {
+  if (!res.ok) return res.error;
+  if (res.contrastados && res.contrastados.length > 0) {
+    const lineasContr = res.contrastados.map((c) => `- ${c.hora}${c.destino ? ' a ' + c.destino : ''} (${c.viaje || 'Tren'}): ${c.estado}`);
+    return `Horarios contrastados para ${res.parada} (Horario oficial vs Feed API en tiempo real):\n${lineasContr.join('\n')}${res.nota ? '\n' + res.nota : ''}`;
+  }
+  if (res.llegadas.length === 0) {
+    if (res.programadas && res.programadas.length > 0) {
+      const lineasProg = res.programadas.map((p) => `- ${p.hora}${p.destino ? ' a ' + p.destino : ''} (programado)`);
+      return `No hay trenes con informacion en vivo para ${res.parada} ahora mismo. Proximas salidas programadas de hoy:\n${lineasProg.join('\n')}${res.nota ? '\n' + res.nota : ''}`;
+    }
+    return `No hay llegadas con informacion en vivo para ${res.parada} ahora mismo.${res.nota ? ' ' + res.nota : ''}`;
+  }
+  const lineas = res.llegadas.map((l) => {
+    const min = Math.max(0, Math.round(l.segundos / 60));
+    if (res.tipo === 'emt') return `- Linea ${l.linea}${l.destino ? ' a ' + l.destino : ''}: ${min === 0 ? 'llegando' : min + ' min'}`;
+    return `- Tren ${l.viaje}: ${min === 0 ? 'llegando' : min + ' min'}${l.retrasoSegundos ? ` (retraso ${Math.round(l.retrasoSegundos / 60)} min)` : ''}${l.cancelado ? ' CANCELADO' : ''}`;
+  });
+  return `Proximas llegadas a ${res.parada}:\n${lineas.join('\n')}${res.nota ? '\n' + res.nota : ''}`;
+}
+
+// GUARDIA DE CAPACIDAD (falsedad observada en produccion 8 nov 2026, dos
+// veces): el modelo puede AFIRMAR que Renfe necesita clave/token o que no
+// hay acceso, contra la directiva del prompt. El prompt no basta: cuando
+// David pregunta por trenes y la respuesta contiene una afirmacion falsa
+// de incapacidad, se ejecuta la consulta de verdad (o se reutilizan los
+// datos ya obtenidos) y se entregan los datos GTFS. Renfe usa datos
+// abiertos oficiales SIN credenciales.
+const CONSULTA_TRENES = /\b(tren|trenes|cercan[ií]as|renfe|ave|alvia|avant)\b/i;
+const AFIRMACION_INCAPACIDAD = /(no dispongo de acceso|sin (la )?(clave|token|credenciales|configuraci[oó]n)|no (puedo|podemos|pueden|tengo|se puede|puedo ahora mismo) (obtener|acceder|consultar|ver|decirte|darte)|no tengo acceso|sin acceso en tiempo real|requiere[ns]? (clave|token|credenciales|configuraci[oó]n)|necesit\w+ (clave|token|credenciales|una clave|configuraci[oó]n))/i;
+
 function repoMemoriaDe(opciones) {
   const repo = opciones && opciones.memoryRepository;
   return {
@@ -1096,27 +1135,8 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
         const origenNatural = extraerOrigenDesde(opciones.mensajeUsuario);
         const destinoFinal = destinoNatural || args.destino;
         const paradaFinal = origenNatural || args.parada;
-        const res = await proximasLlegadas({ parada: paradaFinal, tipo: args.tipo, codigo: args.codigo, destino: destinoFinal }, { rutaArchivo: opciones.rutaArchivoTransporte, fetchFn: opciones.fetchFnTransporte, fetchFnEmt: opciones.fetchFnEmt, fetchFnCercanias: opciones.fetchFnCercanias, clientIdEmt: opciones.clientIdEmt, passKeyEmt: opciones.passKeyEmt, rutaCache: opciones.rutaCacheEstacionesRenfe, rutaCacheHorarios: opciones.rutaCacheHorariosRenfe, ahora: opciones.ahoraTransporte });
-        if (!res.ok) {
-          resultadoTool = res.error;
-        } else if (res.contrastados && res.contrastados.length > 0) {
-          const lineasContr = res.contrastados.map((c) => `- ${c.hora}${c.destino ? ' a ' + c.destino : ''} (${c.viaje || 'Tren'}): ${c.estado}`);
-          resultadoTool = `Horarios contrastados para ${res.parada} (Horario oficial vs Feed API en tiempo real):\n${lineasContr.join('\n')}${res.nota ? '\n' + res.nota : ''}`;
-        } else if (res.llegadas.length === 0) {
-          if (res.programadas && res.programadas.length > 0) {
-            const lineasProg = res.programadas.map((p) => `- ${p.hora}${p.destino ? ' a ' + p.destino : ''} (programado)`);
-            resultadoTool = `No hay trenes con informacion en vivo para ${res.parada} ahora mismo. Proximas salidas programadas de hoy:\n${lineasProg.join('\n')}${res.nota ? '\n' + res.nota : ''}`;
-          } else {
-            resultadoTool = `No hay llegadas con informacion en vivo para ${res.parada} ahora mismo.${res.nota ? ' ' + res.nota : ''}`;
-          }
-        } else {
-          const lineas = res.llegadas.map((l) => {
-            const min = Math.max(0, Math.round(l.segundos / 60));
-            if (res.tipo === 'emt') return `- Linea ${l.linea}${l.destino ? ' a ' + l.destino : ''}: ${min === 0 ? 'llegando' : min + ' min'}`;
-            return `- Tren ${l.viaje}: ${min === 0 ? 'llegando' : min + ' min'}${l.retrasoSegundos ? ` (retraso ${Math.round(l.retrasoSegundos / 60)} min)` : ''}${l.cancelado ? ' CANCELADO' : ''}`;
-          });
-          resultadoTool = `Proximas llegadas a ${res.parada}:\n${lineas.join('\n')}${res.nota ? '\n' + res.nota : ''}`;
-        }
+        const res = await proximasLlegadas({ parada: paradaFinal, tipo: args.tipo, codigo: args.codigo, destino: destinoFinal }, depsTransporteDe(opciones));
+        resultadoTool = textoResultadoTransporte(res);
       } else if (nombreFuncion === 'registrar_contacto') {
         const res = registrarContacto({ nombre: args.nombre, telefono: args.telefono, relacion: args.relacion, email: args.email, notas: args.notas }, { rutaArchivo: opciones.rutaArchivoContactos });
         resultadoTool = res.ok ? `Ficha guardada, David: ${res.contacto.nombre}${res.contacto.telefono ? ` (${res.contacto.telefono})` : ''}.` : res.error;
@@ -2407,6 +2427,37 @@ Directrices de selección:
       textoFinal = 'No he podido completar tu peticion, senor, y NO se ha realizado ninguna accion. Intentalo de nuevo en unos minutos o reformula lo que necesitas.';
     }
     console.warn('[J.A.R.V.I.S.] Respuesta vacia tras las rondas de herramientas; se entrega fallback honesto.');
+  }
+
+  // Guardia de capacidad en trenes: una afirmacion falsa de incapacidad
+  // ("Renfe necesita clave/token", "no tengo acceso") NUNCA se entrega
+  // cuando la consulta es de trenes: se ejecuta la consulta real o se
+  // reutilizan los datos ya obtenidos y se entregan los datos GTFS.
+  if (textoFinal && CONSULTA_TRENES.test(mensajeUsuario || '') && AFIRMACION_INCAPACIDAD.test(textoFinal) && !/mobilitylabs|\bemt\b/i.test(textoFinal)) {
+    const llamadaPrevia = [...(traza.llamadas || [])].reverse().find((l) => l.nombre === 'proximas_llegadas_transporte' && l.resultado === 'ok' && l.datos);
+    if (llamadaPrevia) {
+      textoFinal = `Señor, corrijo lo anterior: Renfe no necesita clave ni token, usa datos abiertos oficiales. Los datos son estos:\n\n${llamadaPrevia.datos}`;
+      traza.guardiaCapacidadTrenes = 'datos_reutilizados';
+    } else {
+      try {
+        const paradaG = extraerOrigenDesde(mensajeUsuario) || undefined;
+        const destinoG = extraerDestinoHacia(mensajeUsuario) || undefined;
+        const tipoG = /\b(ave|alvia|avant|larga distancia|media distancia)\b/i.test(mensajeUsuario || '') ? 'tren' : (/cercan/i.test(mensajeUsuario || '') ? 'cercanias' : undefined);
+        const resG = await proximasLlegadas({ parada: paradaG, tipo: tipoG, destino: destinoG }, depsTransporteDe(opciones));
+        const textoG = textoResultadoTransporte(resG);
+        if (resG.ok) {
+          textoFinal = `Señor, corrijo lo anterior: Renfe no necesita clave ni token, usa datos abiertos oficiales. Los datos son estos:\n\n${textoG}`;
+          traza.llamadas.push({ nombre: 'proximas_llegadas_transporte', ronda: 0, resultado: 'ok', datos: textoG.slice(0, 2000) });
+          traza.guardiaCapacidadTrenes = 'consulta_ejecutada';
+        } else {
+          textoFinal = `Señor, corrijo lo anterior: Renfe no necesita clave ni token. ${textoG}`;
+          traza.guardiaCapacidadTrenes = 'consulta_fallida_honesta';
+        }
+      } catch (errG) {
+        console.warn('[J.A.R.V.I.S.] Guardia de capacidad: la consulta directa fallo:', errG.message);
+      }
+    }
+    if (traza.guardiaCapacidadTrenes) console.warn(`[J.A.R.V.I.S.] Guardia de capacidad aplicada (${traza.guardiaCapacidadTrenes}): afirmacion falsa de incapacidad sustituida por datos reales.`);
   }
 
   // Chequeo de consistencia: si la respuesta quedo cortada por el limite de
