@@ -143,3 +143,49 @@ test('recordatorios: CREAR, listar y cancelar usan la ruta (antes crear ignoraba
   assert.ok(txt(R.listarRecordatorios(true, dA('r.json'))).includes('recordatorio-secreto-A'));
   vacioCentinela('recordatorios');
 });
+
+test('candidaturas, planes de estudio, traductor y transporte por ruta', async () => {
+  const C = await import('../../src/services/applicationTrackerService.js');
+  const P = await import('../../src/services/studyPlannerService.js');
+  const T = await import('../../src/services/translatorModeService.js');
+  const X = await import('../../src/services/transportService.js');
+  const rc = C.registrarCandidatura({ empresa: 'Empresa-Secreta-A', puesto: 'dev' }, dA('ap.json'));
+  assert.ok(rc.ok, txt(rc));
+  assert.ok(txt(C.listarCandidaturas({}, dA('ap.json'))).includes('Empresa-Secreta-A'));
+  assert.ok(!txt(C.listarCandidaturas({}, dB('ap.json'))).includes('Empresa-Secreta-A'));
+  assert.ok(!txt(C.resumenCandidaturas(dB('ap.json'))).includes('Empresa-Secreta-A'));
+  C.actualizarCandidatura('Empresa-Secreta-A', { estado: 'enviada' }, dB('ap.json'));
+  assert.ok(txt(C.listarCandidaturas({}, dA('ap.json'))).includes('registrada'), 'actualizar en B no toca A');
+
+  const { aislarOpcionesTenant } = await import('../../src/core/tenancy.js');
+  const opT = aislarOpcionesTenant({ tenantId: 'sint-a' }, RA);
+  const rp = P.crearPlanEstudio({ asignatura: 'Asignatura-Secreta-A', fechaExamen: '2027-06-01', temas: ['t1', 't2', 't3'], horaEstudio: '18:00' }, { ...dA('sp.json'), crearRecordatorio: opT.crearRecordatorioEstudio });
+  assert.equal(rp.recordatorios, 0, 'el tenant no crea recordatorios globales');
+  assert.ok(rp.ok, txt(rp));
+  assert.ok(txt(P.listarPlanes(dA('sp.json'))).includes('Asignatura-Secreta-A'));
+  assert.ok(!txt(P.listarPlanes(dB('sp.json'))).includes('Asignatura-Secreta-A'));
+
+  assert.ok(T.activarTraductor({ idioma: 'ingles' }, { ...dA('tr.json'), chatId: 'chat-a' }).ok);
+  assert.ok(txt(T.estadoTraductor({ ...dA('tr.json'), chatId: 'chat-a' })).includes('ingles'));
+  assert.ok(!txt(T.estadoTraductor({ ...dB('tr.json'), chatId: 'chat-a' })).includes('ingles'));
+
+  const rt = await X.registrarParadaFavorita({ nombre: 'parada-secreta-a', tipo: 'emt', codigo: '1234' }, dA('tp.json'));
+  if (rt.ok) {
+    assert.ok(txt(X.listarParadasFavoritas(dA('tp.json'))).includes('parada-secreta-a'));
+    assert.ok(!txt(X.listarParadasFavoritas(dB('tp.json'))).includes('parada-secreta-a'));
+    X.eliminarParadaFavorita('parada-secreta-a', dB('tp.json'));
+    assert.ok(txt(X.listarParadasFavoritas(dA('tp.json'))).includes('parada-secreta-a'));
+  }
+  vacioCentinela('candidaturas/planes/traductor/transporte');
+  return { transporteProbado: !!rt.ok };
+});
+
+test('entrevistas: el estado de un simulacro por ruta no se ve desde otra ruta', async () => {
+  const E = await import('../../src/services/interviewService.js');
+  const r = await E.iniciarEntrevista({ rol: 'rol-secreto-A', nivel: 'junior' }, { ...dA('en.json'), chatId: 'chat-a', chatCompletion: async () => ({ message: { content: '1. pregunta uno\n2. pregunta dos\n3. tres\n4. cuatro\n5. cinco' } }) });
+  if (r.ok) {
+    assert.ok(txt(E.estadoEntrevista({ ...dA('en.json'), chatId: 'chat-a' })).length > 2);
+    assert.ok(!txt(E.estadoEntrevista({ ...dB('en.json'), chatId: 'chat-a' })).includes('rol-secreto-A'));
+  }
+  vacioCentinela('entrevistas');
+});

@@ -166,6 +166,9 @@ export function aislarOpcionesTenant(opciones, dataDir) {
   return {
     ...resto,
     ...rutasPersonales,
+    // Los recordatorios generados por otros servicios (plan de estudio) se
+    // despachan por el canal GLOBAL del propietario: un tenant no los crea.
+    crearRecordatorioEstudio: () => ({ ok: false, error: 'recordatorios no disponibles para este usuario' }),
     chatId: claveChatTenant(tid, opciones.chatId),
     rutaArchivoMemorias: rutaDatosTenant(dataDir, tid, 'brain_memory.json'),
     storePath: undefined,
