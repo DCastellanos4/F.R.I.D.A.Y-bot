@@ -11,10 +11,11 @@ const { consultarJarvisEnAmbito }=await import('../../src/core/jarvisAgent.js');
 const { CLASIFICACION_HERRAMIENTAS }=await import('../../src/services/rbacService.js');
 const allow=[...CLASIFICACION_HERRAMIENTAS.datos_tenant];
 const controlUso={autorizar:()=>({permitido:true})};
-async function tool(tid,name,args={}) {
+async function tool(tid,name,args={},inspect=null) {
  const cap=[];let n=0;
  const chatCompletion=async(p)=>{cap.push(JSON.stringify(p));n++;return {model:'stub',message:n===1?{role:'assistant',content:'',tool_calls:[{id:'x'+name,function:{name,arguments:args}}]}:{role:'assistant',content:'1,2,3'}};};
  await consultarJarvisEnAmbito('usa la herramienta solicitada',[],{tenantId:tid,controlUso,rolDeTenant:()=> 'usuario',permitidasUsuario:allow,chatCompletion,chatId:'same-chat'});
+ if(inspect) inspect(cap.map(c=>JSON.parse(c)));
  const calls=cap.map(c=>JSON.parse(c).messages||[]).flat().filter(m=>m.role==='tool');
  assert.ok(calls.length>=1,'tool real produjo resultado '+name);
  return calls.map(m=>m.content||'').join('\n');
@@ -91,9 +92,9 @@ test('sin_estado: 4 herramientas reales por agente, fuentes publicas simuladas S
   const oldAllow=[...allow];allow.push(...CLASIFICACION_HERRAMIENTAS.sin_estado);
   try {
    const noticias=await tool('sint-a','obtener_noticias_actuales',{categoria:'deportes'});assert.match(noticias,/PUBLICO/);
-   await tool('sint-a','resumen_deportivo',{limite:1});assert.ok(rss>=2,'RSS real consumido por las dos herramientas');
+   const deportes=await tool('sint-a','resumen_deportivo',{limite:1},cap=>assert.ok(cap.some(p=>(p.messages||[]).some(m=>m.role==='user'&&m.content.includes('PUBLICO titular deportivo regional'))),'LLM secundario recibe fuente publica real'));assert.ok(!deportes.includes('no han devuelto titulares'),'fuente real devuelve titulares y activa resumen secundario');assert.match(deportes,/1,2,3/);assert.ok(rss>=2,'RSS real consumido por las dos herramientas');
    const compra=await tool('sint-a','buscar_producto',{consulta:'public-product-test'});assert.match(compra,/public-product-test/);assert.equal(http,1);
-   const depurar=await tool('sint-a','guiar_depuracion',{fallo:'PUBLICO error de sintaxis',contexto:'PUBLICO codigo de prueba'});assert.ok(depurar.length>0);
+   const depurar=await tool('sint-a','guiar_depuracion',{fallo:'PUBLICO error de sintaxis',contexto:'PUBLICO codigo de prueba'},cap=>assert.ok(cap.some(p=>(p.messages||[]).some(m=>m.role==='user'&&m.content.includes('Fallo: PUBLICO error de sintaxis'))),'LLM secundario recibe solo argumentos de usuario'));assert.match(depurar,/1,2,3/);
   }finally{allow.splice(0,allow.length,...oldAllow);}
  }finally{Parser.prototype.parseURL=parse;globalThis.fetch=fetchAnterior;https.request=request;}
 });

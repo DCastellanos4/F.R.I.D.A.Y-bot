@@ -136,3 +136,11 @@ test('modelo tenant no recibe inventario/configuracion owner ni herramientas fue
  for(const texto of ['CONFIGURACION PENDIENTE','Home Assistant','qBittorrent','diagnostico_davis','Tony Stark']) assert.ok(!system.includes(texto),texto);
  for(const h of principal.tools||[]) assert.equal(h.function.name,'buscar_memoria');
 });
+
+test('cache de clasificacion se separa por tenant, sin heredar resultados ni saltar su modelo',async()=>{
+ const { clasificarIntencionConModelo,limpiarCacheClasificaciones }=await import('../../src/core/intentRouterService.js');limpiarCacheClasificaciones();let a=0,b=0;
+ const msg='identico mensaje sintetico de cache';
+ const ra=await clasificarIntencionConModelo(msg,{tenantId:'sint-a',chatCompletion:async()=>{a++;return {message:{content:'{"intencion":"conversacion","confianza":0.99}'}};}});
+ const rb=await clasificarIntencionConModelo(msg,{tenantId:'sint-b',chatCompletion:async()=>{b++;return {message:{content:'{"intencion":"conversacion","confianza":0.99}'}};}});
+ assert.ok(ra&&rb);assert.equal(a,1);assert.equal(b,1);assert.equal(rb.origen,'modelo');limpiarCacheClasificaciones();
+});

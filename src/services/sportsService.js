@@ -18,7 +18,7 @@ export async function resumenDeportivo({ limite = 5 } = {}, deps = {}) {
   } catch (err) {
     return { ok: false, error: `No he podido traer las noticias deportivas: ${err.message}` };
   }
-  const lista = Array.isArray(noticias) ? noticias : (noticias.noticias || []);
+  const lista = Array.isArray(noticias) ? noticias : (noticias.articulos || noticias.noticias || []);
   if (lista.length === 0) {
     return { ok: false, error: 'Los feeds deportivos no han devuelto titulares ahora mismo.' };
   }
