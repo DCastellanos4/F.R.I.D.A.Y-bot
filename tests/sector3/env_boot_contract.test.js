@@ -26,7 +26,9 @@ const CONFIG_URL = pathToFileURL(path.join(PROJECT_ROOT, 'src', 'config', 'confi
 function arranqueConEnv(envExtra) {
   const script = `await import(${JSON.stringify(CONFIG_URL)}); process.stdout.write(String(process.env.DAVIS_PRUEBA_CONTRATO || 'AUSENTE') + '|' + String(process.env.DAVIS_PRUEBA_PRIORIDAD || 'AUSENTE'));`;
   return execFileSync(process.execPath, ['--input-type=module', '-e', script], {
-    env: { ...process.env, ...envExtra },
+    // El contrato que se prueba es el de arranque NORMAL (produccion): el
+    // subproceso sale explicitamente del modo test (que ahora aísla .env).
+    env: { ...process.env, NODE_ENV: 'production', ...envExtra },
     encoding: 'utf8'
   });
 }
@@ -52,4 +54,15 @@ test('una variable ya presente en el entorno del proceso NUNCA se pisa', () => {
   fs.writeFileSync(path.join(estado, '.env'), 'DAVIS_PRUEBA_CONTRATO=del-fichero\n', 'utf8');
   const salida = arranqueConEnv({ DAVIS_DATA_DIR: estado, DAVIS_PRUEBA_CONTRATO: 'del-proceso' });
   assert.equal(salida.split('|')[0], 'del-proceso');
+});
+
+test('AISLAMIENTO: con NODE_ENV=test no se carga NINGUN .env de estado/repo (sentinel)', () => {
+  const estado = fs.mkdtempSync(path.join(os.tmpdir(), 'davis-estado-'));
+  fs.writeFileSync(path.join(estado, '.env'), 'DAVIS_PRUEBA_CONTRATO=sentinel-produccion-no-heredar\n', 'utf8');
+  const script = `await import(${JSON.stringify(CONFIG_URL)}); process.stdout.write(String(process.env.DAVIS_PRUEBA_CONTRATO || 'AUSENTE'));`;
+  const salida = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+    env: { ...process.env, NODE_ENV: 'test', DAVIS_DATA_DIR: estado, DAVIS_ENV_FILE: '' },
+    encoding: 'utf8'
+  });
+  assert.equal(salida, 'AUSENTE', 'el sentinel del .env de produccion NO entra en procesos de test');
 });

@@ -17,11 +17,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // OJO: si una variable YA existe en el entorno cacheado por pm2 con un
 // valor viejo, editar el fichero no basta: hace falta `pm2 restart
 // --update-env` (o delete+start). Las variables NUEVAS siempre entran.
-const candidatosEnv = [
-  process.env.DAVIS_ENV_FILE,
-  path.join(DATA_DIR, '.env'),
-  path.join(PROJECT_ROOT, '.env')
-].filter(Boolean);
+// AISLAMIENTO DE TESTS: con NODE_ENV=test NO se carga ningun .env del
+// estado ni del repo. La release de produccion enlaza <repo>/.env al estado
+// compartido y dotenv lo inyectaria en los procesos de test (contaminacion
+// real: DAVIS_METRICS_HOST del bridge, credenciales y otros side effects;
+// fallo observado: tests que pasan en CI y fallan en el servidor). Un test
+// que necesite variables usa DAVIS_ENV_FILE explicito o las fija en el
+// proceso. Esto reproduce en el servidor EXACTAMENTE el entorno de CI.
+const esEntornoTest = process.env.NODE_ENV === 'test';
+const candidatosEnv = (esEntornoTest
+  ? [process.env.DAVIS_ENV_FILE]
+  : [
+      process.env.DAVIS_ENV_FILE,
+      path.join(DATA_DIR, '.env'),
+      path.join(PROJECT_ROOT, '.env')
+    ]).filter(Boolean);
 const ficherosEnv = candidatosEnv.filter((p) => {
   try { return fs.existsSync(p); } catch { return false; }
 });

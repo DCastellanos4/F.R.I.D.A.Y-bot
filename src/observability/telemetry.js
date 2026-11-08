@@ -205,7 +205,14 @@ export async function iniciarObservabilidad(opts = {}) {
       // 172.30.50.1: solo la subred interna y el propio host; NUNCA 0.0.0.0
       // indiscriminado). Un listener en 127.0.0.1 NO es alcanzable desde
       // los contenedores: el bridge entra por otra interfaz.
-      const hostBind = opts.hostMetricas ?? process.env.DAVIS_METRICS_HOST ?? '127.0.0.1';
+      // AISLAMIENTO DE TESTS: con NODE_ENV=test el bind NO hereda
+      // DAVIS_METRICS_HOST del entorno. En el servidor, la release enlaza
+      // .env al estado de produccion; un test que heredara la IP del bridge
+      // (172.30.50.1) quedaria inalcanzable desde 127.0.0.1 y fallaria SOLO
+      // en el servidor mientras CI pasa (divergencia de entorno, no de codigo).
+      // Los tests siempre pueden fijar el host con opts.hostMetricas.
+      const esEntornoTest = process.env.NODE_ENV === 'test';
+      const hostBind = opts.hostMetricas ?? (esEntornoTest ? '127.0.0.1' : (process.env.DAVIS_METRICS_HOST ?? '127.0.0.1'));
       estado.servidorMetricas = http.createServer((req, res) => {
         atenderMetricas(req, res).then((atendida) => {
           if (!atendida) {

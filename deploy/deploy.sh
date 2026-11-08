@@ -98,6 +98,13 @@ echo "== [4/7] Puerta en el servidor: criticos + suite aislados (fixtures tempor
 # forma de las rutas por defecto (.../data/<fichero>).
 mkdir -p /tmp/cicd-data-$TS/data
 export DAVIS_DATA_DIR=/tmp/cicd-data-$TS/data DAVIS_HISTORY_DIR=/tmp/cicd-history-$TS NODE_ENV=test
+# Aislamiento de entorno de tests: deben correr con las MISMAS variables que
+# en CI (ninguna de produccion). El .env de la release es un ENLACE al estado
+# compartido y dotenv lo cargaba en cada proceso de test (contaminacion real:
+# DAVIS_METRICS_HOST=172.30.50.1 -> bind al bridge -> ECONNREFUSED loopback).
+# El cierre de esa via vive en src/config/config.js (NODE_ENV=test no carga
+# .env del estado ni del repo); aqui se limpia lo heredado del shell SSH.
+unset DAVIS_OTEL_ENABLED DAVIS_OTEL_ENDPOINT DAVIS_OTEL_SERVICIO DAVIS_METRICS_ENABLED DAVIS_METRICS_HOST DAVIS_METRICS_REDES_PERMITIDAS DAVIS_METRICS_PUERTO DAVIS_METRICS_PUERTO_WS DAVIS_METRICS_PUERTO_API
 CRITICOS="tests/sector2/task0_foundations.test.js tests/sector2/task0_challenge.test.js tests/sector2/integration.test.js tests/sector2/task12_bash_console.test.js tests/sector2/task15_github_webhook.test.js tests/sector2/task16_backup.test.js tests/sector2/task21_memory_encryption.test.js tests/sector2/deploy_aislamiento.test.js tests/sector3/safefetch_unit.test.js tests/sector3/process_watchdog.test.js"
 # Lista explicita de ficheros: 'node --test <directorio>' NO es portable
 # (algunas versiones lo tratan como modulo y fallan).
@@ -114,10 +121,66 @@ echo "== [5/7] Snapshot cifrado del estado (obligatorio, DBK1 GCM autenticado) =
 PASS="${DAVIS_BACKUP_KEY:-${BACKUP_PASSPHRASE:-}}"
 if [ -z "$PASS" ] && [ -f "$ESTADO/.env" ]; then set -a; . "$ESTADO/.env"; set +a; PASS="${DAVIS_BACKUP_KEY:-${BACKUP_PASSPHRASE:-}}"; fi
 [ -n "$PASS" ] || { echo "PARADA: falta DAVIS_BACKUP_KEY/BACKUP_PASSPHRASE en el servidor; no se despliega sin punto de restauracion cifrado. ANTES del corte: el bot sigue intacto." >&2; exit 1; }
-tar -czf - -C "$ESTADO" . | PASS="$PASS" node /tmp/snapshot.js > "$BACKUPS/pre-deploy-$TS.dbk1" \
-  || { echo "PARADA: snapshot fallo. ANTES del corte: el bot sigue intacto." >&2; exit 1; }
-chmod 600 "$BACKUPS/pre-deploy-$TS.dbk1"
-echo "snapshot cifrado verificado: $BACKUPS/pre-deploy-$TS.dbk1"
+
+# Snapshot CONSISTENTE: TODOS los writers del estado compartido (bot y API)
+# quedan PARADOS durante el tar. Sin quiesce, tar sale !=0 ("file changed as
+# we read it") y, peor, puede dejar una copia incoherente de SQLite o de la
+# sesion de Baileys que NO es un punto de restauracion garantizable. La API
+# de backup de SQLite no cubre el estado volatil de Baileys, asi que la
+# unica garantia honesta es el quiesce. Caida anunciada de ~1 minuto ANTES
+# del corte; si algo falla, el bot se rearranca SIEMPRE (trap).
+SNAP_PARADOS=0
+# Estado PREVIO deliberado: solo se reviven los writers que estaban online
+# ANTES del quiesce. Si el bot estaba parado a proposito, un fallo del
+# snapshot NO debe dejarlo arrancado (cambio de estado no autorizado).
+WRITERS_PREVIOS=$($PM2 jlist | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);console.log(['jarvis-whatsapp','jarvis-api'].filter(n=>{const p=j.find(x=>x.name===n);return p&&p.pm2_env.status==='online'}).join(' '))}catch(e){console.log('')}})" || true)
+soltar_writers() {
+  if [ "$SNAP_PARADOS" = "1" ]; then
+    SNAP_PARADOS=0
+    if [ -n "$WRITERS_PREVIOS" ]; then
+      echo "snapshot: rearrancando SOLO los writers que estaban online ($WRITERS_PREVIOS)..." >&2
+      $PM2 start $WRITERS_PREVIOS >/dev/null 2>&1 \
+        || $PM2 restart $WRITERS_PREVIOS >/dev/null 2>&1 \
+        || echo "AVISO: el rearranque automatico fallo; revisar 'pm2 ls' YA." >&2
+    else
+      echo "snapshot: ningun writer estaba online antes del quiesce; se respeta ese estado parado." >&2
+    fi
+  fi
+}
+trap soltar_writers EXIT
+$PM2 stop jarvis-api jarvis-whatsapp >/dev/null 2>&1 || true
+# Verificacion estricta: cada writer conocido debe quedar 'stopped'. Cualquier
+# otro estado (online, stopping, errored, launching...) significa posible
+# escritor residual o proceso a medio parar: NO se copia (mejor parar antes
+# del corte con el bot en marcha que snapshot incoherente). Un proceso
+# ausente de jlist no es writer y no bloquea.
+if $PM2 jlist | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);const mal=['jarvis-whatsapp','jarvis-api'].filter(n=>{const p=j.find(x=>x.name===n);return p&&p.pm2_env.status!=='stopped'});if(mal.length){console.error('writers no parados del todo: '+mal.join(','));process.exit(1)}})"; then
+  SNAP_PARADOS=1
+else
+  echo "PARADA: no se pudieron parar los writers; snapshot cancelado. ANTES del corte: el bot sigue con la release anterior." >&2
+  [ -n "$WRITERS_PREVIOS" ] && $PM2 start $WRITERS_PREVIOS >/dev/null 2>&1 || true
+  exit 1
+fi
+# 0600 DESDE LA CREACION (umask 077): el .env y la sesion viajan cifrados,
+# pero ni el temporal ni el final nacen legibles. El snapshot se escribe a
+# un nombre temporal y SOLO se renombra a .dbk1 si el cifrado+roundtrip
+# completo termina bien: un snapshot fallido NUNCA queda como punto de
+# restauracion.
+umask 077
+SNAP_TMP="$BACKUPS/.pre-deploy-$TS.dbk1.tmp"
+RC=0
+tar -czf - -C "$ESTADO" . | PASS="$PASS" node /tmp/snapshot.js > "$SNAP_TMP" || RC=$?
+if [ "$RC" -ne 0 ] || [ ! -s "$SNAP_TMP" ]; then
+  rm -f "$SNAP_TMP"
+  echo "PARADA: snapshot fallo (rc=$RC). El temporal se borro: no queda punto de restauracion falso." >&2
+  soltar_writers
+  echo "ANTES del corte: el bot vuelve a la release anterior intacta." >&2
+  exit 1
+fi
+mv "$SNAP_TMP" "$BACKUPS/pre-deploy-$TS.dbk1"
+soltar_writers
+echo "snapshot cifrado verificado (writers quiesced, 0600 desde creacion): $BACKUPS/pre-deploy-$TS.dbk1"
+trap - EXIT
 
 # Higiene de entorno ANTES del corte: DAVIS_DATA_DIR/DAVIS_HISTORY_DIR se
 # exportaron para aislar la suite; si quedan en el entorno, pm2 las hereda

@@ -263,6 +263,29 @@ test('listener dedicado de metricas: solo loopback y responde /metrics', async (
   assert.match(cuerpo, /herramienta="t-listener"/);
 });
 
+test('aislamiento: DAVIS_METRICS_HOST del entorno NO contamina el bind en tests', async () => {
+  // Reproduce el fallo visto en el servidor: .env de produccion con
+  // DAVIS_METRICS_HOST=172.30.50.1 cargado en el entorno del proceso.
+  process.env.DAVIS_METRICS_HOST = '172.30.50.1';
+  try {
+    await iniciarObservabilidad({ forzarMetricas: true, forzarTrazas: false, puertoMetricas: 19466 });
+    const est = estadoObservabilidad();
+    assert.equal(est.puertoMetricas, 19466);
+    const cuerpo = await new Promise((resolve, reject) => {
+      import('node:http').then(({ default: http }) => {
+        http.get('http://127.0.0.1:19466/metrics', (res) => {
+          let datos = '';
+          res.on('data', (c) => { datos += c; });
+          res.on('end', () => resolve(datos));
+        }).on('error', reject);
+      });
+    });
+    assert.match(cuerpo, /# HELP jarvis_tool_duracion_segundos/, 'responde en loopback pese al env de produccion');
+  } finally {
+    delete process.env.DAVIS_METRICS_HOST;
+  }
+});
+
 test('explicitamente habilitado sin prom-client no se oculta (simulado)', async () => {
   // Simula deps faltantes: fuerza el camino de error comprobando que el
   // estado y /metrics reportan la causa cuando algo habilitado falla.
