@@ -126,3 +126,13 @@ test('enlace introducido durante espera del modelo se rechaza antes de tool writ
  } });
  assert.equal(fs.readFileSync(owner,'utf8'),antes); assert.equal(n,1);
 });
+
+test('modelo tenant no recibe inventario/configuracion owner ni herramientas fuera de sus permisos', async () => {
+ reset(); const cap=[];
+ await consultarJarvisEnAmbito('busca mis recuerdos',[],{tenantId:'sint-a',controlUso,rolDeTenant:()=> 'usuario',permitidasUsuario:['buscar_memoria'],chatCompletion:stub(cap)});
+ const peticiones=cap.map(x=>JSON.parse(x));const principal=peticiones.find(x=>(x.messages||[]).some(m=>m.role==='system'&&m.content.includes('RECUERDOS DE ESTE USUARIO')||m.role==='system'&&m.content.includes('asistente personal para este usuario')));
+ assert.ok(principal,'prompt tenant propio no vacuo');
+ const system=principal.messages.filter(m=>m.role==='system').map(m=>m.content).join('\n');
+ for(const texto of ['CONFIGURACION PENDIENTE','Home Assistant','qBittorrent','diagnostico_davis','Tony Stark']) assert.ok(!system.includes(texto),texto);
+ for(const h of principal.tools||[]) assert.equal(h.function.name,'buscar_memoria');
+});

@@ -182,7 +182,7 @@ export async function clasificarIntencionConModelo(mensaje, deps = {}) {
   const chatCompletion = deps.chatCompletion;
   if (typeof chatCompletion !== 'function') return null;
 
-  const clave = normalizarTexto(mensaje);
+  const clave = (deps.tenantId && deps.tenantId !== 'propietario' ? String(deps.tenantId) + ':' : '') + normalizarTexto(mensaje);
   const enCache = leerCache(clave);
   if (enCache) return { ...enCache, origen: 'cache' };
 
