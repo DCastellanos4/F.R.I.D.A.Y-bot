@@ -322,3 +322,86 @@ fs.rmSync(depsC.rutaCacheHorarios, { recursive: true, force: true });
 try { fs.unlinkSync(depsC.rutaArchivo); } catch { /* nada */ }
 
 console.log('renfe_tren.test.js OK (destino derivado + filtro)');
+
+// 13) "Hacia Madrid" NO es solo el terminal: un tren que termina en otra
+// poblacion pero para en Madrid despues del origen SI cumple el filtro; y
+// uno en direccion inversa (pasa por Madrid ANTES de llegar al origen) NO.
+const STOPS_REC = 'stop_id,stop_name,stop_lat,stop_lon,wheelchair_boarding\n60200,Aranjuez,40.0,-3.6,1\n17000,Madrid-Atocha,40.4,-3.69,1\n60900,Villalba,40.6,-4.0,1\n';
+const TRIPS_REC = 'route_id,service_id,trip_id,trip_headsign\nC3,TODOS,C3-101,\nC3,TODOS,C3-102,\n';
+const STOP_TIMES_REC = 'trip_id,arrival_time,departure_time,stop_id,stop_sequence\nC3-101,16:00:00,16:00:00,60200,11\nC3-101,16:40:00,16:40:00,17000,12\nC3-101,17:20:00,17:20:00,60900,13\nC3-102,15:00:00,15:00:00,60900,1\nC3-102,15:40:00,15:40:00,17000,2\nC3-102,16:20:00,16:20:00,60200,3\n';
+const zipRec = zipDePrueba([
+  { nombre: 'stops.txt', datos: STOPS_REC, metodo: 8 },
+  { nombre: 'trips.txt', datos: TRIPS_REC, metodo: 8 },
+  { nombre: 'calendar.txt', datos: CAL_TODOS, metodo: 8 },
+  { nombre: 'stop_times.txt', datos: STOP_TIMES_REC, metodo: 8 }
+]);
+function depsRec(tag, feed) {
+  return {
+    rutaArchivo: `/tmp/test-transporte-renfe-rec-${tag}.json`,
+    rutaCache: `/tmp/test-estaciones-renfe-rec-${tag}.json`,
+    rutaCacheHorarios: `/tmp/test-horarios-renfe-rec-${tag}`,
+    ahora: ahoraSabado,
+    fetchFn: async (url) => {
+      if (url.includes('fomento_transit')) return { arrayBuffer: async () => zipRec.buffer.slice(zipRec.byteOffset, zipRec.byteOffset + zipRec.length) };
+      if (url.includes('google_transit')) return { arrayBuffer: async () => zipLd.buffer.slice(zipLd.byteOffset, zipLd.byteOffset + zipLd.length) };
+      return { text: async () => feed };
+    },
+    fetchFnCercanias: async () => ({ text: async () => feed })
+  };
+}
+const depsRecA = depsRec('a', feedVacio);
+try { fs.unlinkSync(depsRecA.rutaCache); } catch { /* nada */ }
+try { fs.unlinkSync(depsRecA.rutaArchivo); } catch { /* nada */ }
+fs.rmSync(depsRecA.rutaCacheHorarios, { recursive: true, force: true });
+const rRec = await proximasLlegadas({ parada: 'aranjuez' }, depsRecA);
+assert.ok(rRec.ok, 'resuelve recorrido');
+assert.strictEqual(rRec.programadas.length, 2, 'dos salidas');
+assert.strictEqual(rRec.programadas[0].viaje, 'C3-101');
+assert.strictEqual(rRec.programadas[0].destino, 'Villalba', 'terminal fuera de Madrid');
+assert.deepStrictEqual(rRec.programadas[0].paradasPosteriores, ['Madrid-Atocha', 'Villalba'], 'recorrido posterior derivado del GTFS');
+assert.strictEqual(rRec.programadas[1].destino, 'Aranjuez', 'el inverso termina en Aranjuez');
+assert.deepStrictEqual(rRec.programadas[1].paradasPosteriores, [], 'el inverso no tiene paradas posteriores al origen');
+const rRecMadrid = await proximasLlegadas({ parada: 'aranjuez', destino: 'madrid' }, depsRecA);
+assert.strictEqual(rRecMadrid.programadas.length, 1, 'Madrid intermedio SI cumple el filtro');
+assert.strictEqual(rRecMadrid.programadas[0].viaje, 'C3-101');
+const rRecVillalba = await proximasLlegadas({ parada: 'aranjuez', destino: 'villalba' }, depsRecA);
+assert.strictEqual(rRecVillalba.programadas.length, 1, 'terminal tambien casa');
+assert.strictEqual(rRecVillalba.programadas[0].viaje, 'C3-101');
+const rRecNada = await proximasLlegadas({ parada: 'aranjuez', destino: 'sevilla' }, depsRecA);
+assert.strictEqual(rRecNada.programadas.length, 0, 'sin coincidencia: cero');
+assert.match(rRecNada.nota || '', /recorrido GTFS/, 'la nota cita el recorrido GTFS');
+fs.rmSync(depsRecA.rutaCacheHorarios, { recursive: true, force: true });
+try { fs.unlinkSync(depsRecA.rutaArchivo); } catch { /* nada */ }
+
+// 14) Mezcla: llegada en vivo SIN destino (Renfe RT no lo publica) +
+// programadas. Con filtro activo la llegada en vivo no se presenta como si
+// cumpliera el filtro: queda aparte y se dice.
+const ahoraEpochSab = Math.floor(ahoraSabado / 1000);
+const feedUno = JSON.stringify({
+  header: { gtfsRealtimeVersion: '2.0', timestamp: String(ahoraEpochSab) },
+  entity: [{ id: 'e1', tripUpdate: { trip: { tripId: 'C3-900X' }, stopTimeUpdate: [{ stopId: '60200', arrival: { time: ahoraEpochSab + 900, delay: 0 } }] } }]
+});
+const depsRecB = depsRec('b', feedUno);
+try { fs.unlinkSync(depsRecB.rutaCache); } catch { /* nada */ }
+try { fs.unlinkSync(depsRecB.rutaArchivo); } catch { /* nada */ }
+fs.rmSync(depsRecB.rutaCacheHorarios, { recursive: true, force: true });
+const rMezcla = await proximasLlegadas({ parada: 'aranjuez', destino: 'madrid' }, depsRecB);
+assert.ok(rMezcla.ok, 'resuelve mezcla');
+assert.strictEqual(rMezcla.llegadas.length, 0, 'la llegada en vivo sin destino NO se presenta como filtrada');
+assert.strictEqual((rMezcla.llegadasSinVerificarDestino || []).length, 1, 'queda aparte como no verificable');
+assert.match(rMezcla.nota || '', /no se pueden verificar/, 'la nota lo explica');
+assert.strictEqual(rMezcla.contrastados.length, 1, 'contrastadas filtradas por recorrido');
+assert.strictEqual(rMezcla.contrastados[0].viaje, 'C3-101');
+fs.rmSync(depsRecB.rutaCacheHorarios, { recursive: true, force: true });
+try { fs.unlinkSync(depsRecB.rutaArchivo); } catch { /* nada */ }
+
+// 15) Extraccion natural determinista del destino ("hacia X"): no depende
+// del modelo. Frase real de David incluida.
+const { extraerDestinoHacia } = await import('../../src/services/transportService.js');
+assert.strictEqual(extraerDestinoHacia('que trenes hay ahora mismo hacia madrid desde aranjuez'), 'madrid');
+assert.strictEqual(extraerDestinoHacia('dime los trenes que salen ahora mismo de aranjuez'), null);
+assert.strictEqual(extraerDestinoHacia('trenes hacia madrid chamartin por favor'), 'madrid chamartin');
+assert.strictEqual(extraerDestinoHacia('que trenes hay para atocha'), 'atocha');
+assert.strictEqual(extraerDestinoHacia('buenas noches'), null);
+
+console.log('renfe_tren.test.js OK (recorrido + filtro + extraccion)');

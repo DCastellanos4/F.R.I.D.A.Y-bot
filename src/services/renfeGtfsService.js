@@ -268,9 +268,9 @@ export async function horariosProgramados(paradaId, tipo, deps = {}) {
   const ruta = rutaCacheHorarios(deps, estacion, hoy.fecha);
   let cache = null;
   try { cache = JSON.parse(fs.readFileSync(ruta, 'utf-8')); } catch { /* sin cache */ }
-  // v2: los horarios incluyen destino derivado del GTFS; caches antiguas
-  // (sin v, destinos vacios) se ignoran y se regeneran.
-  let filas = cache && cache.v === 2 && Array.isArray(cache.horarios) ? cache.horarios : null;
+  // v3: los horarios incluyen destino y paradas posteriores derivados del
+  // GTFS; caches antiguas (sin v, destinos vacios) se ignoran y regeneran.
+  let filas = cache && cache.v === 3 && Array.isArray(cache.horarios) ? cache.horarios : null;
   if (!filas) {
     const url = tipo === 'tren' ? URL_GTFS_LD : URL_GTFS_CERCANIAS;
     const fetchFn = deps.fetchFn || fetch;
@@ -304,49 +304,59 @@ export async function horariosProgramados(paradaId, tipo, deps = {}) {
     const ahoraEpoch = Math.floor(ahora.getTime() / 1000);
     const medianocheAyerReal = ahoraEpoch - 86400 - ayer.segundosDia;
     filas = [];
+    const seqOrigen = new Map(); // viaje -> stop_sequence en la estacion pedida
     for (const l of encontradas) {
       const cols = l.split(',');
       const horaTxt = (cols[2] || cols[1] || '').trim();
       const [h, m, s] = horaTxt.split(':').map((x) => Number(x));
       const segundosDia = (h || 0) * 3600 + (m || 0) * 60 + (s || 0);
-      const info = viajeInfo.get((cols[0] || '').trim()) || {};
+      const viaje = (cols[0] || '').trim();
+      seqOrigen.set(viaje, Number((cols[4] || '').trim()) || 0);
+      const info = viajeInfo.get(viaje) || {};
       const horaFmt = `${String(Math.floor(segundosDia / 3600) % 24).padStart(2, '0')}:${String(Math.floor((segundosDia % 3600) / 60)).padStart(2, '0')}`;
       // GTFS: horas >= 24:00 pertenecen al dia de servicio (puede ser ayer).
-      if (activosHoy.has(info.servicio)) filas.push({ viaje: (cols[0] || '').trim(), epoch: medianocheHoy + segundosDia, hora: horaFmt, destino: info.destino || '' });
-      if (activosAyer.has(info.servicio) && segundosDia >= 86400) filas.push({ viaje: (cols[0] || '').trim(), epoch: medianocheAyerReal + segundosDia, hora: horaFmt, destino: info.destino || '' });
+      if (activosHoy.has(info.servicio)) filas.push({ viaje, epoch: medianocheHoy + segundosDia, hora: horaFmt, destino: info.destino || '' });
+      if (activosAyer.has(info.servicio) && segundosDia >= 86400) filas.push({ viaje, epoch: medianocheAyerReal + segundosDia, hora: horaFmt, destino: info.destino || '' });
     }
-    // Destino del viaje: si trips.txt no trae trip_headsign (caso del GTFS
-    // de Cercanias en produccion, detectado 8 nov 2026: todos los destinos
-    // vacios), se deriva del propio GTFS oficial: ultima parada del viaje
-    // (max stop_sequence) resuelta por stops.txt. No se infiere ningun
-    // destino de memoria: si no se puede derivar, queda vacio.
-    const sinDestino = new Set(filas.filter((f) => !f.destino).map((f) => f.viaje));
-    if (sinDestino.size > 0) {
+    // Recorrido del viaje desde el GTFS oficial (detectado 8 nov 2026: el
+    // GTFS de Cercanias no trae trip_headsign y los destinos salian vacios;
+    // y un tren "hacia Madrid" puede terminar en otra poblacion pasando por
+    // Madrid). Para cada viaje se deriva:
+    //  - destino: ultima parada del viaje (max stop_sequence), si trips.txt
+    //    no traia headsign. No se infiere nada de memoria.
+    //  - paradasPosteriores: paradas del viaje DESPUES de la estacion
+    //    pedida, para que un filtro "hacia X" case tambien paradas
+    //    intermedias, no solo el terminal.
+    const viajesListados = new Set(filas.map((f) => f.viaje));
+    if (viajesListados.size > 0) {
       const stopsTxt = extraerFicheroZip(buf, 'stops.txt');
       const nombres = new Map();
       if (stopsTxt) for (const e of parsearStops(stopsTxt.toString('utf-8'))) nombres.set(e.id, e.nombre);
-      const ultimaParada = new Map();
+      const paradasPorViaje = new Map(); // viaje -> [{ seq, stopId }]
       await filtrarLineasZip(buf, 'stop_times.txt', (l) => {
         const cols = l.split(',');
         const v = (cols[0] || '').trim();
-        if (!sinDestino.has(v)) return false;
-        const seq = Number((cols[4] || '').trim()) || 0;
-        const prev = ultimaParada.get(v);
-        if (!prev || seq > prev.seq) ultimaParada.set(v, { seq, stopId: (cols[3] || '').trim() });
+        if (!viajesListados.has(v)) return false;
+        const lista = paradasPorViaje.get(v) || [];
+        lista.push({ seq: Number((cols[4] || '').trim()) || 0, stopId: (cols[3] || '').trim() });
+        paradasPorViaje.set(v, lista);
         return false;
       });
       for (const f of filas) {
-        if (f.destino) continue;
-        const u = ultimaParada.get(f.viaje);
-        const nombre = u && nombres.get(u.stopId);
-        if (nombre) f.destino = nombre;
+        const recorrido = (paradasPorViaje.get(f.viaje) || []).sort((a, b) => a.seq - b.seq);
+        if (!f.destino && recorrido.length > 0) {
+          const nombre = nombres.get(recorrido[recorrido.length - 1].stopId);
+          if (nombre) f.destino = nombre;
+        }
+        const desde = seqOrigen.get(f.viaje) ?? 0;
+        f.paradasPosteriores = recorrido.filter((p) => p.seq > desde).map((p) => nombres.get(p.stopId)).filter(Boolean);
       }
     }
     filas.sort((a, b) => a.epoch - b.epoch);
     try {
       fs.mkdirSync(path.dirname(ruta), { recursive: true });
       const tmp = `${ruta}.tmp.${process.pid}`;
-      fs.writeFileSync(tmp, JSON.stringify({ v: 2, generadoEn: ahora.toISOString(), fecha: hoy.fecha, estacion, horarios: filas }), 'utf-8');
+      fs.writeFileSync(tmp, JSON.stringify({ v: 3, generadoEn: ahora.toISOString(), fecha: hoy.fecha, estacion, horarios: filas }), 'utf-8');
       fs.renameSync(tmp, ruta);
     } catch { /* sin cache no pasa nada */ }
   }
@@ -354,6 +364,6 @@ export async function horariosProgramados(paradaId, tipo, deps = {}) {
   const programadas = filas
     .filter((f) => f.epoch >= ahoraEpoch - 60)
     .slice(0, 5)
-    .map((f) => ({ viaje: f.viaje, segundos: f.epoch - ahoraEpoch, hora: f.hora, destino: f.destino, programado: true }));
+    .map((f) => ({ viaje: f.viaje, segundos: f.epoch - ahoraEpoch, hora: f.hora, destino: f.destino, paradasPosteriores: f.paradasPosteriores || [], programado: true }));
   return { ok: true, programadas };
 }

@@ -50,7 +50,7 @@ import { estadisticasChat } from '../services/groupStatsService.js';
 import { registrarAvisoLlegada, listarAvisosLlegada, cancelarAvisoLlegada } from '../services/arrivalWatchService.js';
 import { verificarYRegistrarIdempotencia, guardarResultadoIdempotencia } from '../services/idempotencyService.js';
 import { obtenerContextoGrafo } from '../services/graphMemoryService.js';
-import { registrarParadaFavorita, listarParadasFavoritas, eliminarParadaFavorita, proximasLlegadas } from '../services/transportService.js';
+import { registrarParadaFavorita, listarParadasFavoritas, eliminarParadaFavorita, proximasLlegadas, extraerDestinoHacia } from '../services/transportService.js';
 import { registrarContacto, buscarContacto, listarContactos } from '../services/contactsService.js';
 import { buscarSemantico } from '../services/brainSearchService.js';
 import { generarDigest, configurarDigestSemanal } from '../services/brainDigestService.js';
@@ -1054,7 +1054,12 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
         const res = eliminarParadaFavorita(args.criterio, { rutaArchivo: opciones.rutaArchivoTransporte });
         resultadoTool = res.ok ? `Borrada la parada "${res.parada.nombre}", David.` : res.error;
       } else if (nombreFuncion === 'proximas_llegadas_transporte') {
-        const res = await proximasLlegadas({ parada: args.parada, tipo: args.tipo, codigo: args.codigo, destino: args.destino }, { rutaArchivo: opciones.rutaArchivoTransporte, fetchFnEmt: opciones.fetchFnEmt, fetchFnCercanias: opciones.fetchFnCercanias, clientIdEmt: opciones.clientIdEmt, passKeyEmt: opciones.passKeyEmt });
+        // Destino determinista: se extrae del mensaje de David ("hacia X") y
+        // prevalece sobre el argumento del modelo; no dependemos de que el
+        // modelo rellene destino (fallo observado 8 nov 2026).
+        const destinoNatural = extraerDestinoHacia(opciones.mensajeUsuario);
+        const destinoFinal = destinoNatural || args.destino;
+        const res = await proximasLlegadas({ parada: args.parada, tipo: args.tipo, codigo: args.codigo, destino: destinoFinal }, { rutaArchivo: opciones.rutaArchivoTransporte, fetchFnEmt: opciones.fetchFnEmt, fetchFnCercanias: opciones.fetchFnCercanias, clientIdEmt: opciones.clientIdEmt, passKeyEmt: opciones.passKeyEmt });
         if (!res.ok) {
           resultadoTool = res.error;
         } else if (res.contrastados && res.contrastados.length > 0) {

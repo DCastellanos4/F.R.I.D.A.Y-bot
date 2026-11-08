@@ -193,6 +193,7 @@ export async function proximasLlegadas({ parada, tipo, codigo, destino } = {}, d
               viaje: p.viaje,
               hora: p.hora,
               destino: p.destino || '',
+              paradasPosteriores: p.paradasPosteriores || [],
               estado,
               retrasoMin,
               cancelado,
@@ -204,20 +205,44 @@ export async function proximasLlegadas({ parada, tipo, codigo, destino } = {}, d
     }
   }
   // Filtro por destino cuando David pide trenes "hacia" un sitio concreto
-  // (ej: "que trenes hay hacia Madrid desde Aranjuez"). Se aplica a las
-  // salidas programadas/contrastadas (el feed en vivo no trae destino).
+  // (ej: "que trenes hay hacia Madrid desde Aranjuez"). Un tren va "hacia X"
+  // si X es su terminal O una parada posterior del recorrido GTFS (un tren
+  // hacia Madrid puede terminar en otra poblacion pasando por Madrid). El
+  // feed en vivo no trae destino: con filtro activo esas llegadas NO se
+  // presentan como si cumplieran el filtro.
   const destinoFiltro = normalizarTexto(destino);
   if (destinoFiltro && salida.ok && (tipoFinal === 'cercanias' || tipoFinal === 'tren')) {
-    const coincide = (d) => {
-      const dn = normalizarTexto(d);
-      return dn && (dn.includes(destinoFiltro) || destinoFiltro.includes(dn));
+    const coincide = (p) => {
+      const candidatos = [p.destino, ...(Array.isArray(p.paradasPosteriores) ? p.paradasPosteriores : [])]
+        .map(normalizarTexto)
+        .filter(Boolean);
+      return candidatos.some((dn) => dn.includes(destinoFiltro) || destinoFiltro.includes(dn));
     };
     const habia = Array.isArray(salida.programadas) ? salida.programadas.length : 0;
-    if (Array.isArray(salida.programadas)) salida.programadas = salida.programadas.filter((p) => coincide(p.destino));
-    if (Array.isArray(salida.contrastados)) salida.contrastados = salida.contrastados.filter((c2) => coincide(c2.destino));
+    if (Array.isArray(salida.programadas)) salida.programadas = salida.programadas.filter(coincide);
+    if (Array.isArray(salida.contrastados)) salida.contrastados = salida.contrastados.filter(coincide);
+    if (Array.isArray(salida.llegadas) && salida.llegadas.length > 0) {
+      salida.llegadasSinVerificarDestino = salida.llegadas;
+      salida.llegadas = [];
+      salida.nota = `${salida.nota ? salida.nota + ' ' : ''}Hay ${salida.llegadasSinVerificarDestino.length} llegada(s) con informacion en vivo cuyo destino no publica Renfe: no se pueden verificar contra el filtro "${String(destino).trim()}".`;
+    }
     if (habia > 0 && (!Array.isArray(salida.programadas) || salida.programadas.length === 0)) {
-      salida.nota = `Ninguna de las proximas salidas programadas de hoy va hacia "${String(destino).trim()}". Quita el filtro de destino para verlas todas.`;
+      salida.nota = `${salida.nota ? salida.nota + ' ' : ''}Ninguna de las proximas salidas programadas de hoy pasa por "${String(destino).trim()}" segun el recorrido GTFS. Quita el filtro de destino para verlas todas.`;
     }
   }
   return salida;
+}
+
+/**
+ * Extraccion determinista del destino pedido en lenguaje natural
+ * ("hacia Madrid", "para Atocha"), para no depender de que el modelo
+ * rellene el argumento destino de la herramienta. Devuelve null si no hay.
+ */
+export function extraerDestinoHacia(texto) {
+  const t = String(texto || '');
+  const PALABRA = '[a-záéíóúñü]+';
+  const m = t.match(new RegExp(`(?:hacia|para)\\s+(${PALABRA}(?:\\s+${PALABRA}){0,2}?)(?=\\s+(?:de|desde|del|hacia|para|con|que|y|en|a|al|por)\\b|[,.?!;:]|$)`, 'i'));
+  if (!m) return null;
+  const limpio = m[1].replace(/^(el|la|los|las|un|una)\s+/i, '').trim();
+  return limpio || null;
 }
