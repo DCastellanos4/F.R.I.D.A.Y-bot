@@ -353,3 +353,24 @@ test('idempotencia: hash del propietario intacto; otro tenant con mismos tool/ar
   assert.equal(verificarYRegistrarIdempotencia({ tool: 'registrar_gasto', args: { importe: 5 }, chatId: 'c1' }, deps).duplicado, true, 'el propietario si detecta su duplicado');
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('historial: claveChatTenant separa tenants con el mismo chatId; propietario intacto; el LLM no recibe historial ajeno', async () => {
+  const { claveChatTenant } = await import('../../src/core/tenancy.js');
+  const h = await import('../../src/services/conversationHistoryService.js');
+  assert.equal(claveChatTenant(undefined, 'c9'), 'c9');
+  assert.equal(claveChatTenant('propietario', 'c9'), 'c9');
+  assert.notEqual(claveChatTenant('sint-a', 'c9'), claveChatTenant('sint-b', 'c9'));
+  assert.throws(() => claveChatTenant('../x', 'c9'));
+  const base = 'chat-aislamiento-' + Date.now();
+  const kO = claveChatTenant(undefined, base), kA = claveChatTenant('sint-a', base);
+  try {
+    h.registrarIntercambio(kO, 'SECRETO-PROPIETARIO', 'respuesta-o');
+    h.registrarIntercambio(kA, 'dato-de-a', 'respuesta-a');
+    const vistoPorA = JSON.stringify(h.obtenerHistorial(kA));
+    assert.ok(!vistoPorA.includes('SECRETO-PROPIETARIO'), 'A no ve el historial del propietario');
+    assert.ok(vistoPorA.includes('dato-de-a'));
+    assert.ok(!JSON.stringify(h.obtenerHistorial(kO)).includes('dato-de-a'), 'el propietario no ve el de A');
+    h.limpiarHistorial(kA);
+    assert.ok(JSON.stringify(h.obtenerHistorial(kO)).includes('SECRETO-PROPIETARIO'), 'borrar A no toca al propietario');
+  } finally { h.limpiarHistorial(kO); h.limpiarHistorial(kA); }
+});

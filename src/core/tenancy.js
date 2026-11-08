@@ -101,3 +101,17 @@ export function rutaDatosTenant(dataDir, tenantId, nombre) {
   if (rel.startsWith('..') || path.isAbsolute(rel)) throw new Error('ruta fuera del directorio de datos.');
   return destino;
 }
+
+/**
+ * Clave de conversacion con ambito de tenant. El propietario (o sin tenant)
+ * conserva EXACTAMENTE el chatId historico; cualquier otro tenant obtiene una
+ * clave distinta, de modo que los almacenes indexados por chatId (historial,
+ * episodios, trazas) no se mezclan aunque dos tenants compartan chatId.
+ * Solo es un ambito de clave: NO aisla por si solo los almacenes globales.
+ */
+export function claveChatTenant(tenantId, chatId) {
+  if (chatId === undefined || chatId === null || chatId === '') return chatId;
+  if (tenantId === undefined || tenantId === null || tenantId === TENANT_PROPIETARIO) return chatId;
+  afirmarTenantId(tenantId);
+  return `t:${tenantId}:${String(chatId)}`;
+}
