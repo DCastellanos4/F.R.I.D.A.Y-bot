@@ -268,7 +268,9 @@ export async function horariosProgramados(paradaId, tipo, deps = {}) {
   const ruta = rutaCacheHorarios(deps, estacion, hoy.fecha);
   let cache = null;
   try { cache = JSON.parse(fs.readFileSync(ruta, 'utf-8')); } catch { /* sin cache */ }
-  let filas = cache && Array.isArray(cache.horarios) ? cache.horarios : null;
+  // v2: los horarios incluyen destino derivado del GTFS; caches antiguas
+  // (sin v, destinos vacios) se ignoran y se regeneran.
+  let filas = cache && cache.v === 2 && Array.isArray(cache.horarios) ? cache.horarios : null;
   if (!filas) {
     const url = tipo === 'tren' ? URL_GTFS_LD : URL_GTFS_CERCANIAS;
     const fetchFn = deps.fetchFn || fetch;
@@ -313,11 +315,38 @@ export async function horariosProgramados(paradaId, tipo, deps = {}) {
       if (activosHoy.has(info.servicio)) filas.push({ viaje: (cols[0] || '').trim(), epoch: medianocheHoy + segundosDia, hora: horaFmt, destino: info.destino || '' });
       if (activosAyer.has(info.servicio) && segundosDia >= 86400) filas.push({ viaje: (cols[0] || '').trim(), epoch: medianocheAyerReal + segundosDia, hora: horaFmt, destino: info.destino || '' });
     }
+    // Destino del viaje: si trips.txt no trae trip_headsign (caso del GTFS
+    // de Cercanias en produccion, detectado 8 nov 2026: todos los destinos
+    // vacios), se deriva del propio GTFS oficial: ultima parada del viaje
+    // (max stop_sequence) resuelta por stops.txt. No se infiere ningun
+    // destino de memoria: si no se puede derivar, queda vacio.
+    const sinDestino = new Set(filas.filter((f) => !f.destino).map((f) => f.viaje));
+    if (sinDestino.size > 0) {
+      const stopsTxt = extraerFicheroZip(buf, 'stops.txt');
+      const nombres = new Map();
+      if (stopsTxt) for (const e of parsearStops(stopsTxt.toString('utf-8'))) nombres.set(e.id, e.nombre);
+      const ultimaParada = new Map();
+      await filtrarLineasZip(buf, 'stop_times.txt', (l) => {
+        const cols = l.split(',');
+        const v = (cols[0] || '').trim();
+        if (!sinDestino.has(v)) return false;
+        const seq = Number((cols[4] || '').trim()) || 0;
+        const prev = ultimaParada.get(v);
+        if (!prev || seq > prev.seq) ultimaParada.set(v, { seq, stopId: (cols[3] || '').trim() });
+        return false;
+      });
+      for (const f of filas) {
+        if (f.destino) continue;
+        const u = ultimaParada.get(f.viaje);
+        const nombre = u && nombres.get(u.stopId);
+        if (nombre) f.destino = nombre;
+      }
+    }
     filas.sort((a, b) => a.epoch - b.epoch);
     try {
       fs.mkdirSync(path.dirname(ruta), { recursive: true });
       const tmp = `${ruta}.tmp.${process.pid}`;
-      fs.writeFileSync(tmp, JSON.stringify({ generadoEn: ahora.toISOString(), fecha: hoy.fecha, estacion, horarios: filas }), 'utf-8');
+      fs.writeFileSync(tmp, JSON.stringify({ v: 2, generadoEn: ahora.toISOString(), fecha: hoy.fecha, estacion, horarios: filas }), 'utf-8');
       fs.renameSync(tmp, ruta);
     } catch { /* sin cache no pasa nada */ }
   }

@@ -90,7 +90,16 @@ export function eliminarParadaFavorita(criterio, deps = {}) {
  * Proximas llegadas de una parada favorita (por nombre o id) o de un codigo
  * directo. deps.fetchFnEmt / fetchFnCercanias permiten inyectar fetch en tests.
  */
-export async function proximasLlegadas({ parada, tipo, codigo } = {}, deps = {}) {
+function normalizarTexto(texto) {
+  return String(texto || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+export async function proximasLlegadas({ parada, tipo, codigo, destino } = {}, deps = {}) {
   let objetivo = null;
   let resuelta = null;
   if (parada) {
@@ -192,6 +201,22 @@ export async function proximasLlegadas({ parada, tipo, codigo } = {}, deps = {})
           });
         }
       } catch { /* sin horarios estaticos */ }
+    }
+  }
+  // Filtro por destino cuando David pide trenes "hacia" un sitio concreto
+  // (ej: "que trenes hay hacia Madrid desde Aranjuez"). Se aplica a las
+  // salidas programadas/contrastadas (el feed en vivo no trae destino).
+  const destinoFiltro = normalizarTexto(destino);
+  if (destinoFiltro && salida.ok && (tipoFinal === 'cercanias' || tipoFinal === 'tren')) {
+    const coincide = (d) => {
+      const dn = normalizarTexto(d);
+      return dn && (dn.includes(destinoFiltro) || destinoFiltro.includes(dn));
+    };
+    const habia = Array.isArray(salida.programadas) ? salida.programadas.length : 0;
+    if (Array.isArray(salida.programadas)) salida.programadas = salida.programadas.filter((p) => coincide(p.destino));
+    if (Array.isArray(salida.contrastados)) salida.contrastados = salida.contrastados.filter((c2) => coincide(c2.destino));
+    if (habia > 0 && (!Array.isArray(salida.programadas) || salida.programadas.length === 0)) {
+      salida.nota = `Ninguna de las proximas salidas programadas de hoy va hacia "${String(destino).trim()}". Quita el filtro de destino para verlas todas.`;
     }
   }
   return salida;

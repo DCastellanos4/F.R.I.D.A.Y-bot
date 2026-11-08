@@ -1054,7 +1054,7 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
         const res = eliminarParadaFavorita(args.criterio, { rutaArchivo: opciones.rutaArchivoTransporte });
         resultadoTool = res.ok ? `Borrada la parada "${res.parada.nombre}", David.` : res.error;
       } else if (nombreFuncion === 'proximas_llegadas_transporte') {
-        const res = await proximasLlegadas({ parada: args.parada, tipo: args.tipo, codigo: args.codigo }, { rutaArchivo: opciones.rutaArchivoTransporte, fetchFnEmt: opciones.fetchFnEmt, fetchFnCercanias: opciones.fetchFnCercanias, clientIdEmt: opciones.clientIdEmt, passKeyEmt: opciones.passKeyEmt });
+        const res = await proximasLlegadas({ parada: args.parada, tipo: args.tipo, codigo: args.codigo, destino: args.destino }, { rutaArchivo: opciones.rutaArchivoTransporte, fetchFnEmt: opciones.fetchFnEmt, fetchFnCercanias: opciones.fetchFnCercanias, clientIdEmt: opciones.clientIdEmt, passKeyEmt: opciones.passKeyEmt });
         if (!res.ok) {
           resultadoTool = res.error;
         } else if (res.contrastados && res.contrastados.length > 0) {

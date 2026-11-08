@@ -242,3 +242,83 @@ assert.strictEqual(rNoche.programadas[0].viaje, 'C3-101');
 try { fs.unlinkSync(depsNoche.rutaArchivo); } catch { /* nada */ }
 
 console.log('renfe_tren.test.js OK (definitivo)');
+
+// 10) Regresion 8 nov 2026 (gap de produccion): el GTFS de Cercanias en
+// produccion no trae trip_headsign y las salidas programadas salian con
+// destino vacio. El destino se deriva del propio GTFS oficial: ultima parada
+// del viaje (max stop_sequence) resuelta por stops.txt. NADA se infiere.
+const STOPS_SIN_HEAD = 'stop_id,stop_name,stop_lat,stop_lon,wheelchair_boarding\n60200,Aranjuez,40.0,-3.6,1\n60105,Leganes,40.3,-3.7,1\n60000,Madrid-Chamartin,40.4,-3.6,1\n60900,Villalba,40.6,-4.0,1\n';
+const TRIPS_SIN_HEAD = 'route_id,service_id,trip_id,trip_headsign\nC3,TODOS,C3-101,\nC3,TODOS,C3-102,\n';
+const CAL_TODOS = 'service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\nTODOS,1,1,1,1,1,1,1,20260101,20261231\n';
+const STOP_TIMES_SIN_HEAD = 'trip_id,arrival_time,departure_time,stop_id,stop_sequence\nC3-101,15:30:00,15:30:00,60105,10\nC3-101,16:00:00,16:00:00,60200,11\nC3-101,16:30:00,16:30:00,60000,12\nC3-102,16:50:00,16:50:00,60200,11\nC3-102,17:20:00,17:20:00,60900,12\n';
+const zipSinHead = zipDePrueba([
+  { nombre: 'stops.txt', datos: STOPS_SIN_HEAD, metodo: 8 },
+  { nombre: 'trips.txt', datos: TRIPS_SIN_HEAD, metodo: 8 },
+  { nombre: 'calendar.txt', datos: CAL_TODOS, metodo: 8 },
+  { nombre: 'stop_times.txt', datos: STOP_TIMES_SIN_HEAD, metodo: 8 }
+]);
+function depsSinHead(tag) {
+  return {
+    rutaArchivo: `/tmp/test-transporte-renfe-sh-${tag}.json`,
+    rutaCache: `/tmp/test-estaciones-renfe-sh-${tag}.json`,
+    rutaCacheHorarios: `/tmp/test-horarios-renfe-sh-${tag}`,
+    ahora: ahoraSabado,
+    fetchFn: async (url) => {
+      if (url.includes('fomento_transit')) return { arrayBuffer: async () => zipSinHead.buffer.slice(zipSinHead.byteOffset, zipSinHead.byteOffset + zipSinHead.length) };
+      if (url.includes('google_transit')) return { arrayBuffer: async () => zipLd.buffer.slice(zipLd.byteOffset, zipLd.byteOffset + zipLd.length) };
+      return { text: async () => feedVacio };
+    },
+    fetchFnCercanias: async () => ({ text: async () => feedVacio })
+  };
+}
+const depsSH = depsSinHead('a');
+try { fs.unlinkSync(depsSH.rutaCache); } catch { /* nada */ }
+try { fs.unlinkSync(depsSH.rutaArchivo); } catch { /* nada */ }
+fs.rmSync(depsSH.rutaCacheHorarios, { recursive: true, force: true });
+const rSH = await proximasLlegadas({ parada: 'aranjuez' }, depsSH);
+assert.ok(rSH.ok, 'resuelve aranjuez sin headsign');
+assert.strictEqual(rSH.programadas.length, 2, 'dos salidas programadas');
+assert.strictEqual(rSH.programadas[0].hora, '16:00');
+assert.strictEqual(rSH.programadas[0].destino, 'Madrid-Chamartin', 'destino derivado de la ultima parada del viaje (GTFS oficial)');
+assert.strictEqual(rSH.programadas[1].destino, 'Villalba', 'cada viaje deriva SU destino, no se infiere uno unico');
+fs.rmSync(depsSH.rutaCacheHorarios, { recursive: true, force: true });
+try { fs.unlinkSync(depsSH.rutaArchivo); } catch { /* nada */ }
+
+// 11) Filtro por destino ("que trenes hay hacia madrid desde aranjuez"):
+// solo quedan las salidas cuyo destino encaja; sin coincidencias se dice
+// claro en lugar de soltar todas.
+const depsF = depsSinHead('b');
+try { fs.unlinkSync(depsF.rutaCache); } catch { /* nada */ }
+try { fs.unlinkSync(depsF.rutaArchivo); } catch { /* nada */ }
+fs.rmSync(depsF.rutaCacheHorarios, { recursive: true, force: true });
+const rFiltro = await proximasLlegadas({ parada: 'aranjuez', destino: 'madrid' }, depsF);
+assert.ok(rFiltro.ok, 'resuelve con filtro');
+assert.strictEqual(rFiltro.programadas.length, 1, 'solo la salida hacia Madrid');
+assert.strictEqual(rFiltro.programadas[0].destino, 'Madrid-Chamartin');
+const rFiltroVacio = await proximasLlegadas({ parada: 'aranjuez', destino: 'sevilla' }, depsF);
+assert.ok(rFiltroVacio.ok, 'resuelve con filtro sin coincidencias');
+assert.strictEqual(rFiltroVacio.programadas.length, 0, 'no inventa salidas hacia Sevilla');
+assert.match(rFiltroVacio.nota || '', /Ninguna de las proximas salidas/, 'lo dice claro');
+fs.rmSync(depsF.rutaCacheHorarios, { recursive: true, force: true });
+try { fs.unlinkSync(depsF.rutaArchivo); } catch { /* nada */ }
+
+// 12) Cache de horarios antigua (sin version, destinos vacios): se ignora y
+// se regenera desde el GTFS, no se sirven destinos vacios cacheados.
+const depsC = depsSinHead('c');
+try { fs.unlinkSync(depsC.rutaCache); } catch { /* nada */ }
+try { fs.unlinkSync(depsC.rutaArchivo); } catch { /* nada */ }
+fs.rmSync(depsC.rutaCacheHorarios, { recursive: true, force: true });
+fs.mkdirSync(depsC.rutaCacheHorarios, { recursive: true });
+fs.writeFileSync(
+  `${depsC.rutaCacheHorarios}/60200-20261107.json`,
+  JSON.stringify({ generadoEn: new Date(ahoraSabado).toISOString(), fecha: '20261107', estacion: '60200', horarios: [{ viaje: 'FAKE-1', epoch: Math.floor(ahoraSabado / 1000) + 600, hora: '15:10', destino: '' }] }),
+  'utf-8'
+);
+const rCache = await proximasLlegadas({ parada: 'aranjuez' }, depsC);
+assert.ok(rCache.ok, 'resuelve con cache antigua presente');
+assert.strictEqual(rCache.programadas.length, 2, 'la cache sin version se ignora y se regenera');
+assert.strictEqual(rCache.programadas[0].destino, 'Madrid-Chamartin', 'destinos regenerados, no vacios cacheados');
+fs.rmSync(depsC.rutaCacheHorarios, { recursive: true, force: true });
+try { fs.unlinkSync(depsC.rutaArchivo); } catch { /* nada */ }
+
+console.log('renfe_tren.test.js OK (destino derivado + filtro)');

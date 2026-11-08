@@ -1233,7 +1233,8 @@ export const herramientasJarvis = [
         properties: {
           parada: { type: 'string', description: 'Nombre o id de la parada favorita.' },
           tipo: { type: 'string', enum: ['emt', 'cercanias', 'tren'], description: 'Tipo si se pasa un codigo directo.' },
-          codigo: { type: 'string', description: 'Codigo directo si no es favorita.' }
+          codigo: { type: 'string', description: 'Codigo directo si no es favorita.' },
+          destino: { type: 'string', description: 'Filtra por destino cuando David pide trenes "hacia" un sitio concreto (ej: "hacia Madrid").' }
         }
       }
     }
