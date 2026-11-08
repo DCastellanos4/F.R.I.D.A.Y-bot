@@ -17,6 +17,10 @@
     localhost; los listeners dedicados son la via que scrapea Prometheus.
 - **Dashboard Grafana** provisionado: P95/P99 de LLM y herramientas,
   errores por minuto, tokens por sesion.
+  Variable `entorno` (por defecto Produccion = jobs `jarvis-*`; opcion
+  explicita Staging = jobs `davis-staging*` de las sondas). No hay opcion
+  Todos: produccion y staging nunca se mezclan en un panel. Las sondas se
+  scrapean con un job propio que empiece por `davis-staging`.
 
 ## Topologia (preflight VPS: aarch64, sin Docker previo, firewall restrictivo)
 

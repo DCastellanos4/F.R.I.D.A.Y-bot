@@ -6,6 +6,24 @@
   "editable": false,
   "time": { "from": "now-6h", "to": "now" },
   "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "entorno",
+        "label": "Entorno",
+        "type": "custom",
+        "query": "Produccion : jarvis-.+,Staging (sonda) : davis-staging.*",
+        "multi": false,
+        "includeAll": false,
+        "current": { "selected": true, "text": "Produccion", "value": "jarvis-.+" },
+        "options": [
+          { "selected": true, "text": "Produccion", "value": "jarvis-.+" },
+          { "selected": false, "text": "Staging (sonda)", "value": "davis-staging.*" }
+        ],
+        "description": "Produccion = jobs jarvis-whatsapp y jarvis-api (David real). Staging = jobs davis-staging* de sondas. Nunca se mezclan: no hay opcion Todos."
+      }
+    ]
+  },
   "panels": [
     {
       "id": 1,
@@ -16,12 +34,12 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum(rate(jarvis_llm_duracion_segundos_bucket[5m])) by (le, modelo))",
+          "expr": "histogram_quantile(0.95, sum(rate(jarvis_llm_duracion_segundos_bucket{job=~\"$entorno\"}[5m])) by (le, modelo))",
           "legendFormat": "P95 {{modelo}}"
         },
         {
           "refId": "B",
-          "expr": "histogram_quantile(0.99, sum(rate(jarvis_llm_duracion_segundos_bucket[5m])) by (le, modelo))",
+          "expr": "histogram_quantile(0.99, sum(rate(jarvis_llm_duracion_segundos_bucket{job=~\"$entorno\"}[5m])) by (le, modelo))",
           "legendFormat": "P99 {{modelo}}"
         }
       ]
@@ -35,7 +53,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum(rate(jarvis_consulta_duracion_segundos_bucket[5m])) by (le, via))",
+          "expr": "histogram_quantile(0.95, sum(rate(jarvis_consulta_duracion_segundos_bucket{job=~\"$entorno\"}[5m])) by (le, via))",
           "legendFormat": "P95 {{via}}"
         }
       ]
@@ -49,7 +67,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(jarvis_tool_errores_total[1m])) by (herramienta, tipo) * 60",
+          "expr": "sum(rate(jarvis_tool_errores_total{job=~\"$entorno\"}[1m])) by (herramienta, tipo) * 60",
           "legendFormat": "{{herramienta}} ({{tipo}})"
         }
       ]
@@ -63,7 +81,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum(rate(jarvis_tool_duracion_segundos_bucket[5m])) by (le, herramienta))",
+          "expr": "histogram_quantile(0.95, sum(rate(jarvis_tool_duracion_segundos_bucket{job=~\"$entorno\"}[5m])) by (le, herramienta))",
           "legendFormat": "P95 {{herramienta}}"
         }
       ]
@@ -77,7 +95,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(jarvis_llm_tokens_total[1m])) by (sesion, tipo) * 60",
+          "expr": "sum(rate(jarvis_llm_tokens_total{job=~\"$entorno\"}[1m])) by (sesion, tipo) * 60",
           "legendFormat": "{{tipo}} sesion {{sesion}}"
         }
       ]
@@ -91,7 +109,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(increase(jarvis_llm_duracion_segundos_count{resultado=\"error\"}[1h]))",
+          "expr": "sum(increase(jarvis_llm_duracion_segundos_count{job=~\"$entorno\",resultado=\"error\"}[1h]))",
           "legendFormat": "errores"
         }
       ]
