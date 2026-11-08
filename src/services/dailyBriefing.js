@@ -127,8 +127,9 @@ export async function generarBriefingCompleto(ciudad) {
 
 /**
  * Programa el cron matutino a las 06:55 hora peninsular de Madrid.
- * @param {Function|object} target Callback de recepcion o socket Baileys.
- * @param {string} [targetJid] JID de destino si target es un socket.
+ * @param {Function|object} target Callback de recepcion o MessageChannelPort
+ *                                 (puerto de canal con enviarTexto).
+ * @param {string} [targetJid] JID de destino si target es un puerto de canal.
  * @returns {object} Tarea cron de node-cron.
  */
 export function programarEnvioMatutino(target, targetJid) {
@@ -139,8 +140,9 @@ export function programarEnvioMatutino(target, targetJid) {
 
       if (typeof target === 'function') {
         await target(textoBriefing);
-      } else if (target && typeof target.sendMessage === 'function' && targetJid) {
-        await target.sendMessage(targetJid, { text: textoBriefing });
+      } else if (target && typeof target.enviarTexto === 'function' && targetJid) {
+        // Puerto de canal: el servicio no conoce el socket de Baileys.
+        await target.enviarTexto(targetJid, textoBriefing);
       } else {
         console.log('[DailyBriefing] Briefing generado satisfactoriamente (modo local):');
         console.log(textoBriefing);

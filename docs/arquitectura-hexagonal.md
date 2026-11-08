@@ -89,19 +89,25 @@ persistencia de memoria detras de `MemoryRepositoryPort`.
   incremental sin mover el dominio.
 - **Transporte (capa de canal, correcto fuera del core):** whatsappBot
   (orquestacion), textFormatService (markdown de WhatsApp),
-  mediaDownloaderService, ttsService (nota de voz por socket),
-  dailyBriefing (envio programado por canal). Estos conocen Baileys por
-  diseno; el core nunca los importa.
+  mediaDownloaderService, ttsService (nota de voz por socket). Estos
+  conocen Baileys por diseno; el core nunca los importa.
 - **Infraestructura (adaptadores tecnicos):** llmService (ya detras de
   LLMProviderPort), persistencia JSON de memoria y metricas (ya detras de
   puertos), ticketVisionAdapter, browser/pdf/vision, bash/backup/tunnel/
   disco, monitores (docker, red, sniper, alertas), ops.
 
-Fugas de transporte conocidas en negocio (trabajo futuro, declarado):
-`scheduledMessageService.registrarIdWhatsApp` retiene el socket para
-envios programados, y `conversationHistoryService` se usa desde la capa
-de canal. Mover el envio programado al puerto de canal es el siguiente
-corte natural.
+Envios programados verificados desacoplados: `scheduledMessageService`
+recibe el envio como callback inyectado por la capa de canal
+(`iniciarMonitorMensajesProgramados(callbackEnvio)`; `registrarIdWhatsApp`
+solo persiste el id de entrega para los acuses) y `dailyBriefing` acepta
+el puerto de canal (`enviarTexto`) o un callback; ninguno retiene el
+socket. Persistencia fusionada por id y acuses de entrega intactos.
+
+Uso restante conocido y aceptado: `conversationHistoryService` se usa
+desde la capa de canal (el historial llega al core como parametro).
+Los helpers de transporte (`ttsService`, `mediaDownloaderService`) se
+llaman desde la capa de canal con el socket como argumento puntual, sin
+retencion.
 
 ## Aislamiento del estado de pruebas
 
