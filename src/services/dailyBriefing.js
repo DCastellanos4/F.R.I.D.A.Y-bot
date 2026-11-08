@@ -126,6 +126,27 @@ export async function generarBriefingCompleto(ciudad) {
 }
 
 /**
+ * Entrega del briefing por el objetivo configurado: callback inyectado,
+ * puerto de canal (MessageChannelPort con enviarTexto) o consola local.
+ * Extraida del cron para ser probada en aislamiento: sin cron, sin envios.
+ * @returns {Promise<string>} Modo usado: 'callback' | 'puerto' | 'local'.
+ */
+export async function entregarBriefing(target, targetJid, textoBriefing) {
+  if (typeof target === 'function') {
+    await target(textoBriefing);
+    return 'callback';
+  }
+  if (target && typeof target.enviarTexto === 'function' && targetJid) {
+    // Puerto de canal: el servicio no conoce el socket de Baileys.
+    await target.enviarTexto(targetJid, textoBriefing);
+    return 'puerto';
+  }
+  console.log('[DailyBriefing] Briefing generado satisfactoriamente (modo local):');
+  console.log(textoBriefing);
+  return 'local';
+}
+
+/**
  * Programa el cron matutino a las 06:55 hora peninsular de Madrid.
  * @param {Function|object} target Callback de recepcion o MessageChannelPort
  *                                 (puerto de canal con enviarTexto).
@@ -137,16 +158,7 @@ export function programarEnvioMatutino(target, targetJid) {
     try {
       console.log('[DailyBriefing] Ejecutando envio matutino programado (06:55 Europe/Madrid)...');
       const textoBriefing = await generarBriefingCompleto();
-
-      if (typeof target === 'function') {
-        await target(textoBriefing);
-      } else if (target && typeof target.enviarTexto === 'function' && targetJid) {
-        // Puerto de canal: el servicio no conoce el socket de Baileys.
-        await target.enviarTexto(targetJid, textoBriefing);
-      } else {
-        console.log('[DailyBriefing] Briefing generado satisfactoriamente (modo local):');
-        console.log(textoBriefing);
-      }
+      await entregarBriefing(target, targetJid, textoBriefing);
     } catch (err) {
       console.error('[DailyBriefing] Error durante la ejecucion del cron:', err.message);
     }
