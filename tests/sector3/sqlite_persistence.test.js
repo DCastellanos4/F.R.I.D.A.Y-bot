@@ -464,6 +464,28 @@ test('contenedor: sqlite por entorno registra stores por defecto y registra cont
   }
 });
 
+test('mezcla de backends nunca es silenciosa: ruta JSON explicita con sqlite activo avisa', () => {
+  const dir = dirTmp();
+  const persistencia = crearPersistenciaSqlite({ rutaDb: path.join(dir, 'mix.db') });
+  registrarStoreMemoriasPorDefecto(persistencia.memoryStore);
+  const errores = [];
+  const originalError = console.error;
+  console.error = (msg) => errores.push(String(msg));
+  try {
+    const rutaJson = path.join(dir, 'aislado.json');
+    const r = guardarMemoria({ sujeto: 'nota aislada', dato: 'va a json', rutaArchivo: rutaJson });
+    assert.equal(r.ok, true);
+    // La escritura fue al JSON (respetado) Y quedo registrado el aviso.
+    assert.equal(JSON.parse(fs.readFileSync(rutaJson, 'utf-8')).length, 1);
+    assert.equal(persistencia.memoryStore.leer().length, 0);
+    assert.equal(errores.some((e) => e.includes('MEZCLA DE BACKENDS')), true);
+  } finally {
+    console.error = originalError;
+    registrarStoreMemoriasPorDefecto(null);
+    persistencia.cerrar();
+  }
+});
+
 test('contenedor: DAVIS_PERSISTENCE desconocido falla claro', async () => {
   process.env.DAVIS_PERSISTENCE = 'oracle';
   try {

@@ -30,9 +30,17 @@ export function registrarStoreFinanzasPorDefecto(store) {
   storeFinanzasPorDefecto = store || null;
 }
 
-function storeDe(deps = {}) {
+function storeDe(deps = {}, { escritura = false } = {}) {
   if (deps.store) return deps.store;
-  if (deps.rutaArchivo) return null; // ruta explicita: fichero JSON
+  if (deps.rutaArchivo) {
+    // Con sqlite registrado como backend por defecto, una ruta JSON
+    // explicita mezcla backends. La ruta se respeta (aislamiento de
+    // pruebas y herramientas), pero la mezcla nunca es silenciosa.
+    if (storeFinanzasPorDefecto) {
+      console.error(`[Persistencia] MEZCLA DE BACKENDS: sqlite activo pero se usa rutaArchivo JSON explicita (${deps.rutaArchivo}) en ${escritura ? 'ESCRITURA' : 'lectura'} de finanzas.`);
+    }
+    return null;
+  }
   return storeFinanzasPorDefecto;
 }
 
@@ -57,7 +65,7 @@ function estadoInicial() {
 }
 
 function leerEstado(deps = {}) {
-  const store = storeDe(deps);
+  const store = storeDe(deps, { escritura: false });
   if (store) {
     try {
       return { ...estadoInicial(), ...store.leer() };
@@ -73,7 +81,7 @@ function leerEstado(deps = {}) {
 }
 
 function guardarEstado(estado, deps = {}) {
-  const store = storeDe(deps);
+  const store = storeDe(deps, { escritura: true });
   if (store) {
     store.guardar(estado);
     return;

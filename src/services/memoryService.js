@@ -20,9 +20,17 @@ export function registrarStoreMemoriasPorDefecto(store) {
   storeMemoriasPorDefecto = store || null;
 }
 
-function storeDe(deps = {}) {
+function storeDe(deps = {}, { escritura = false } = {}) {
   if (deps.store) return deps.store;
-  if (deps.rutaArchivo) return null; // ruta explicita: fichero JSON
+  if (deps.rutaArchivo) {
+    // Con sqlite registrado como backend por defecto, una ruta JSON
+    // explicita mezcla backends. La ruta se respeta (aislamiento de
+    // pruebas y herramientas), pero la mezcla nunca es silenciosa.
+    if (storeMemoriasPorDefecto) {
+      console.error(`[Persistencia] MEZCLA DE BACKENDS: sqlite activo pero se usa rutaArchivo JSON explicita (${deps.rutaArchivo}) en ${escritura ? 'ESCRITURA' : 'lectura'} de memorias.`);
+    }
+    return null;
+  }
   return storeMemoriasPorDefecto;
 }
 
@@ -103,7 +111,7 @@ export function esCifrada(m) {
 
 
 function leerMemorias(deps = {}) {
-  const store = storeDe(deps);
+  const store = storeDe(deps, { escritura: false });
   if (store) {
     try {
       return store.leer();
@@ -126,7 +134,7 @@ function leerMemorias(deps = {}) {
 }
 
 function guardarMemorias(lista, deps = {}) {
-  const store = storeDe(deps);
+  const store = storeDe(deps, { escritura: true });
   try {
     if (store) {
       store.guardar(lista);
