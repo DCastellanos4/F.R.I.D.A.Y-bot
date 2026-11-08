@@ -479,15 +479,30 @@ describe('Sector 2 - Master Integration Test Suite', () => {
 
   describe('Part 5: Sector 2 Services Execution Pipeline', () => {
     it('should execute safe bash command immediately without 2FA prompt', async () => {
-      const res = await requestExecution('uptime');
+      // Runner FALSO inyectado: un test NUNCA ejecuta comandos reales del
+      // anfitrion (8 nov 2026: esta misma prueba lanzo 'pm2 restart
+      // jarvis-api' real en la puerta del VPS y reinicio produccion).
+      const ejecutados = [];
+      const runnerFalso = async (cmd) => {
+        ejecutados.push(cmd);
+        return { exitCode: 0, stdout: 'salida-falsa-aislada', stderr: '' };
+      };
+      const res = await requestExecution('uptime', { runner: runnerFalso });
       assert.strictEqual(res.status, 'EXECUTED');
       assert.strictEqual(typeof res.stdout, 'string');
+      assert.deepStrictEqual(ejecutados, ['uptime'], 'solo pasa por el runner inyectado');
       assertNoEmojis(res);
     });
 
     it('should require 6-digit OTP for critical bash command and execute upon confirmation', async () => {
+      const ejecutados = [];
+      const runnerFalso = async (cmd) => {
+        ejecutados.push(cmd);
+        return { exitCode: 0, stdout: 'salida-falsa-aislada', stderr: '' };
+      };
       let deliveredPayload = null;
       const requestRes = await requestExecution('pm2 restart jarvis-api', {
+        runner: runnerFalso,
         otpGenerator: () => '483920',
         otpDelivery: async (payload) => { deliveredPayload = payload; }
       });
@@ -500,9 +515,11 @@ describe('Sector 2 - Master Integration Test Suite', () => {
       assertNoEmojis(requestRes);
 
       // Confirm with the OTP delivered through the direct channel
-      const confirmRes = await confirmAndExecute(requestRes.commandId, deliveredPayload.otpCode);
+      const confirmRes = await confirmAndExecute(requestRes.commandId, deliveredPayload.otpCode, { runner: runnerFalso });
       assert.strictEqual(confirmRes.status, 'EXECUTED');
       assert.strictEqual(confirmRes.command, 'pm2 restart jarvis-api');
+      // Todo lo ejecutado paso por el runner falso; nada toco el anfitrion.
+      assert.ok(ejecutados.length > 0 && ejecutados.every((c) => typeof c === 'string'));
       assertNoEmojis(confirmRes);
     });
 

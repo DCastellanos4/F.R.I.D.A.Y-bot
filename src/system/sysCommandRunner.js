@@ -110,6 +110,25 @@ export async function runCommand(command, args = [], options = {}, deps = {}) {
     };
   }
 
+  // FAIL-CLOSED en entorno de test: sin runner ni execFile inyectados y sin
+  // opt-in POR LLAMADA (deps.permitirEjecucionRealTest === true), NINGUN
+  // comando real llega al sistema anfitrion. Incidente 8 nov 2026: la
+  // puerta de tests del VPS ejecuto 'pm2 restart jarvis-api' REAL y
+  // reinicio produccion. El opt-in es por llamada a proposito: una variable
+  // de entorno global se filtraria a otros tests del mismo proceso y un
+  // fichero de test podria activarla por accidente. La excepcion es ruidosa
+  // a proposito: un test que toca esto esta mal aislado.
+  // Alcance honesto: esta guardia cubre ESTE wrapper (bash console y todo lo
+  // que pase por sysCommandRunner). Hay servicios con execFile directo
+  // (ops/devTools/githubAgent/hogar) fuera de su alcance.
+  if (process.env.NODE_ENV === 'test' &&
+      dependencies.permitirEjecucionRealTest !== true &&
+      typeof dependencies.execFile !== 'function') {
+    const err = new Error(`BLOQUEADO en entorno test: ejecucion real sin aislar: ${cmd}. Inyecta deps.runner/deps.execFile o pasa deps.permitirEjecucionRealTest=true de forma explicita y acotada.`);
+    err.code = 'DAVIS_TEST_REAL_EXEC_BLOQUEADO';
+    throw err;
+  }
+
   const execFileFn = dependencies.execFile || nodeExecFile;
 
   return new Promise((resolve, reject) => {

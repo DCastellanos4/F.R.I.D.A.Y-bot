@@ -28,6 +28,8 @@ export const BASH_COMMAND_SETS = {
     'ping -c 3 8.8.8.8',
     'ip addr show eth0'
   ],
+  // INERTE: estas cadenas SOLO pueden llegar a un runner inyectado. Nunca
+  // se ejecutan de verdad (ver fail-closed de sysCommandRunner en tests).
   critical: [
     'pm2 restart jarvis-api',
     'pm2 stop jarvis-whatsapp',

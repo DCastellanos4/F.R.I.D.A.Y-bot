@@ -16,7 +16,14 @@ import {
   clearQueue,
   formatAlertText
 } from '../../src/services/alertQueueService.js';
-import { runCommand, runSystemCommand } from '../../src/system/sysCommandRunner.js';
+import { runCommand as runCommandBase, runSystemCommand as runSystemCommandBase } from '../../src/system/sysCommandRunner.js';
+// Este fichero prueba el runner REAL multiplataforma con comandos inocuos
+// (echo, true/false, timeouts) en procesos aislados. El opt-in va POR
+// LLAMADA (nunca env global: no se filtra a otros tests ni lo activa un
+// fichero por accidente). No toca pm2/servicios del anfitrion.
+const inyectarPermiso = (d) => ({ ...(d || {}), permitirEjecucionRealTest: true });
+const runCommand = (c, a, o, d) => runCommandBase(c, a, o, inyectarPermiso(d));
+const runSystemCommand = (c, a, o, d) => runSystemCommandBase(c, a, o, inyectarPermiso(d));
 
 describe('Sector 2 - Task 0: Empirical Challenger Stress Harness', () => {
   let tempDir;
