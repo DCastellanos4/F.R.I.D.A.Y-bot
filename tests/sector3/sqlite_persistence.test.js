@@ -403,6 +403,7 @@ test('fuente semantica sqlite: el indice RAG lee de la base y detecta escrituras
   try {
     guardarMemoria({ sujeto: 'restaurante favorito', dato: 'casa paco en malasana', categoria: 'personal', store: persistencia.memoryStore });
 
+    // Camino SEMANTICO directo (no el fallback textual de buscarMemorias).
     const primera = await buscarMemoriaSemantica('donde como bien en malasana', {
       storePath: sinJson,
       vectorsPath,
@@ -411,7 +412,14 @@ test('fuente semantica sqlite: el indice RAG lee de la base y detecta escrituras
     assert.equal(primera.length > 0, true);
     assert.match(primera[0].dato, /casa paco/i);
 
-    // Escritura nueva: la firma cambia y la siguiente busqueda lo refleja.
+    // El indice en disco se reconstruyo DESDE LA BASE con la firma sqlite.
+    const indice1 = JSON.parse(fs.readFileSync(vectorsPath, 'utf-8'));
+    assert.equal(indice1.firmaMemoria, persistencia.fuenteSemantica.firma());
+    assert.equal(indice1.vocabulary.includes('paco'), true);
+    const mtime1 = fs.statSync(vectorsPath).mtimeMs;
+
+    // Escritura nueva: la firma cambia y la siguiente busqueda semantica
+    // reconstruye el indice con el termino nuevo.
     guardarMemoria({ sujeto: 'taller de confianza', dato: 'motorland en alcala', categoria: 'personal', store: persistencia.memoryStore });
     invalidarIndiceSemantico();
     const segunda = await buscarMemoriaSemantica('taller para el coche', {
@@ -420,6 +428,19 @@ test('fuente semantica sqlite: el indice RAG lee de la base y detecta escrituras
       threshold: 0.01
     });
     assert.equal(segunda.some((r) => /motorland/i.test(r.dato)), true);
+    const indice2 = JSON.parse(fs.readFileSync(vectorsPath, 'utf-8'));
+    assert.equal(indice2.vocabulary.includes('motorland'), true);
+    assert.equal(indice2.firmaMemoria, persistencia.fuenteSemantica.firma());
+    assert.equal(fs.statSync(vectorsPath).mtimeMs >= mtime1, true);
+
+    // Tras el borrado, la reconstruccion purga el termino del indice en disco.
+    olvidarMemoria('taller de confianza', { store: persistencia.memoryStore });
+    invalidarIndiceSemantico();
+    await buscarMemoriaSemantica('taller para el coche', { storePath: sinJson, vectorsPath, threshold: 0.01 });
+    const indice3 = JSON.parse(fs.readFileSync(vectorsPath, 'utf-8'));
+    assert.equal(indice3.vocabulary.includes('motorland'), false);
+    assert.equal(indice3.vocabulary.includes('paco'), true); // la otra sigue
+    assert.equal(indice3.firmaMemoria, persistencia.fuenteSemantica.firma());
   } finally {
     registrarFuenteMemoriasPorDefecto(null);
     invalidarIndiceSemantico();

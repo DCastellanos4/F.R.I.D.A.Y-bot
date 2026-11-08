@@ -564,12 +564,13 @@ export function indexarMemoriasVectoriales(options = {}) {
   } else if (Array.isArray(options)) {
     docs = options;
   } else {
-    docs = leerMemoriasDesdeArchivo(storePath);
+    // Sin documentos explicitos: la fuente registrada (sqlite) o el archivo.
+    docs = fuenteDe(options, storePath).leerMemorias();
   }
 
   const index = buildTfIdfIndex(docs);
   const cache = buildVectorCacheFromIndex(index, index.documents || docs);
-  cache.firmaMemoria = options.firmaMemoria !== undefined ? options.firmaMemoria : firmaArchivoMemoria(storePath);
+  cache.firmaMemoria = options.firmaMemoria !== undefined ? options.firmaMemoria : fuenteDe(options, storePath).firma();
   cache.fuenteMemoria = storePath;
 
   if (vectorsPath) {
@@ -670,7 +671,8 @@ export function guardarIndiceVectorial(cache, vectorsPath) {
  */
 export function refreshSemanticIndex(memoryFilePath) {
   const targetPath = memoryFilePath || getDefaultStorePath();
-  const docs = leerMemoriasDesdeArchivo(targetPath);
+  // Fuente registrada (sqlite) si la hay; si no, el archivo historico.
+  const docs = fuenteDe(null, targetPath).leerMemorias();
   cachedIndex = buildTfIdfIndex(docs);
   cachedStorePath = targetPath;
   return docs.length;
