@@ -163,10 +163,10 @@ console.log('renfe_tren.test.js OK (ampliado)');
 // 8) fallback de horario programado: estacion sin trenes en vivo lista las
 // siguientes salidas programadas del GTFS estatico (descubierto 7 nov 2026:
 // el feed GTFS-RT solo difunde la proxima parada de trenes en curso)
-const STOPS_PROG = 'stop_id,stop_name,stop_lat,stop_lon,wheelchair_boarding\n60200,Aranjuez,40.0,-3.6,1\n';
+const STOPS_PROG = 'stop_id,stop_name,stop_lat,stop_lon,wheelchair_boarding\n60200,Aranjuez,40.0,-3.6,1\n17000,Madrid-Atocha,40.4,-3.69,1\n';
 const TRIPS_PROG = 'route_id,service_id,trip_id,trip_headsign\nC3,LAB,C3-101,Madrid-Chamartin\nC3,LAB,C3-102,Madrid-Chamartin\nC3,FES,C3-900,Madrid-Atocha\n';
 const CAL_PROG = 'service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\nLAB,1,1,1,1,1,0,0,20260101,20261231\nFES,0,0,0,0,0,1,1,20260101,20261231\n';
-const STOP_TIMES_PROG = 'trip_id,arrival_time,departure_time,stop_id,stop_sequence\nC3-101,15:30:00,15:30:00,60105,10\nC3-101,16:00:00,16:00:00,60200,11\nC3-102,16:20:00,16:20:00,60105,10\nC3-102,16:50:00,16:50:00,60200,11\nC3-900,17:00:00,17:00:00,60200,5\n';
+const STOP_TIMES_PROG = 'trip_id,arrival_time,departure_time,stop_id,stop_sequence\nC3-101,15:30:00,15:30:00,60105,10\nC3-101,16:00:00,16:00:00,60200,11\nC3-102,16:20:00,16:20:00,60105,10\nC3-102,16:50:00,16:50:00,60200,11\nC3-900,17:00:00,17:00:00,60200,5\nC3-900,17:40:00,17:40:00,17000,6\n';
 // sabado 7 nov 2026 15:00 Madrid = 14:00 UTC
 const ahoraSabado = new Date('2026-11-07T14:00:00Z').getTime();
 const zipProg = zipDePrueba([
@@ -204,7 +204,7 @@ console.log('renfe_tren.test.js OK (final)');
 
 // 9) horario GTFS >= 24:00 pertenece al dia de servicio: un tren "25:30" del
 // servicio de ayer aparece a las 00:30 de hoy (no como hora futura del dia)
-const STOP_TIMES_NOCHE = 'trip_id,arrival_time,departure_time,stop_id,stop_sequence\nC3-101,25:30:00,25:30:00,60200,11\nC3-102,23:30:00,23:30:00,60200,11\nC3-900,17:00:00,17:00:00,60200,5\n';
+const STOP_TIMES_NOCHE = 'trip_id,arrival_time,departure_time,stop_id,stop_sequence\nC3-101,25:30:00,25:30:00,60200,11\nC3-101,26:10:00,26:10:00,17000,12\nC3-102,23:30:00,23:30:00,60200,11\nC3-102,00:10:00,00:10:00,17000,12\nC3-900,17:00:00,17:00:00,60200,5\nC3-900,17:40:00,17:40:00,17000,6\n';
 const zipNoche = zipDePrueba([
   { nombre: 'stops.txt', datos: STOPS_PROG, metodo: 8 },
   { nombre: 'trips.txt', datos: TRIPS_PROG, metodo: 8 },
@@ -327,8 +327,8 @@ console.log('renfe_tren.test.js OK (destino derivado + filtro)');
 // poblacion pero para en Madrid despues del origen SI cumple el filtro; y
 // uno en direccion inversa (pasa por Madrid ANTES de llegar al origen) NO.
 const STOPS_REC = 'stop_id,stop_name,stop_lat,stop_lon,wheelchair_boarding\n60200,Aranjuez,40.0,-3.6,1\n17000,Madrid-Atocha,40.4,-3.69,1\n60900,Villalba,40.6,-4.0,1\n';
-const TRIPS_REC = 'route_id,service_id,trip_id,trip_headsign\nC3,TODOS,C3-101,\nC3,TODOS,C3-102,\n';
-const STOP_TIMES_REC = 'trip_id,arrival_time,departure_time,stop_id,stop_sequence\nC3-101,16:00:00,16:00:00,60200,11\nC3-101,16:40:00,16:40:00,17000,12\nC3-101,17:20:00,17:20:00,60900,13\nC3-102,15:00:00,15:00:00,60900,1\nC3-102,15:40:00,15:40:00,17000,2\nC3-102,16:20:00,16:20:00,60200,3\n';
+const TRIPS_REC = 'route_id,service_id,trip_id,trip_headsign\nC3,TODOS,C3-101,\nC3,TODOS,C3-102,\nC3,TODOS,C3-103,\n';
+const STOP_TIMES_REC = 'trip_id,arrival_time,departure_time,stop_id,stop_sequence\nC3-101,16:00:00,16:00:00,60200,11\nC3-101,16:40:00,16:40:00,17000,12\nC3-101,17:20:00,17:20:00,60900,13\nC3-102,15:00:00,15:00:00,60900,1\nC3-102,15:40:00,15:40:00,17000,2\nC3-102,16:20:00,16:20:00,60200,3\nC3-103,15:10:00,15:10:00,60900,1\nC3-103,15:50:00,15:50:00,60200,2\nC3-103,16:10:00,16:10:00,17000,3\n';
 const zipRec = zipDePrueba([
   { nombre: 'stops.txt', datos: STOPS_REC, metodo: 8 },
   { nombre: 'trips.txt', datos: TRIPS_REC, metodo: 8 },
@@ -355,15 +355,18 @@ try { fs.unlinkSync(depsRecA.rutaArchivo); } catch { /* nada */ }
 fs.rmSync(depsRecA.rutaCacheHorarios, { recursive: true, force: true });
 const rRec = await proximasLlegadas({ parada: 'aranjuez' }, depsRecA);
 assert.ok(rRec.ok, 'resuelve recorrido');
-assert.strictEqual(rRec.programadas.length, 2, 'dos salidas');
-assert.strictEqual(rRec.programadas[0].viaje, 'C3-101');
-assert.strictEqual(rRec.programadas[0].destino, 'Villalba', 'terminal fuera de Madrid');
-assert.deepStrictEqual(rRec.programadas[0].paradasPosteriores, ['Madrid-Atocha', 'Villalba'], 'recorrido posterior derivado del GTFS');
-assert.strictEqual(rRec.programadas[1].destino, 'Aranjuez', 'el inverso termina en Aranjuez');
-assert.deepStrictEqual(rRec.programadas[1].paradasPosteriores, [], 'el inverso no tiene paradas posteriores al origen');
+assert.strictEqual(rRec.programadas.length, 2, 'dos salidas (el que TERMINA en Aranjuez se excluye: es una llegada)');
+assert.ok(!rRec.programadas.some((p) => p.viaje === 'C3-102'), 'C3-102 termina en Aranjuez: no es una salida');
+assert.strictEqual(rRec.programadas[0].viaje, 'C3-103', 'parada intermedia en ruta se conserva');
+assert.strictEqual(rRec.programadas[0].destino, 'Madrid-Atocha');
+assert.deepStrictEqual(rRec.programadas[0].paradasPosteriores, ['Madrid-Atocha']);
+assert.strictEqual(rRec.programadas[1].viaje, 'C3-101');
+assert.strictEqual(rRec.programadas[1].destino, 'Villalba', 'terminal fuera de Madrid');
+assert.deepStrictEqual(rRec.programadas[1].paradasPosteriores, ['Madrid-Atocha', 'Villalba'], 'recorrido posterior derivado del GTFS');
 const rRecMadrid = await proximasLlegadas({ parada: 'aranjuez', destino: 'madrid' }, depsRecA);
-assert.strictEqual(rRecMadrid.programadas.length, 1, 'Madrid intermedio SI cumple el filtro');
-assert.strictEqual(rRecMadrid.programadas[0].viaje, 'C3-101');
+assert.strictEqual(rRecMadrid.programadas.length, 2, 'Madrid intermedio y terminal SI cumplen el filtro');
+assert.ok(rRecMadrid.programadas.some((p) => p.viaje === 'C3-101'), 'Madrid intermedio (terminal Villalba) incluido');
+assert.ok(rRecMadrid.programadas.some((p) => p.viaje === 'C3-103'), 'Madrid terminal incluido');
 const rRecVillalba = await proximasLlegadas({ parada: 'aranjuez', destino: 'villalba' }, depsRecA);
 assert.strictEqual(rRecVillalba.programadas.length, 1, 'terminal tambien casa');
 assert.strictEqual(rRecVillalba.programadas[0].viaje, 'C3-101');
@@ -390,8 +393,8 @@ assert.ok(rMezcla.ok, 'resuelve mezcla');
 assert.strictEqual(rMezcla.llegadas.length, 0, 'la llegada en vivo sin destino NO se presenta como filtrada');
 assert.strictEqual((rMezcla.llegadasSinVerificarDestino || []).length, 1, 'queda aparte como no verificable');
 assert.match(rMezcla.nota || '', /no se pueden verificar/, 'la nota lo explica');
-assert.strictEqual(rMezcla.contrastados.length, 1, 'contrastadas filtradas por recorrido');
-assert.strictEqual(rMezcla.contrastados[0].viaje, 'C3-101');
+assert.strictEqual(rMezcla.contrastados.length, 2, 'contrastadas filtradas por recorrido');
+assert.ok(rMezcla.contrastados.every((c) => c.viaje !== 'C3-102'), 'el que termina en origen tampoco aparece contrastado');
 fs.rmSync(depsRecB.rutaCacheHorarios, { recursive: true, force: true });
 try { fs.unlinkSync(depsRecB.rutaArchivo); } catch { /* nada */ }
 

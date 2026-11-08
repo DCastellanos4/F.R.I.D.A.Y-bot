@@ -268,9 +268,10 @@ export async function horariosProgramados(paradaId, tipo, deps = {}) {
   const ruta = rutaCacheHorarios(deps, estacion, hoy.fecha);
   let cache = null;
   try { cache = JSON.parse(fs.readFileSync(ruta, 'utf-8')); } catch { /* sin cache */ }
-  // v3: los horarios incluyen destino y paradas posteriores derivados del
-  // GTFS; caches antiguas (sin v, destinos vacios) se ignoran y regeneran.
-  let filas = cache && cache.v === 3 && Array.isArray(cache.horarios) ? cache.horarios : null;
+  // v4: los horarios incluyen destino, paradas posteriores y la marca
+  // finEnOrigen (el viaje TERMINA en la estacion pedida: es una llegada, no
+  // una salida, y se excluye del listado); caches antiguas se regeneran.
+  let filas = cache && cache.v === 4 && Array.isArray(cache.horarios) ? cache.horarios : null;
   if (!filas) {
     const url = tipo === 'tren' ? URL_GTFS_LD : URL_GTFS_CERCANIAS;
     const fetchFn = deps.fetchFn || fetch;
@@ -350,19 +351,24 @@ export async function horariosProgramados(paradaId, tipo, deps = {}) {
         }
         const desde = seqOrigen.get(f.viaje) ?? 0;
         f.paradasPosteriores = recorrido.filter((p) => p.seq > desde).map((p) => nombres.get(p.stopId)).filter(Boolean);
+        // Un viaje que TERMINA en la estacion pedida es una llegada, no una
+        // salida: se marca para excluirlo del listado de salidas (hallazgo
+        // de validacion real, 8 nov 2026). Si no hay recorrido disponible no
+        // se puede saber: se conserva (no se esconde un servicio por duda).
+        f.finEnOrigen = recorrido.length > 0 && f.paradasPosteriores.length === 0;
       }
     }
     filas.sort((a, b) => a.epoch - b.epoch);
     try {
       fs.mkdirSync(path.dirname(ruta), { recursive: true });
       const tmp = `${ruta}.tmp.${process.pid}`;
-      fs.writeFileSync(tmp, JSON.stringify({ v: 3, generadoEn: ahora.toISOString(), fecha: hoy.fecha, estacion, horarios: filas }), 'utf-8');
+      fs.writeFileSync(tmp, JSON.stringify({ v: 4, generadoEn: ahora.toISOString(), fecha: hoy.fecha, estacion, horarios: filas }), 'utf-8');
       fs.renameSync(tmp, ruta);
     } catch { /* sin cache no pasa nada */ }
   }
   const ahoraEpoch = Math.floor(ahora.getTime() / 1000);
   const programadas = filas
-    .filter((f) => f.epoch >= ahoraEpoch - 60)
+    .filter((f) => f.epoch >= ahoraEpoch - 60 && f.finEnOrigen !== true)
     .slice(0, 5)
     .map((f) => ({ viaje: f.viaje, segundos: f.epoch - ahoraEpoch, hora: f.hora, destino: f.destino, paradasPosteriores: f.paradasPosteriores || [], programado: true }));
   return { ok: true, programadas };
