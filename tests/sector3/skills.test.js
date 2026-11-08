@@ -316,7 +316,7 @@ test('Regresion: la directiva de skills esta en el prompt del agente (el modelo 
   // 'consultar_estado_servidor' which was not in request.tools") ocurrio
   // porque el prompt nunca mencionaba las skills: el modelo seguia la regla 7
   // e invocaba la herramienta interna directamente. La directiva 15 lo evita.
-  const { consultarJarvis } = await import('../../src/core/jarvisAgent.js');
+  const { consultarJarvisAislado: consultarJarvis } = await import('../helpers/jarvisAislado.js');
   let promptSistema = '';
   const chat = async ({ messages }) => {
     promptSistema = (messages.find((m) => m.role === 'system') || {}).content || '';

@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizarMarkdownWhatsApp } from '../../src/services/textFormatService.js';
-import { consultarJarvis } from '../../src/core/jarvisAgent.js';
+import { consultarJarvisAislado as consultarJarvis } from '../helpers/jarvisAislado.js';
 
 test('normalizarMarkdownWhatsApp convierte **doble** a *simple* y respeta el resto', () => {
   assert.equal(normalizarMarkdownWhatsApp('Claro: **esto** y **aquello**.'), 'Claro: *esto* y *aquello*.');

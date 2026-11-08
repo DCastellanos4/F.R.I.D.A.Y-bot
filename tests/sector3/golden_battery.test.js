@@ -19,7 +19,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { consultarJarvis } from '../../src/core/jarvisAgent.js';
+import { consultarJarvisAislado as consultarJarvis } from '../helpers/jarvisAislado.js';
 import { herramientasJarvis } from '../../src/core/tools.js';
 import { casosDorados } from './golden_dataset.js';
 

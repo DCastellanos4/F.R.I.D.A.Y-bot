@@ -2,7 +2,9 @@ import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { config } from './src/config/config.js';
-import { consultarJarvis } from './src/core/jarvisAgent.js';
+// Canal HTTP sobre el hexagono: mismo puerto de entrada que WhatsApp y CLI.
+import { procesarMensajeEntrante } from './src/composition/container.js';
+import { crearInboundMessage } from './src/ports/inbound/InboundMessage.js';
 import {
   listarRecordatorios,
   crearRecordatorio,
@@ -139,7 +141,8 @@ export async function handleApiRequest(req, res) {
       }
 
       console.log(`[Chat] [HTTP API] Petición: "${mensaje}"`);
-      const respuesta = await consultarJarvis(mensaje);
+      const inbound = crearInboundMessage({ userId: 'api-local', text: mensaje, channel: 'api' });
+      const respuesta = await procesarMensajeEntrante(inbound);
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, respuesta }));

@@ -19,7 +19,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { analizarIntencion, consultarJarvis } from '../../src/core/jarvisAgent.js';
+import { analizarIntencion } from '../../src/core/jarvisAgent.js';
+import { consultarJarvisAislado } from '../helpers/jarvisAislado.js';
 import { guardHallucinations } from '../../src/services/preSendGuardrailService.js';
 import {
   buscarMemoriaSemantica,
@@ -158,7 +159,7 @@ function chatDeGuardado(capturadas) {
 test('Camino real: "guarda en memoria que..." ofrece la herramienta, guarda y confirma con respaldo', async () => {
   limpiar();
   const capturadas = [];
-  const respuesta = await consultarJarvis('guarda en memoria que el color del prototipo Zeta es verde botella', [], {
+  const respuesta = await consultarJarvisAislado('guarda en memoria que el color del prototipo Zeta es verde botella', [], {
     chatCompletion: chatDeGuardado(capturadas)
   });
 
@@ -176,7 +177,7 @@ test('Camino real: "guarda en memoria que..." ofrece la herramienta, guarda y co
 test('Camino real: la consulta siguiente recupera el dato por RAG y lo inyecta al prompt', async () => {
   limpiar();
   const capturadasGuardado = [];
-  await consultarJarvis('guarda en memoria que el color del prototipo Zeta es verde botella', [], {
+  await consultarJarvisAislado('guarda en memoria que el color del prototipo Zeta es verde botella', [], {
     chatCompletion: chatDeGuardado(capturadasGuardado)
   });
 
@@ -187,7 +188,7 @@ test('Camino real: la consulta siguiente recupera el dato por RAG y lo inyecta a
 
   // Y la pregunta en lenguaje natural lo lleva inyectado al prompt del modelo
   const capturadasConsulta = [];
-  const respuesta = await consultarJarvis('de que color es el prototipo Zeta?', [], {
+  const respuesta = await consultarJarvisAislado('de que color es el prototipo Zeta?', [], {
     chatCompletion: async (peticion) => {
       capturadasConsulta.push(JSON.stringify(peticion.messages));
       return { message: { role: 'assistant', content: 'El prototipo Zeta es verde botella, senor.' } };
@@ -212,8 +213,8 @@ test('Camino real: actualizar el mismo hecho devuelve el dato nuevo y olvidar lo
     };
   };
 
-  await consultarJarvis('guarda en memoria que el color del prototipo Zeta es verde botella', [], { chatCompletion: guardar('El color del prototipo Zeta es verde botella.') });
-  await consultarJarvis('guarda en memoria que el color del prototipo Zeta ahora es azul oscuro', [], { chatCompletion: guardar('El color del prototipo Zeta es azul oscuro.') });
+  await consultarJarvisAislado('guarda en memoria que el color del prototipo Zeta es verde botella', [], { chatCompletion: guardar('El color del prototipo Zeta es verde botella.') });
+  await consultarJarvisAislado('guarda en memoria que el color del prototipo Zeta ahora es azul oscuro', [], { chatCompletion: guardar('El color del prototipo Zeta es azul oscuro.') });
 
   const trasActualizar = await buscarMemoriaSemantica('color prototipo Zeta', {});
   assert.ok(trasActualizar.length > 0);
@@ -222,7 +223,7 @@ test('Camino real: actualizar el mismo hecho devuelve el dato nuevo y olvidar lo
 
   // Olvidar por el camino real
   let rondaOlvido = 0;
-  const respuesta = await consultarJarvis('olvida que te dije del prototipo Zeta', [], {
+  const respuesta = await consultarJarvisAislado('olvida que te dije del prototipo Zeta', [], {
     chatCompletion: async () => {
       rondaOlvido++;
       if (rondaOlvido === 1) {
@@ -245,7 +246,7 @@ test('Camino real: actualizar el mismo hecho devuelve el dato nuevo y olvidar lo
 
 test('Sin memoria guardada, la respuesta honesta del modelo pasa sin correccion', async () => {
   limpiar();
-  const respuesta = await consultarJarvis('de que color es el prototipo Zeta?', [], {
+  const respuesta = await consultarJarvisAislado('de que color es el prototipo Zeta?', [], {
     chatCompletion: async () => ({ message: { role: 'assistant', content: 'No tengo nada guardado sobre el prototipo Zeta, senor; si me lo dices, lo guardo.' } })
   });
   assert.match(respuesta, /No tengo nada guardado/);
@@ -253,7 +254,7 @@ test('Sin memoria guardada, la respuesta honesta del modelo pasa sin correccion'
 
 test('Guardarrail: una confirmacion de guardado SIN herramienta se corrige antes de salir', async () => {
   limpiar();
-  const respuesta = await consultarJarvis('guarda en memoria que el color del prototipo Zeta es verde botella', [], {
+  const respuesta = await consultarJarvisAislado('guarda en memoria que el color del prototipo Zeta es verde botella', [], {
     chatCompletion: async () => ({ message: { role: 'assistant', content: 'Guardado en tu memoria, David. Lo recordare.' } })
   });
   assert.match(respuesta, /No he podido guardarlo/, 'la confirmacion falsa debe sustituirse por una declaracion honesta');

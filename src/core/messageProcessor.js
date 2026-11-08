@@ -14,7 +14,7 @@ import { consultarJarvis } from './jarvisAgent.js';
 import { afirmarLLMProvider } from '../ports/outbound/LLMProviderPort.js';
 import { afirmarMemoryRepository } from '../ports/outbound/MemoryRepositoryPort.js';
 
-export function crearMessageProcessor({ llmProvider, memoryRepository } = {}) {
+export function crearMessageProcessor({ llmProvider, memoryRepository, metricasClasificador, crearStoreMetricas, rutaArchivoIdempotenciaDefecto } = {}) {
   if (llmProvider !== undefined) afirmarLLMProvider(llmProvider);
   if (memoryRepository !== undefined) afirmarMemoryRepository(memoryRepository);
 
@@ -42,8 +42,23 @@ export function crearMessageProcessor({ llmProvider, memoryRepository } = {}) {
       if (memoryRepository && !opcionesConPuertos.memoryRepository) {
         opcionesConPuertos.memoryRepository = memoryRepository;
       }
+      // Metricas del clasificador: puerto inyectado; una ruta historica
+      // suelta se traduce a store aqui (la raiz conoce adaptadores, el
+      // core no).
+      if (!opcionesConPuertos.metricasClasificador) {
+        if (opcionesConPuertos.rutaArchivoMetricasClasificador && typeof crearStoreMetricas === 'function') {
+          opcionesConPuertos.metricasClasificador = crearStoreMetricas({ rutaArchivo: opcionesConPuertos.rutaArchivoMetricasClasificador });
+        } else if (metricasClasificador) {
+          opcionesConPuertos.metricasClasificador = metricasClasificador;
+        }
+      }
       if (inbound.channel && !opcionesConPuertos.channel) {
         opcionesConPuertos.channel = inbound.channel;
+      }
+      // Estado de pruebas aislado: la raiz de composicion decide la ruta
+      // por defecto (tmp por proceso bajo NODE_ENV=test); el core no toca fs.
+      if (!opcionesConPuertos.rutaArchivoIdempotencia && rutaArchivoIdempotenciaDefecto) {
+        opcionesConPuertos.rutaArchivoIdempotencia = rutaArchivoIdempotenciaDefecto;
       }
 
       return consultarJarvis(inbound.text, historial, opcionesConPuertos);

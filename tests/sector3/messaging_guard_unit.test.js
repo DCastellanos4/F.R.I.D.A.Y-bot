@@ -24,7 +24,7 @@ process.env.DAVIS_DATA_DIR = path.join(dirEntorno, 'data');
 process.env.DAVIS_HISTORY_DIR = path.join(dirEntorno, 'history');
 process.env.NODE_ENV = 'test';
 
-const { consultarJarvis } = await import('../../src/core/jarvisAgent.js');
+const { consultarJarvisAislado: consultarJarvis } = await import('../helpers/jarvisAislado.js');
 const { registrarContacto } = await import('../../src/services/contactsService.js');
 const { guardarMemoria } = await import('../../src/services/memoryService.js');
 

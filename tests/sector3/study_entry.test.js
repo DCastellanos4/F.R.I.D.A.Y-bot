@@ -121,7 +121,7 @@ test('Entrada real: crear_flashcard persiste y responder_flashcard actualiza el 
 });
 
 test('Rondas de repaso: activacion solo por peticion explicita de David', async () => {
-  const { consultarJarvis } = await import('../../src/core/jarvisAgent.js');
+  const { consultarJarvisAislado: consultarJarvis } = await import('../helpers/jarvisAislado.js');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'davis-repaso-'));
   const depsFlash = {
     rutaArchivoFlashcards: path.join(dir, 'flash.json'),

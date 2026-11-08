@@ -14,7 +14,7 @@
 
 /**
  * @typedef {Object} MemoryRepositoryPort
- * @property {(memoria: {sujeto: string, dato: string, categoria?: string, tags?: string[]}) => Object}
+ * @property {(memoria: {sujeto: string, dato: string, categoria?: string, tags?: string[]}, opts?: {rutaArchivo?: string}) => Object}
  *   guardar  Persiste un recuerdo. Devuelve { ok, memoria } o { ok: false, error }.
  * @property {(consulta: string, opts?: Object) => Array<Object>}
  *   buscar   Busqueda exacta por texto. Devuelve [] si no hay coincidencias.

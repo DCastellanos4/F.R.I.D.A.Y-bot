@@ -1,5 +1,3 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { normalizarTexto } from '../services/memoryService.js';
 import { herramientasParaIntenciones, MAPA_INTENCION_HERRAMIENTAS } from './tools.js';
 
@@ -35,38 +33,21 @@ const cacheClasificaciones = new Map();
 // de clasificacion queda registrado en un JSONL local; si la tasa de fallo
 // reciente es alta se avisa a David UNA vez cada 24 h como maximo.
 
-const DATA_DIR = process.env.DAVIS_DATA_DIR || path.join(process.cwd(), 'data');
-const RUTA_METRICAS_DEFECTO = path.join(DATA_DIR, 'metricas_clasificador.jsonl');
 const VENTANA_SALUD = 10;        // clasificaciones recientes evaluadas
 const UMBRAL_TASA_FALLO = 0.8;   // >=80% de fallos = no saludable
 const COOLDOWN_AVISO_MS = 24 * 60 * 60 * 1000;
 
-function rutaMetricas(deps = {}) {
-  return deps.rutaArchivoMetricasClasificador || RUTA_METRICAS_DEFECTO;
-}
+// Puerto de salida: la persistencia de metricas vive en un adaptador
+// (jsonlClassifierMetricsStore) inyectado por la raiz de composicion.
+// Sin inyeccion, almacen sin-op: el core nunca toca fs.
+const STORE_NOOP = Object.freeze({ registrar() {}, leerEventos() { return []; } });
 
-function registrarEvento(deps, evento) {
-  // En pruebas nunca se escribe en data/ del repo: solo con ruta inyectada.
-  if (process.env.NODE_ENV === 'test' && !deps.rutaArchivoMetricasClasificador) return;
-  try {
-    const ruta = rutaMetricas(deps);
-    fs.mkdirSync(path.dirname(ruta), { recursive: true });
-    fs.appendFileSync(ruta, JSON.stringify({ ts: new Date().toISOString(), ...evento }) + '\n', 'utf-8');
-  } catch (err) {
-    console.error('[SaludClasificador] No se pudo registrar la metrica:', err.message);
+function almacenMetricas(deps = {}) {
+  const store = deps.metricasClasificador;
+  if (store && typeof store.registrar === 'function' && typeof store.leerEventos === 'function') {
+    return store;
   }
-}
-
-function leerEventos(deps) {
-  try {
-    const ruta = rutaMetricas(deps);
-    if (!fs.existsSync(ruta)) return [];
-    return fs.readFileSync(ruta, 'utf-8').split('\n').filter(Boolean)
-      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
+  return STORE_NOOP;
 }
 
 /**
@@ -75,7 +56,7 @@ function leerEventos(deps) {
  * parse_fail|error llega al umbral.
  */
 export function evaluarSaludClasificador(deps = {}) {
-  const reales = leerEventos(deps).filter((e) => e.tipo === 'clasificacion' && e.resultado !== 'cache');
+  const reales = almacenMetricas(deps).leerEventos().filter((e) => e.tipo === 'clasificacion' && e.resultado !== 'cache');
   const ventana = reales.slice(-VENTANA_SALUD);
   if (ventana.length < VENTANA_SALUD) return { saludable: true, muestras: ventana.length, tasaFallo: 0 };
   const fallos = ventana.filter((e) => e.resultado === 'parse_fail' || e.resultado === 'error').length;
@@ -91,14 +72,14 @@ export async function comprobarYAvisarSalud(deps = {}) {
   if (typeof deps.avisarSaludClasificador !== 'function') return false;
   const salud = evaluarSaludClasificador(deps);
   if (salud.saludable) return false;
-  const ultimosAvisos = leerEventos(deps).filter((e) => e.tipo === 'aviso_salud');
+  const ultimosAvisos = almacenMetricas(deps).leerEventos().filter((e) => e.tipo === 'aviso_salud');
   const ultimo = ultimosAvisos[ultimosAvisos.length - 1];
   if (ultimo && Date.now() - new Date(ultimo.ts).getTime() < COOLDOWN_AVISO_MS) return false;
   const pct = Math.round(salud.tasaFallo * 100);
   await deps.avisarSaludClasificador(
     `[D.A.V.I.S. - SALUD DEL CLASIFICADOR]\n\nEl clasificador de intenciones falla en el ${pct}% de sus ultimas ${salud.muestras} clasificaciones. Mientras tanto respondo en modo degradado (sin seleccion de herramientas por modelo); conviene revisar el proveedor del clasificador.`
   );
-  registrarEvento(deps, { tipo: 'aviso_salud', tasaFallo: salud.tasaFallo });
+  almacenMetricas(deps).registrar({ tipo: 'aviso_salud', tasaFallo: salud.tasaFallo });
   return true;
 }
 
@@ -224,7 +205,7 @@ export async function clasificarIntencionConModelo(mensaje, deps = {}) {
 
     const clasificacion = parsearClasificacion(res?.message?.content || '');
     if (!clasificacion) {
-      registrarEvento(deps, { tipo: 'clasificacion', resultado: 'parse_fail' });
+      almacenMetricas(deps).registrar({ tipo: 'clasificacion', resultado: 'parse_fail' });
       return null;
     }
 
@@ -242,7 +223,7 @@ export async function clasificarIntencionConModelo(mensaje, deps = {}) {
       herramientas: resultado.herramientas
     });
 
-    registrarEvento(deps, {
+    almacenMetricas(deps).registrar({
       tipo: 'clasificacion',
       resultado: clasificacion.confianza >= UMBRAL_CONFIANZA ? 'ok' : 'baja_confianza',
       intencion: clasificacion.intencion,
@@ -252,7 +233,7 @@ export async function clasificarIntencionConModelo(mensaje, deps = {}) {
     return resultado;
   } catch (err) {
     console.error('[RouterModelo] Error clasificando intencion:', err.message);
-    registrarEvento(deps, { tipo: 'clasificacion', resultado: 'error', detalle: String(err.message || err).slice(0, 200) });
+    almacenMetricas(deps).registrar({ tipo: 'clasificacion', resultado: 'error', detalle: String(err.message || err).slice(0, 200) });
     return null;
   }
 }

@@ -139,7 +139,7 @@ test('Router: un mensaje de empleo selecciona el catalogo del bloque sin safety 
 });
 
 test('Activacion del radar exige peticion explicita de David, no solo activo:true del modelo', async () => {
-  const { consultarJarvis } = await import('../../src/core/jarvisAgent.js');
+  const { consultarJarvisAislado: consultarJarvis } = await import('../helpers/jarvisAislado.js');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'davis-activacion-'));
   const radarDeps = {
     rutaConfig: path.join(dir, 'radar.json'),

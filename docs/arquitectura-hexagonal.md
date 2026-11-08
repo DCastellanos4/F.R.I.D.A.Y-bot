@@ -55,11 +55,12 @@ El coste de dominio de un canal nuevo es 1 archivo adaptador:
 3. (Opcional) un adaptador `MessageChannelPort` para las respuestas.
 
 El cerebro no se toca. Lo probado HOY: el contrato del puerto con un canal
-sintetico (`tests/sector3/hexagonal_ports.test.js`) y un canal CLI real y
-funcional (`chat.js`, canal 'cli') entrando por el mismo puerto que
-WhatsApp. Una integracion Telegram completa (polling/webhook, formato de
-respuestas, reconexiones) es trabajo de transporte adicional en su propio
-adaptador; el dominio ya esta preparado, el transporte no esta incluido.
+sintetico (`tests/sector3/hexagonal_ports.test.js`) y DOS canales reales y
+funcionales entrando por el mismo puerto que WhatsApp: `chat.js` (CLI,
+canal 'cli') y `api.js` (HTTP, canal 'api'). Una integracion Telegram
+completa (polling/webhook, formato de respuestas, reconexiones) es trabajo
+de transporte adicional en su propio adaptador; el dominio ya esta
+preparado, el transporte no esta incluido.
 
 ## Pureza del core (regresion cubierta)
 
@@ -69,11 +70,47 @@ interactivo (botones, listas, encuestas) acepta el puerto de canal;
 la ruta de persistencia de memoria es inyectable en las 4 operaciones
 (guardar/buscar/listar/olvidar), base de la futura migracion a SQLite.
 
-Trabajo restante conocido: la orquestacion de especialistas de
-`whatsappBot.js` (voz, tickets, historial, watchdogs) es logica de capa de
-canal y sigue importando servicios directamente; mover cada especialista
-detras de su propio puerto es una evolucion incremental, no parte de este
-corte.
+`src/core` no contiene acceso a fs: las metricas del clasificador van
+detras del puerto `metricasClasificador` (adaptador JSONL) y la
+persistencia de memoria detras de `MemoryRepositoryPort`.
+
+## Clasificacion de especialistas (negocio vs transporte vs infraestructura)
+
+- **Negocio (dominio invocado por el core):** memoria (exacta, semantica,
+  episodica, grafo), finanzas, recordatorios, mensajes programados,
+  estudio, flashcards, candidaturas, contactos, notas, diario, viajes,
+  quedadas, compra, radar empleo, fechas, snoozes, avisos de llegada,
+  transporte, clima, noticias, wiki, digest, busqueda cerebro, documentos,
+  capturas, entrevistas, redaccion, traductor, historial-busqueda,
+  estadisticas de grupo, horario silencio, urgencia, idempotencia,
+  acciones destructivas, skills, sanitizador de errores, guardarrailes
+  pre-envio, trazas. Hoy el core los invoca directamente como servicios
+  internos; cada uno puede promoverse a puerto outbound propio de forma
+  incremental sin mover el dominio.
+- **Transporte (capa de canal, correcto fuera del core):** whatsappBot
+  (orquestacion), textFormatService (markdown de WhatsApp),
+  mediaDownloaderService, ttsService (nota de voz por socket),
+  dailyBriefing (envio programado por canal). Estos conocen Baileys por
+  diseno; el core nunca los importa.
+- **Infraestructura (adaptadores tecnicos):** llmService (ya detras de
+  LLMProviderPort), persistencia JSON de memoria y metricas (ya detras de
+  puertos), ticketVisionAdapter, browser/pdf/vision, bash/backup/tunnel/
+  disco, monitores (docker, red, sniper, alertas), ops.
+
+Fugas de transporte conocidas en negocio (trabajo futuro, declarado):
+`scheduledMessageService.registrarIdWhatsApp` retiene el socket para
+envios programados, y `conversationHistoryService` se usa desde la capa
+de canal. Mover el envio programado al puerto de canal es el siguiente
+corte natural.
+
+## Aislamiento del estado de pruebas
+
+Bajo `NODE_ENV=test` la raiz de composicion da a la cache de idempotencia
+una ruta tmp por proceso: el estado compartido (`data/`) no se toca y dos
+ejecuciones seguidas de la suite no colisionan (fallo observado el
+8 nov 2026, 13 pruebas; corregido sin limpiar datos compartidos). Las
+pruebas que conducen al agente directamente usan
+`tests/helpers/jarvisAislado.js` con la misma regla.
 
 ## Precedencia de inyeccion
 

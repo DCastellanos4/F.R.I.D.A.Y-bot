@@ -24,7 +24,7 @@ import {
   generarMemoriasEjemplo
 } from './helpers/testFixtures.js';
 
-import { consultarJarvis } from '../../src/core/jarvisAgent.js';
+import { consultarJarvisAislado as consultarJarvis } from '../helpers/jarvisAislado.js';
 import {
   indexarMemoriasVectoriales,
   buscarMemoriaSemantica

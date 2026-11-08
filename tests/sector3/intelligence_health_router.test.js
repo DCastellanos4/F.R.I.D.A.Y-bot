@@ -24,7 +24,9 @@ process.env.DAVIS_HISTORY_DIR = path.join(dirEntorno, 'history');
 process.env.NODE_ENV = 'test';
 
 const router = await import('../../src/core/intentRouterService.js');
+const { crearJsonlClassifierMetricsStore } = await import('../../src/adapters/outbound/persistence/jsonlClassifierMetricsStore.js');
 const agente = await import('../../src/core/jarvisAgent.js');
+const { consultarJarvisAislado } = await import('../helpers/jarvisAislado.js');
 const { herramientasJarvis } = await import('../../src/core/tools.js');
 
 function rutaMetricas(nombre) {
@@ -88,7 +90,7 @@ test('seleccionarDominiosConModelo filtra etiquetas inventadas y limita a dos', 
 
 test('clasificarIntencionConModelo registra ok, baja_confianza, parse_fail y error', async () => {
   const ruta = rutaMetricas('metricas1.jsonl');
-  const deps = { rutaArchivoMetricasClasificador: ruta };
+  const deps = { metricasClasificador: crearJsonlClassifierMetricsStore({ rutaArchivo: ruta }) };
   await router.clasificarIntencionConModelo('dime el tiempo', { ...deps, chatCompletion: chatCon('{"intencion":"clima","confianza":0.9}') });
   await router.clasificarIntencionConModelo('dime el tiempito', { ...deps, chatCompletion: chatCon('{"intencion":"clima","confianza":0.2}') });
   await router.clasificarIntencionConModelo('dime el tiempazo', { ...deps, chatCompletion: chatCon('ni idea, la verdad') });
@@ -100,7 +102,7 @@ test('clasificarIntencionConModelo registra ok, baja_confianza, parse_fail y err
 
 test('salud no saludable con >=80% de fallos en las ultimas 10 y avisa una sola vez en 24h', async () => {
   const ruta = rutaMetricas('metricas2.jsonl');
-  const deps = { rutaArchivoMetricasClasificador: ruta };
+  const deps = { metricasClasificador: crearJsonlClassifierMetricsStore({ rutaArchivo: ruta }) };
   // 10 clasificaciones reales: 9 fallos, 1 ok
   for (let i = 0; i < 9; i++) {
     await router.clasificarIntencionConModelo(`mensaje fallo ${i}`, { ...deps, chatCompletion: chatCon('...') });
@@ -119,7 +121,7 @@ test('salud no saludable con >=80% de fallos en las ultimas 10 y avisa una sola 
 
 test('salud saludable con pocos fallos o pocas muestras: no avisa', async () => {
   const ruta = rutaMetricas('metricas3.jsonl');
-  const deps = { rutaArchivoMetricasClasificador: ruta };
+  const deps = { metricasClasificador: crearJsonlClassifierMetricsStore({ rutaArchivo: ruta }) };
   for (let i = 0; i < 9; i++) {
     await router.clasificarIntencionConModelo(`bien ${i}`, { ...deps, chatCompletion: chatCon('{"intencion":"clima","confianza":0.9}') });
   }
@@ -172,7 +174,7 @@ test('error de herramienta de solo lectura: el modelo recibe la pista y reintent
       return 'Dato encontrado: talla 43';
     }
   };
-  const respuesta = await agente.consultarJarvis('cuando es el cumple de Marta?', [], { chatCompletion, ejecutores });
+  const respuesta = await consultarJarvisAislado('cuando es el cumple de Marta?', [], { chatCompletion, ejecutores });
   assert.equal(ejecutadas.length, 2, 'la herramienta se ejecuto dos veces (fallo + reintento)');
   assert.deepEqual(ejecutadas[0], {});
   assert.deepEqual(ejecutadas[1], { consulta: 'talla zapatillas' }, 'el reintento uso los argumentos corregidos');

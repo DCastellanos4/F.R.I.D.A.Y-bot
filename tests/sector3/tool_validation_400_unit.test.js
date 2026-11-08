@@ -23,7 +23,7 @@ process.env.DAVIS_DATA_DIR = path.join(dirEntorno, 'data');
 process.env.DAVIS_HISTORY_DIR = path.join(dirEntorno, 'history');
 process.env.NODE_ENV = 'test';
 
-const { consultarJarvis } = await import('../../src/core/jarvisAgent.js');
+const { consultarJarvisAislado: consultarJarvis } = await import('../helpers/jarvisAislado.js');
 
 const ERR_400 = '400 Tool call validation failed: tool call validation failed: parameters for tool obtener_noticias_actuales did not match schema: errors: [`/categoria`: expected string, but got null]';
 
