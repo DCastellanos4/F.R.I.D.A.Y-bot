@@ -2760,10 +2760,11 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
  * canal de entrada.
  */
 export async function consultarJarvisEnAmbito(mensajeUsuario, historial = [], opciones = {}) {
-  // Limites de uso (cuota/ritmo) solo para tenants no propietarios y solo si hay
-  // un controlador inyectado; sin el, o sin limites configurados, no cambia nada.
+  // No propietario requiere controlador de uso confiable inyectado por codigo.
+  // Sin controlador se rechaza; sin limites configurados el controlador permite.
   const tid = opciones && opciones.tenantId;
-  if (tid !== undefined && tid !== null && tid !== 'propietario' && opciones.controlUso && typeof opciones.controlUso.autorizar === 'function') {
+  if (tid !== undefined && tid !== null && tid !== 'propietario') {
+    if (!opciones.controlUso || typeof opciones.controlUso.autorizar !== 'function') return 'Control de uso no disponible para este usuario.';
     let dec;
     try { dec = opciones.controlUso.autorizar({ tenantId: tid }); } catch { dec = { permitido: false, motivo: 'error_control_uso' }; }
     if (!dec || dec.permitido !== true) return 'Limite de uso alcanzado para este usuario.';

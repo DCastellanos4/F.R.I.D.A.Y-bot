@@ -14,7 +14,9 @@ import path from 'node:path';
 
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'davis-llm-'));
 process.env.DAVIS_DATA_DIR = DIR;
-const { consultarJarvis, consultarJarvisEnAmbito } = await import('../../src/core/jarvisAgent.js');
+const { consultarJarvis, consultarJarvisEnAmbito: consultarEnAmbitoReal } = await import('../../src/core/jarvisAgent.js');
+// Control sintético explícito: el punto real deniega sin controlador.
+const consultarJarvisEnAmbito = (m, h, o) => consultarEnAmbitoReal(m, h, { controlUso: { autorizar: () => ({ permitido: true }) }, ...o });
 const H = await import('../../src/services/conversationHistoryService.js');
 const { claveChatTenant } = await import('../../src/core/tenancy.js');
 const E = await import('../../src/services/episodicMemoryService.js');

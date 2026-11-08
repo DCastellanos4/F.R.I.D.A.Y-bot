@@ -260,3 +260,15 @@ test('llamadas concurrentes: uso persistente efectivo se relee; inflight puede r
     assert.equal(llamadas, 2, 'nuevo intento bloqueado');
   } finally { registrarStoreUsoPorDefecto(null); db.close(); }
 });
+
+
+test('no propietario sin controlador: rechazo explicito antes de LLM/RAG; propietario sigue exento', async () => {
+  const { consultarJarvisEnAmbito } = await import('../../src/core/jarvisAgent.js');
+  let n = 0;
+  const chatCompletion = async () => { n++; return { message: { content: 'ok' } }; };
+  const r = await consultarJarvisEnAmbito('hola', [], { tenantId: 'sint-a', chatCompletion });
+  assert.match(String(r), /Control de uso no disponible/);
+  assert.equal(n, 0);
+  await consultarJarvisEnAmbito('hola', [], { chatCompletion });
+  assert.ok(n >= 1);
+});
