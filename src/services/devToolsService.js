@@ -18,7 +18,7 @@
  *
  * Strict Policy: Zero Emojis.
  */
-import fs from 'node:fs';
+import fs from '../security/tenantFileSystem.js';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { fetchSeguro } from './safeFetch.js';

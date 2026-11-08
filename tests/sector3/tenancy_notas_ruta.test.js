@@ -69,3 +69,10 @@ test('programadores y monitores: un tenant con TODAS las herramientas en su list
   // control: el propietario no cambia
   assert.equal(puedeEjecutarHerramienta({ tenantId: 'propietario', herramienta: 'crear_recordatorio' }).permitido, true);
 });
+
+test('getNoteByPath realpath rechaza archivo symlink fuera del arbol de notas', async () => {
+  const { getNoteByPath } = await import('../../src/services/notesService.js');
+  const fuera=path.join(DIR,'secreto-enlace.md');fs.writeFileSync(fuera,'# SECRETO-FUERA');
+  fs.mkdirSync(op.carpetaNotas,{recursive:true});const link=path.join(op.carpetaNotas,'link.md');fs.symlinkSync(fuera,link);
+  await assert.rejects(()=>getNoteByPath(link,{carpetaNotas:op.carpetaNotas}),/outside/);
+});

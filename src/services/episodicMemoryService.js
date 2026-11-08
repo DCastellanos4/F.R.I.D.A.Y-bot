@@ -13,7 +13,7 @@
  *
  * Strict Policy: Zero Emojis.
  */
-import fs from 'node:fs';
+import fs from '../security/tenantFileSystem.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { normalizarTexto } from './memoryService.js';

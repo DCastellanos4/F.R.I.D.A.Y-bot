@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import tenantFs from '../security/tenantFileSystem.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DATA_DIR } from '../config/paths.js';
@@ -510,7 +511,10 @@ export async function getNoteByPath(filePath, options = {}) {
     throw new Error('File path outside the notes folder');
   }
 
-  const rawContent = await fs.readFile(filePath, 'utf8');
+  const realBase = await fs.realpath(base);
+  const realDestino = await fs.realpath(destino);
+  if (!realDestino.startsWith(realBase + path.sep)) throw new Error('File path outside the notes folder (realpath)');
+  const rawContent = tenantFs.readFileSync(realDestino, 'utf8');
   const fileName = path.basename(filePath);
   return parseNoteContent(rawContent, filePath, fileName);
 }

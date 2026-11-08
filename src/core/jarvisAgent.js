@@ -1,3 +1,4 @@
+import { verificarArbolTenant } from './tenancy.js';
 import { config } from '../config/config.js';
 import { herramientasJarvis, herramientasParaIntenciones, limitarHerramientasParaProveedor, LIMITE_HERRAMIENTAS_PROVEEDOR, NOMBRES_HERRAMIENTAS_JARVIS } from './tools.js';
 import { iniciarTraza, guardarTraza, explicarUltimoRecorrido } from '../services/traceService.js';
@@ -821,6 +822,7 @@ function destinatarioVerificado(numero, mensajeUsuario, historial, opciones = {}
 async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
   // Observabilidad: span 'tool' + metricas por herramienta. Atributos: solo
   // el nombre; NUNCA los argumentos (pueden contener datos privados).
+  verificarArbolTenant(DATA_DIR_TENANCY, opciones.tenantId);
   const inicioTool = Date.now();
   // El nombre de herramienta lo emite el LLM: solo entra en la etiqueta del
   // span Y de las metricas si pertenece al CATALOGO CERRADO de herramientas
@@ -1571,7 +1573,8 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
         const res = repoMemoriaDe(opciones).guardar({
           sujeto: args.sujeto,
           dato: args.dato,
-          categoria: args.categoria
+          categoria: args.categoria,
+          rutaArchivo: opciones.rutaArchivoMemorias
         }, { rutaArchivo: opciones.rutaArchivoMemorias });
         if (res.ok) {
           resultadoTool = `Dato guardado con éxito en el Second Brain. Sujeto: "${res.memoria.sujeto}". Detalle: "${res.memoria.dato}". Fecha: ${res.memoria.fechaLocal}.`;
@@ -1599,7 +1602,7 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
         // destructiveActionService, como el OTP de los comandos bash.
         const res = repoMemoriaDe(opciones).olvidar(args.criterio, { confirmado: false, rutaArchivo: opciones.rutaArchivoMemorias });
         if (res.requiereConfirmacion) {
-          const idConfirmacion = opciones.chatId
+          const idConfirmacion = (!opciones.tenantId || opciones.tenantId === 'propietario') && opciones.chatId
             ? registrarBorradoMasivoPendiente(opciones.chatId, String(args.criterio), res.total)
             : null;
           resultadoTool = idConfirmacion
@@ -1899,6 +1902,7 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
   const esUrlSola = urlMatch && mensajeUsuario.trim() === urlMatch[0];
 
   if (urlMatch && (pideResumen || esUrlSola)) {
+    if (opciones.tenantId && opciones.tenantId !== 'propietario') return 'Capacidad no disponible para este usuario.';
     console.log(`[J.A.R.V.I.S.] Detección directa de lectura/resumen con Playwright para: ${urlMatch[0]}`);
     const resumen = await generarResumenInteligente(urlMatch[0]);
     return limpiarRespuestaJarvis(resumen);
@@ -1965,6 +1969,7 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
   // de failover de llmService) para declararlo honestamente en la respuesta.
   let failoverDetectado = null;
   const chatImpl = async (peticion) => {
+    verificarArbolTenant(DATA_DIR_TENANCY, opciones.tenantId);
     // Cuota postuso: releer uso persistente antes de CADA llamada, incluidas
     // rondas y servicios secundarios. El ritmo cuenta consultas, no toolcalls.
     const tidUso = opciones.tenantId;
@@ -2055,6 +2060,7 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
   // nunca una consulta inventada ni un codigo placeholder como entidad.
   // Efecto lateral honesto: estas consultas ya no gastan cuota LLM.
   if (esConsultaSalidasTrenes(mensajeUsuario)) {
+    if (opciones.tenantId && opciones.tenantId !== 'propietario') return 'Capacidad no disponible para este usuario.';
     const origenDet = extraerOrigenDesde(mensajeUsuario);
     let textoDet;
     if (!origenDet) {
@@ -2740,6 +2746,8 @@ Directrices de selección:
  * (CLI, pruebas, canales directos). Atributo: solo hash opaco de sesion.
  */
 export async function consultarJarvis(mensajeUsuario, historial = [], opciones = {}) {
+  // Normalizar firma legacy ANTES de gate, cuota y aislamiento.
+  if (!Array.isArray(historial) && historial && typeof historial === 'object') { opciones = historial; historial = []; }
   // Tenant desconocido: denegado ANTES de cualquier LLM, herramienta o escritura.
   // Sin tenantId (todos los llamantes historicos) o 'propietario': sin cambios.
   const tid = opciones && opciones.tenantId;
@@ -2760,6 +2768,8 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
  * canal de entrada.
  */
 export async function consultarJarvisEnAmbito(mensajeUsuario, historial = [], opciones = {}) {
+  // Normalizar firma legacy ANTES de gate, cuota y aislamiento.
+  if (!Array.isArray(historial) && historial && typeof historial === 'object') { opciones = historial; historial = []; }
   // No propietario requiere controlador de uso confiable inyectado por codigo.
   // Sin controlador se rechaza; sin limites configurados el controlador permite.
   const tid = opciones && opciones.tenantId;
@@ -2769,10 +2779,14 @@ export async function consultarJarvisEnAmbito(mensajeUsuario, historial = [], op
     try { dec = opciones.controlUso.autorizar({ tenantId: tid }); } catch { dec = { permitido: false, motivo: 'error_control_uso' }; }
     if (!dec || dec.permitido !== true) return 'Limite de uso alcanzado para este usuario.';
   }
+  try { verificarArbolTenant(DATA_DIR_TENANCY, tid); } catch { return 'Almacenamiento no disponible para este usuario.'; }
   if (opciones && typeof opciones === 'object') opciones = aislarOpcionesTenant(opciones, DATA_DIR_TENANCY);
+  // Historial suministrado sin prueba de ambito no se hereda a un tenant.
+  if (tid && tid !== 'propietario') historial = [];
   try {
     return await conSpan('consulta', { sesion: hashSesion(opciones && opciones.chatId) }, () => consultarJarvisInterna(mensajeUsuario, historial, opciones));
   } catch (e) {
+    if (e?.name === 'AlmacenamientoTenant') return 'Almacenamiento no disponible para este usuario.';
     if (e?.name === 'LimiteUso') return 'Limite de uso alcanzado para este usuario.';
     throw e;
   }

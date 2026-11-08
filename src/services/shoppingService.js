@@ -6,7 +6,7 @@
  *
  * Strict Policy: Zero Emojis.
  */
-import fs from 'node:fs';
+import fs from '../security/tenantFileSystem.js';
 import path from 'node:path';
 import { DATA_DIR } from '../config/paths.js';
 

@@ -16,6 +16,7 @@
  */
 
 import path from 'node:path';
+import fs from 'node:fs';
 
 export const TENANT_PROPIETARIO = 'propietario';
 
@@ -160,7 +161,13 @@ export function aislarOpcionesTenant(opciones, dataDir) {
   afirmarTenantId(tid);
   // Puertos inyectados que contienen datos del PROPIETARIO (repositorio de memorias
   // SQLite del contenedor, buscador de memorias, contactos): un tenant no los hereda.
-  const { memoryRepository, obtenerMemorias, contactosConocidos, ...resto } = opciones;
+  // Solo puertos operativos confiables. Ningun callback/destino de datos del
+  // contenedor del propietario ni opcion desconocida se hereda por spread.
+  const resto = {};
+  for (const k of ['tenantId', 'chatCompletion', 'llmProvider', 'controlUso', 'rolDeTenant', 'permitidasUsuario',
+    'maxRondasHerramientas', 'retornarObjeto', 'retornarTraza', 'topKMemorias', 'minScoreMemoria']) {
+    if (Object.prototype.hasOwnProperty.call(opciones, k)) resto[k] = opciones[k];
+  }
   const rutasPersonales = {};
   for (const [clave, nombre] of Object.entries(RUTAS_DATOS_TENANT)) rutasPersonales[clave] = rutaDatosTenant(dataDir, tid, nombre);
   return {
@@ -173,6 +180,10 @@ export function aislarOpcionesTenant(opciones, dataDir) {
     rutaArchivoMemorias: rutaDatosTenant(dataDir, tid, 'brain_memory.json'),
     // Radar de ofertas: config y vistos propios; sin cola global de alertas del propietario.
     radarDeps: { rutaConfig: rutaDatosTenant(dataDir, tid, 'job_radar.json'), rutaVistos: rutaDatosTenant(dataDir, tid, 'job_radar_seen.json'), enqueue: () => false },
+    carpetaEpisodios: rutaDatosTenant(dataDir, tid, 'episodios'),
+    carpetaIndices: rutaDatosTenant(dataDir, tid, 'indices'),
+    carpetaTrazas: rutaDatosTenant(dataDir, tid, 'trazas'),
+    rutaArchivoIdempotencia: rutaDatosTenant(dataDir, tid, 'idempotency_cache.json'),
     carpetaNotas: rutaDatosTenant(dataDir, tid, 'notes'),
     carpetaDiario: rutaDatosTenant(dataDir, tid, 'diario'),
     storePath: undefined,
@@ -181,4 +192,31 @@ export function aislarOpcionesTenant(opciones, dataDir) {
     rutaVectores: undefined,
     rutaArchivoGrafo: rutaDatosTenant(dataDir, tid, 'knowledge_graph.json')
   };
+}
+
+
+/**
+ * Guardia local fail-closed. Rechaza symlinks, hardlinks y ficheros especiales
+ * en el arbol del tenant antes de usarlo. No es una sandbox de sistema operativo
+ * ni evita TOCTOU si otro proceso hostil puede cambiar el arbol entre check/use.
+ */
+export function verificarArbolTenant(dataDir, tenantId) {
+  if (tenantId === undefined || tenantId === null || tenantId === TENANT_PROPIETARIO) return;
+  afirmarTenantId(tenantId);
+  const base = path.resolve(dataDir);
+  const raiz = path.join(base, 'tenants', tenantId);
+  let restantes = 10000;
+  const revisar = (p, recursivo = false) => {
+    let st;
+    try { st = fs.lstatSync(p); } catch (e) { if (e.code === 'ENOENT') return; throw e; }
+    if (--restantes < 0 || st.isSymbolicLink() || (!st.isDirectory() && !st.isFile()) || (st.isFile() && st.nlink > 1)) {
+      const e = new Error('Almacenamiento de tenant no seguro.'); e.name = 'AlmacenamientoTenant'; throw e;
+    }
+    const real = fs.realpathSync(p);
+    const esperado = path.resolve(p);
+    // El dataDir es raiz confiable, pero ningun componente debajo puede salir.
+    if (real !== esperado) { const e = new Error('Almacenamiento de tenant no seguro.'); e.name = 'AlmacenamientoTenant'; throw e; }
+    if (recursivo && st.isDirectory()) for (const n of fs.readdirSync(p)) revisar(path.join(p, n), true);
+  };
+  revisar(base); revisar(path.join(base, 'tenants')); revisar(raiz, true);
 }

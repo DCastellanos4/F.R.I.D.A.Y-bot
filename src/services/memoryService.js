@@ -1,4 +1,4 @@
-import fs from 'fs';
+import fs from '../security/tenantFileSystem.js';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';

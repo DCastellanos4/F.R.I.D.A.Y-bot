@@ -52,7 +52,7 @@ test('LLM de un tenant: recibe lo propio y NADA del propietario ni de otro tenan
   const kA = claveChatTenant('sint-a', 'chat1');
   H.registrarIntercambio(claveChatTenant('sint-b', 'chat1'), 'HISTORIAL-SECRETO-B', 'r');
   H.registrarIntercambio('chat1', 'HISTORIAL-SECRETO-OWNER', 'r');
-  const ep = (c, t) => E.archivarEpisodios(c, [{ role: 'user', content: `tesoro azul zeta ${t}` }]);
+  const ep = (c, t) => E.archivarEpisodios(c, [{ role: 'user', content: `tesoro azul zeta ${t}` }], c === kA ? { carpetaEpisodios: path.join(DIR, 'tenants', 'sint-a', 'episodios') } : {});
   ep('chat1', 'EPISODIO-SECRETO-OWNER'); ep(claveChatTenant('sint-b', 'chat1'), 'EPISODIO-SECRETO-B'); ep(kA, 'EPISODIO-PROPIO-A');
   const cap = [];
   await consultarJarvisEnAmbito('que sabes de ana y del tesoro azul zeta', [], {
