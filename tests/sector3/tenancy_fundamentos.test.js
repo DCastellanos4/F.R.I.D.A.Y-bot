@@ -55,7 +55,7 @@ test('migracion 002: conserva TODAS las filas del propietario (incluida la recon
     conf: db.prepare('SELECT clave, valor FROM finanzas_config ORDER BY rowid').all()
   };
   const r = ejecutarMigraciones(db);
-  assert.deepEqual(r.aplicadasAhora, [2, 3]);
+  assert.deepEqual(r.aplicadasAhora, [2, 3, 4]);
   assert.deepEqual(db.prepare('SELECT id, dato FROM memorias ORDER BY rowid').all(), antes.mem);
   assert.deepEqual(db.prepare('SELECT categoria, limite FROM finanzas_presupuestos ORDER BY rowid').all(), antes.pres);
   assert.deepEqual(db.prepare('SELECT clave, valor FROM finanzas_config ORDER BY rowid').all(), antes.conf);
@@ -202,12 +202,12 @@ test('libro de tokens: persistente, por tenant/dia/modelo, solo mide', () => {
   medirUso({ tenantId: 'sint-a', modelo: 'm2', usage: { prompt_tokens: 7, completion_tokens: 3 }, store, ahora });
   medirUso({ modelo: 'm1', usage: { prompt_tokens: 0, completion_tokens: 0 }, store, ahora });
   medirUso({ modelo: 'm1', usage: null, store, ahora });
-  assert.deepEqual(store.diario('propietario', '2026-11-08'), [{ modelo: 'm1', entrada: 15, salida: 5, llamadas: 2 }]);
+  assert.deepEqual(store.diario('propietario', '2026-11-08'), [{ modelo: 'm1', entrada: 15, salida: 5, llamadas: 3 }]);
   assert.deepEqual(store.diario('sint-a', '2026-11-08'), [{ modelo: 'm2', entrada: 7, salida: 3, llamadas: 1 }]);
   // Sobrevive a un reinicio (reabrir el fichero).
   db.close();
   db = new Database(ruta); store = crearSqliteUsageStore(db);
-  assert.deepEqual(store.rango('propietario', '2026-11-01', '2026-11-30'), { entrada: 15, salida: 5, llamadas: 2 });
+  assert.deepEqual(store.rango('propietario', '2026-11-01', '2026-11-30'), { entrada: 15, salida: 5, llamadas: 3 });
   // Un fallo del libro nunca rompe: devuelve false.
   assert.equal(medirUso({ modelo: 'm', usage: { prompt_tokens: 1 }, store: { registrar() { throw new Error('boom'); } } }), false);
   // No hay columnas de coste/precio en el libro.

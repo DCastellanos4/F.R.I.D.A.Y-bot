@@ -232,33 +232,21 @@ test('cuota por llamada: primera ronda/toolcall agota cuota; no hay segunda llam
   } finally { registrarStoreUsoPorDefecto(null); db.close(); }
 });
 
-test('llamadas concurrentes: uso persistente efectivo se relee; inflight puede rebasar sin reserva, llamadas posteriores quedan denegadas', async () => {
+test('tenant con cuota serializa medicion pendiente: concurrente no llama al proveedor; postuso puede superar umbral en una llamada', async () => {
   const { consultarJarvisEnAmbito } = await import('../../src/core/jarvisAgent.js');
   const { registrarStoreUsoPorDefecto } = await import('../../src/services/usageLedgerService.js');
-  const { db, uso, lim } = montar();
-  lim.configurar('sint-a', { tokensDia: 10 });
-  registrarStoreUsoPorDefecto(uso);
-  let llamadas = 0; let soltar;
-  const barrera = new Promise((r) => { soltar = r; });
-  const chatCompletion = async () => {
-    llamadas++;
-    if (llamadas === 2) soltar();
-    await barrera;
-    return { model: 'efectivo-concurrente', usage: { prompt_tokens: 9, completion_tokens: 1 }, message: { role: 'assistant', content: 'ok' } };
-  };
+  const { db, uso, lim } = montar();lim.configurar('sint-a', { tokensDia: 10 });registrarStoreUsoPorDefecto(uso);
+  let llamadas = 0;let soltar;let arranco;
+  const inicio = new Promise(r => { arranco = r; });const barrera = new Promise(r => { soltar = r; });
+  const chatCompletion = async () => {llamadas++;arranco();await barrera;return {model:'efectivo',usage:{prompt_tokens:19,completion_tokens:1},message:{role:'assistant',content:'ok'}};};
   try {
-    const opts = { tenantId: 'sint-a', controlUso: lim, chatCompletion };
-    await Promise.all([
-      consultarJarvisEnAmbito('busca el contacto Ana', [], { ...opts, chatId: 'concurrente-1' }),
-      consultarJarvisEnAmbito('busca el contacto Ana', [], { ...opts, chatId: 'concurrente-2' })
-    ]);
-    assert.equal(llamadas, 2, 'ambas estaban en vuelo antes de medirse');
-    const filas = db.prepare("SELECT SUM(entrada+salida) t FROM uso_tokens WHERE tenant_id='sint-a'").get();
-    assert.equal(filas.t, 20, 'postuso no promete hard cap de 10');
-    const r = await consultarJarvisEnAmbito('busca el contacto Ana', [], { ...opts, chatId: 'concurrente-3' });
-    assert.match(String(r), /Limite de uso/);
-    assert.equal(llamadas, 2, 'nuevo intento bloqueado');
-  } finally { registrarStoreUsoPorDefecto(null); db.close(); }
+    const opts={tenantId:'sint-a',controlUso:lim,chatCompletion};
+    const primera=consultarJarvisEnAmbito('busca el contacto Ana',[],{...opts,chatId:'c1'});await inicio;
+    const segunda=await consultarJarvisEnAmbito('busca el contacto Ana',[],{...opts,chatId:'c2'});
+    assert.match(String(segunda),/Control de uso/);assert.equal(llamadas,1);soltar();await primera;
+    assert.equal(db.prepare("SELECT SUM(entrada+salida) t FROM uso_tokens WHERE tenant_id='sint-a'").get().t,20,'postuso no reserva ni recorta respuesta');
+    assert.match(await consultarJarvisEnAmbito('hola',[],opts),/Limite de uso/);assert.equal(llamadas,1);
+  } finally {soltar();registrarStoreUsoPorDefecto(null);db.close();}
 });
 
 

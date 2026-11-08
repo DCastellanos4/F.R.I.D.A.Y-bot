@@ -114,6 +114,8 @@ export function getOpenAIClient(overrides = {}) {
   if (hasOverrides) {
     const customClient = new OpenAI({
       apiKey: cloudConfig.apiKey,
+      // El router controla los intentos y su trazabilidad; no duplicar retries ocultos del SDK.
+      maxRetries: 0,
       baseURL: cloudConfig.baseUrl
     });
     return { client: customClient, cloudConfig };
@@ -122,6 +124,8 @@ export function getOpenAIClient(overrides = {}) {
   if (!defaultOpenAIInstance) {
     defaultOpenAIInstance = new OpenAI({
       apiKey: cloudConfig.apiKey,
+      // El router controla los intentos y su trazabilidad; no duplicar retries ocultos del SDK.
+      maxRetries: 0,
       baseURL: cloudConfig.baseUrl
     });
     defaultOpenAIConfig = cloudConfig;
@@ -272,6 +276,14 @@ export function extractToolCallsFromText(content, toolsList = []) {
   return null;
 }
 
+/** Solo conteos declarados por el proveedor, nunca estimaciones ni ceros por defecto. */
+export function normalizarUsoProveedor(res, proveedor) {
+  const entrada = proveedor === 'ollama' ? res?.prompt_eval_count : res?.usage?.prompt_tokens;
+  const salida = proveedor === 'ollama' ? res?.eval_count : res?.usage?.completion_tokens;
+  if (!Number.isSafeInteger(entrada) || entrada < 0 || !Number.isSafeInteger(salida) || salida < 0) return null;
+  return { prompt_tokens: entrada, completion_tokens: salida };
+}
+
 /**
  * Unified Chat Completion API:
  * Executes chat completions across local Ollama and Cloud OpenAI-compatible endpoints with full tool calling support.
@@ -354,6 +366,7 @@ export async function chatCompletion({
         tool_calls: toolCalls
       },
       provider: 'ollama',
+      usage: normalizarUsoProveedor(res, 'ollama'),
       model,
       finishReason: res.done_reason || null,
       raw: res
@@ -483,6 +496,8 @@ export async function chatCompletion({
       tool_calls: toolCalls
     },
     provider: cloudConfig.provider,
+    usage: normalizarUsoProveedor(res, cloudConfig.provider),
+    usageIntentosNoReportado: intentosTotales > 1,
     model: modeloUsado,
     degradado: modeloUsado !== modeloPrincipal,
     failover: { modeloPrincipal, motivoPrincipal: modeloUsado !== modeloPrincipal ? (motivoSaltoPrincipal || 'temporal') : null, cadena, saltadosPorCircuito, intentos: intentosTotales },

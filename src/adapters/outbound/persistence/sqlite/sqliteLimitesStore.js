@@ -10,6 +10,7 @@
  *
  * Strict Policy: Zero Emojis.
  */
+import { randomUUID } from 'node:crypto';
 import { TENANT_PROPIETARIO, afirmarTenantId } from '../../../../core/tenancy.js';
 import { diaLocal } from '../../../../services/usageLedgerService.js';
 
@@ -38,11 +39,16 @@ export function crearSqliteLimitesStore(db) {
   `);
   const limpiarVentanas = db.prepare('DELETE FROM tenant_peticiones WHERE tenant_id = ? AND ventana < ?');
 
+  const pendiente = db.prepare('SELECT ticket FROM tenant_medicion_pendiente WHERE tenant_id = ?');
+  const anotarPendiente = db.prepare('INSERT INTO tenant_medicion_pendiente (tenant_id,ticket,iniciada_en) VALUES (?,?,?)');
+  const finalizarPendiente = db.prepare('DELETE FROM tenant_medicion_pendiente WHERE tenant_id = ? AND ticket = ?');
+  const exigeMedicion = (id) => { const f = leerFila.get(id); return !!f && (f.tokens_dia !== null || f.tokens_mes !== null); };
   const decidir = db.transaction((tenantId, ahora, consumirPeticion) => {
     const fila = leerFila.get(tenantId);
     if (!fila || (fila.tokens_dia === null && fila.tokens_mes === null && fila.peticiones_minuto === null)) {
       return { permitido: true, motivo: 'sin_limites' };
     }
+    if (exigeMedicion(tenantId) && pendiente.get(tenantId)) return { permitido: false, motivo: 'medicion_pendiente' };
     const dia = diaLocal(ahora);
     const mes = dia.slice(0, 7);
     if (fila.tokens_dia !== null) {
@@ -66,6 +72,24 @@ export function crearSqliteLimitesStore(db) {
   });
 
   return Object.freeze({
+    // Marcador duradero previo a cada llamada con cuota de tokens. Un error,
+    // crash o usage ausente no vuelve a dejar saldo aparentemente disponible.
+    // Serializa esas llamadas por tenant; no reserva tokens ni estima consumo.
+    iniciarMedicion(tenantId, { ahora = new Date() } = {}) {
+      afirmarTenantId(tenantId);
+      if (tenantId === TENANT_PROPIETARIO) return null;
+      return db.transaction(() => {
+        if (!exigeMedicion(tenantId)) return null;
+        const decision = decidir(tenantId, ahora, false);
+        if (!decision.permitido) { const e = new Error('Medicion/cuota no disponible.'); e.name = 'LimiteUso'; throw e; }
+        const ticket = randomUUID(); anotarPendiente.run(tenantId,ticket,ahora.toISOString()); return ticket;
+      }).immediate();
+    },
+    confirmarMedicion(tenantId, ticket) {
+      afirmarTenantId(tenantId);
+      if (!ticket) return;
+      if (finalizarPendiente.run(tenantId,ticket).changes !== 1) throw new Error('Medicion pendiente no coincide.');
+    },
     configurar(tenantId, { tokensDia = null, tokensMes = null, peticionesMinuto = null } = {}, { ahora = new Date() } = {}) {
       afirmarTenantId(tenantId);
       if (tenantId === TENANT_PROPIETARIO) throw new Error('El propietario no admite limites: solo medicion.');

@@ -1978,12 +1978,19 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
       try { permiso = opciones.controlUso.autorizar({ tenantId: tidUso, consumirPeticion: false }); } catch { permiso = null; }
       if (permiso?.permitido !== true) {
         const e = new Error('Limite de uso alcanzado para este usuario.');
-        e.name = 'LimiteUso';
+        e.name = permiso?.motivo === 'medicion_pendiente' ? 'MedicionUso' : 'LimiteUso';
         throw e;
       }
     }
     // Observabilidad: span + metricas por llamada LLM (latencia P95/P99 y
     // tokens por sesion). Atributos: solo modelo; NUNCA mensajes.
+    // Persistir antes del efecto. Sin confirmacion, la cuota de tokens queda
+    // bloqueada incluso tras reinicio. Owner nunca entra en este protocolo.
+    let ticketMedicion = null;
+    if (tidUso && tidUso !== 'propietario' && typeof opciones.controlUso?.iniciarMedicion === 'function') {
+      try { ticketMedicion = opciones.controlUso.iniciarMedicion(tidUso); }
+      catch { const e = new Error('Control de medicion no disponible.'); e.name = 'MedicionUso'; throw e; }
+    }
     const inicioLlm = Date.now();
     // Un unico criterio de modelo para span y metricas. Exito: modelo EFECTIVO de
     // la respuesta (el router lo decide dentro de llmService; la peticion
@@ -2010,7 +2017,12 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
         duracionSeg: (Date.now() - inicioLlm) / 1000,
         usage: r && r.usage
       });
-      medirUso({ tenantId: opciones.tenantId, modelo: modeloExito(r), usage: r && r.usage });
+      const medido = medirUso({ tenantId: opciones.tenantId, modelo: modeloExito(r), usage: r && r.usage });
+      if (ticketMedicion) {
+        if (!medido || r?.usageIntentosNoReportado === true) { const e = new Error('Medicion de uso no disponible.'); e.name = 'MedicionUso'; throw e; }
+        try { opciones.controlUso.confirmarMedicion(tidUso,ticketMedicion); }
+        catch { const e = new Error('Confirmacion de medicion no disponible.'); e.name = 'MedicionUso'; throw e; }
+      }
       if (r && r.degradado && r.failover) failoverDetectado = r.failover;
       return r;
     } catch (errLlm) {
@@ -2020,6 +2032,7 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
         duracionSeg: (Date.now() - inicioLlm) / 1000,
         error: errLlm
       });
+      if (ticketMedicion && errLlm?.name !== 'MedicionUso') { const e = new Error('Consumo de intentos no verificado.'); e.name = 'MedicionUso'; throw e; }
       throw errLlm;
     }
   };
@@ -2794,6 +2807,7 @@ export async function consultarJarvisEnAmbito(mensajeUsuario, historial = [], op
     if (!opciones.controlUso || typeof opciones.controlUso.autorizar !== 'function') return 'Control de uso no disponible para este usuario.';
     let dec;
     try { dec = opciones.controlUso.autorizar({ tenantId: tid }); } catch { dec = { permitido: false, motivo: 'error_control_uso' }; }
+    if (dec?.motivo === 'medicion_pendiente') return 'Control de uso no disponible: medicion pendiente de verificar.';
     if (!dec || dec.permitido !== true) return 'Limite de uso alcanzado para este usuario.';
   }
   try { verificarArbolTenant(DATA_DIR_TENANCY, tid); } catch { return 'Almacenamiento no disponible para este usuario.'; }
@@ -2804,6 +2818,7 @@ export async function consultarJarvisEnAmbito(mensajeUsuario, historial = [], op
     return await conSpan('consulta', { sesion: hashSesion(opciones && opciones.chatId) }, () => consultarJarvisInterna(mensajeUsuario, historial, opciones));
   } catch (e) {
     if (e?.name === 'AlmacenamientoTenant') return 'Almacenamiento no disponible para este usuario.';
+    if (e?.name === 'MedicionUso') return 'Control de uso no disponible: medicion pendiente de verificar.';
     if (e?.name === 'LimiteUso') return 'Limite de uso alcanzado para este usuario.';
     throw e;
   }

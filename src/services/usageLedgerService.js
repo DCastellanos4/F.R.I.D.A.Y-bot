@@ -27,9 +27,9 @@ export function diaLocal(d = new Date(), zona = 'Europe/Madrid') {
 export function medirUso({ tenantId = TENANT_PROPIETARIO, modelo, usage, store = storePorDefecto, ahora = new Date() } = {}) {
   try {
     if (!store || !usage) return false;
-    const entrada = Number(usage.prompt_tokens ?? usage.promptTokens) || 0;
-    const salida = Number(usage.completion_tokens ?? usage.completionTokens) || 0;
-    if (entrada <= 0 && salida <= 0) return false;
+    const entrada = usage.prompt_tokens ?? usage.promptTokens;
+    const salida = usage.completion_tokens ?? usage.completionTokens;
+    if (!Number.isSafeInteger(entrada) || entrada < 0 || !Number.isSafeInteger(salida) || salida < 0) return false;
     // Sin tenantId (historico) = propietario; un id presente pero invalido NO se
     // atribuye al propietario: no se mide.
     const tid = tenantId === undefined || tenantId === null ? TENANT_PROPIETARIO : tenantId;

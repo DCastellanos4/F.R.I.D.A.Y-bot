@@ -175,6 +175,17 @@ export const MIGRACIONES = [
         PRIMARY KEY (tenant_id, ventana)
       );
     `
+  },
+  {
+    version: 4,
+    nombre: '004_medicion_pendiente',
+    sql: `
+      CREATE TABLE tenant_medicion_pendiente (
+        tenant_id TEXT PRIMARY KEY REFERENCES tenants(id),
+        ticket TEXT NOT NULL,
+        iniciada_en TEXT NOT NULL
+      );
+    `
   }
 ];
 
