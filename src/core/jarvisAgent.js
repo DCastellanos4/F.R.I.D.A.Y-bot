@@ -1662,7 +1662,7 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
           mensaje: args.mensaje,
           minutosEnElFuturo: args.minutosEnElFuturo,
           hora: args.hora
-        });
+        }, { rutaArchivo: opciones.rutaArchivoRecordatorios });
         resultadoTool = `Recordatorio guardado en el sistema, señor. ID: ${res.recordatorio.id}. Programado para: ${res.recordatorio.fechaHoraLocal}. Tarea: "${res.recordatorio.mensaje}".`;
       } else if (nombreFuncion === 'listar_recordatorios') {
         const lista = listarRecordatorios(true, { rutaArchivo: opciones.rutaArchivoRecordatorios });

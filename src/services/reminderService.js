@@ -107,7 +107,7 @@ function calcularTimestamp(minutosEnElFuturo, horaTexto) {
   return new Date(ahora.getTime() + 15 * 60 * 1000);
 }
 
-export function crearRecordatorio({ mensaje, minutosEnElFuturo = null, hora = null }) {
+export function crearRecordatorio({ mensaje, minutosEnElFuturo = null, hora = null }, deps = {}) {
   // Detección automática en el mensaje si no se pasaron argumentos explícitos
   let minCalc = minutosEnElFuturo;
   let horaCalc = hora;
@@ -143,9 +143,9 @@ export function crearRecordatorio({ mensaje, minutosEnElFuturo = null, hora = nu
     creadoEn: new Date().toISOString()
   };
 
-  const lista = leerRecordatorios();
+  const lista = leerRecordatorios(deps);
   lista.push(nuevo);
-  guardarRecordatorios(lista);
+  guardarRecordatorios(lista, deps);
 
   console.log(`[Recordatorio Guardado] "${nuevo.mensaje}" programado para el ${nuevo.fechaHoraLocal}`);
 

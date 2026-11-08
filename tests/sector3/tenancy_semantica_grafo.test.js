@@ -100,3 +100,17 @@ test('aislarOpcionesTenant: TODAS las rutas personales del agente quedan bajo te
   const sinCubrir = usadas.filter((k) => !(k in RUTAS_DATOS_TENANT) && !excluidas.has(k));
   assert.deepEqual(sinCubrir, [], 'toda ruta personal nueva debe mapearse o excluirse explicitamente');
 });
+
+test('herramientas de host/propietario: denegadas a un tenant aunque esten en la lista blanca', async () => {
+  const { HERRAMIENTAS_SOLO_PROPIETARIO, puedeEjecutarHerramienta: pe } = await import('../../src/services/rbacService.js');
+  assert.ok(HERRAMIENTAS_SOLO_PROPIETARIO.length >= 20);
+  for (const h of HERRAMIENTAS_SOLO_PROPIETARIO) {
+    assert.ok(NOMBRES_HERRAMIENTAS_JARVIS.has(h), `existe en el catalogo real: ${h}`);
+    const r = pe({ tenantId: 'sint-a', herramienta: h, catalogo: NOMBRES_HERRAMIENTAS_JARVIS, permitidasUsuario: [h], rolDe: () => 'usuario' });
+    assert.equal(r.permitido, false, h);
+    assert.equal(r.motivo, 'solo_propietario');
+    assert.equal(pe({ tenantId: undefined, herramienta: h, catalogo: NOMBRES_HERRAMIENTAS_JARVIS }).permitido, true, `propietario: ${h}`);
+  }
+  // control: una herramienta comun SI se permite si esta en la lista blanca
+  assert.equal(pe({ tenantId: 'sint-a', herramienta: 'crear_recordatorio', catalogo: NOMBRES_HERRAMIENTAS_JARVIS, permitidasUsuario: ['crear_recordatorio'], rolDe: () => 'usuario' }).permitido, true);
+});

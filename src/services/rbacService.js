@@ -14,6 +14,23 @@ import { TENANT_PROPIETARIO, esTenantIdValido } from '../core/tenancy.js';
 
 export const HERRAMIENTAS_PERMITIDAS_USUARIO_POR_DEFECTO = Object.freeze([]);
 
+/**
+ * Herramientas que actuan sobre recursos del HOST o del PROPIETARIO sin ninguna
+ * opcion de ruta/ambito (domotica y encendido de PC, backups de sesion, auditoria
+ * de dependencias, red, servidor, repos, radar de empleo global, digest de notas
+ * del propietario, configuracion del sistema). Quedan DENEGADAS a cualquier no
+ * propietario aunque alguien las anada a la lista blanca por error.
+ */
+export const HERRAMIENTAS_SOLO_PROPIETARIO = Object.freeze([
+  'encender_pc', 'controlar_domotica', 'estado_descargas', 'estimar_factura_oracle',
+  'configurar_aviso_descargas', 'listar_dispositivos_red', 'configurar_vigilancia_red',
+  'crear_backup_sesion', 'verificar_backup_sesion', 'auditar_dependencias',
+  'configurar_vigilancia_dependencias', 'configurar_informe_metricas', 'actividad_repos',
+  'configurar_alertas_repos', 'revisar_pr', 'consultar_estado_servidor',
+  'escanear_ofertas_empleo', 'configurar_radar_ofertas', 'generar_digest_cerebro',
+  'configurar_digest_semanal', 'configurar_vigilante_procesos'
+]);
+
 export function puedeEjecutarHerramienta({
   tenantId,
   herramienta,
@@ -29,6 +46,7 @@ export function puedeEjecutarHerramienta({
   if (rol !== 'usuario') return { permitido: false, motivo: 'tenant_desconocido' };
   if (typeof herramienta !== 'string' || !herramienta) return { permitido: false, motivo: 'herramienta_invalida' };
   if (catalogo && !catalogo.has(herramienta)) return { permitido: false, motivo: 'herramienta_desconocida' };
+  if (HERRAMIENTAS_SOLO_PROPIETARIO.includes(herramienta)) return { permitido: false, motivo: 'solo_propietario' };
   return permitidasUsuario.includes(herramienta)
     ? { permitido: true, motivo: 'lista_blanca' }
     : { permitido: false, motivo: 'no_en_lista_blanca' };

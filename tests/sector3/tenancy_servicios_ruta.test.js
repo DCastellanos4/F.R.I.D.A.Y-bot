@@ -132,3 +132,14 @@ test('flashcards por ruta (tarjetas y configuracion)', async () => {
   assert.ok(!txt(FC.listarFlashcards({}, { rutaArchivo: path.join(RB, 'fc.json') })).includes('pregunta-secreta-A'));
   vacioCentinela('flashcards');
 });
+
+test('recordatorios: CREAR, listar y cancelar usan la ruta (antes crear ignoraba la ruta y escribia el fichero global)', async () => {
+  const R = await import('../../src/services/reminderService.js');
+  const c = R.crearRecordatorio({ mensaje: 'recordatorio-secreto-A', minutosEnElFuturo: 600 }, dA('r.json'));
+  assert.ok(c.recordatorio, txt(c));
+  assert.ok(txt(R.listarRecordatorios(true, dA('r.json'))).includes('recordatorio-secreto-A'));
+  assert.ok(!txt(R.listarRecordatorios(true, dB('r.json'))).includes('recordatorio-secreto-A'));
+  R.cancelarRecordatorio('recordatorio-secreto-A', dB('r.json'));
+  assert.ok(txt(R.listarRecordatorios(true, dA('r.json'))).includes('recordatorio-secreto-A'));
+  vacioCentinela('recordatorios');
+});
