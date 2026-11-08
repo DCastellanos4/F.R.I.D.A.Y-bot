@@ -36,6 +36,8 @@ import {
 import { consultarClima } from '../services/weatherService.js';
 import { chatCompletion, esRespuestaTruncada } from './llmService.js';
 import { clasificarIntencionConModelo, seleccionarDominiosConModelo, comprobarYAvisarSalud, UMBRAL_CONFIANZA } from './intentRouterService.js';
+import { puedeEjecutarHerramienta } from '../services/rbacService.js';
+import { medirUso } from '../services/usageLedgerService.js';
 import { conSpan, fijarAtributosSpan, hashSesion, registrarFinLLM, registrarFinTool, registrarFinConsulta } from '../observability/telemetry.js';
 import { buscarEpisodios } from '../services/episodicMemoryService.js';
 import { registrarCandidatura, listarCandidaturas, actualizarCandidatura, resumenCandidaturas } from '../services/applicationTrackerService.js';
@@ -825,6 +827,18 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
   // catalogo -> 'desconocida', sin registrar el nombre recibido (ni en
   // /metrics: un nombre inventado crearia series nuevas sin limite).
   const herramientaLbl = NOMBRES_HERRAMIENTAS_JARVIS.has(nombreFuncion) ? nombreFuncion : 'desconocida';
+  // RBAC: denegado por defecto fuera del propietario. Sin tenantId (todos los
+  // llamantes actuales) o con 'propietario' no cambia nada.
+  const acceso = puedeEjecutarHerramienta({
+    tenantId: opciones.tenantId,
+    herramienta: nombreFuncion,
+    catalogo: NOMBRES_HERRAMIENTAS_JARVIS,
+    rolDe: opciones.rolDeTenant
+  });
+  if (!acceso.permitido) {
+    registrarFinTool({ herramienta: herramientaLbl, duracionSeg: 0, error: { name: 'AccesoDenegado' } });
+    return `Herramienta no disponible para este usuario (${acceso.motivo}).`;
+  }
   try {
     const resTool = await conSpan('tool', { herramienta: herramientaLbl }, () => ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones));
     registrarFinTool({ herramienta: herramientaLbl, duracionSeg: (Date.now() - inicioTool) / 1000 });
@@ -1973,6 +1987,7 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
         duracionSeg: (Date.now() - inicioLlm) / 1000,
         usage: r && r.usage
       });
+      medirUso({ tenantId: opciones.tenantId, modelo: modeloExito(r), usage: r && r.usage });
       if (r && r.degradado && r.failover) failoverDetectado = r.failover;
       return r;
     } catch (errLlm) {
@@ -2703,6 +2718,13 @@ Directrices de selección:
  * (CLI, pruebas, canales directos). Atributo: solo hash opaco de sesion.
  */
 export async function consultarJarvis(mensajeUsuario, historial = [], opciones = {}) {
+  // Tenant desconocido: denegado ANTES de cualquier LLM, herramienta o escritura.
+  // Sin tenantId (todos los llamantes historicos) o 'propietario': sin cambios.
+  const tid = opciones && opciones.tenantId;
+  if (tid !== undefined && tid !== null && tid !== 'propietario') {
+    const rol = typeof opciones.rolDeTenant === 'function' ? opciones.rolDeTenant(tid) : null;
+    if (rol !== 'usuario') return 'Acceso no disponible para este usuario.';
+  }
   return conSpan('consulta', { sesion: hashSesion(opciones && opciones.chatId) }, () => consultarJarvisInterna(mensajeUsuario, historial, opciones));
 }
 

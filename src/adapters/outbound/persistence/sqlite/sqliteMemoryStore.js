@@ -13,6 +13,7 @@
  * Strict Policy: Zero Emojis.
  */
 import { conSpanPosibleSincrono } from '../../../../observability/telemetry.js';
+import { TENANT_PROPIETARIO, afirmarTenantId } from '../../../../core/tenancy.js';
 
 function filaAMemoria(fila) {
   const memoria = {
@@ -35,18 +36,19 @@ function filaAMemoria(fila) {
   return memoria;
 }
 
-export function crearSqliteMemoryStore(db) {
+export function crearSqliteMemoryStore(db, { tenantId = TENANT_PROPIETARIO } = {}) {
+  afirmarTenantId(tenantId);
   const stmtTodo = db.prepare(
-    'SELECT id, sujeto, dato, categoria, tags, fecha_registro, fecha_local, cifrado, salt, iv, tag FROM memorias ORDER BY rowid'
+    'SELECT id, sujeto, dato, categoria, tags, fecha_registro, fecha_local, cifrado, salt, iv, tag FROM memorias WHERE tenant_id = ? ORDER BY rowid'
   );
-  const stmtBorrar = db.prepare('DELETE FROM memorias');
+  const stmtBorrar = db.prepare('DELETE FROM memorias WHERE tenant_id = ?');
   const stmtInsertar = db.prepare(`
-    INSERT INTO memorias (id, sujeto, dato, categoria, tags, fecha_registro, fecha_local, cifrado, salt, iv, tag)
-    VALUES (@id, @sujeto, @dato, @categoria, @tags, @fecha_registro, @fecha_local, @cifrado, @salt, @iv, @tag)
+    INSERT INTO memorias (id, sujeto, dato, categoria, tags, fecha_registro, fecha_local, cifrado, salt, iv, tag, tenant_id)
+    VALUES (@id, @sujeto, @dato, @categoria, @tags, @fecha_registro, @fecha_local, @cifrado, @salt, @iv, @tag, @tenant_id)
   `);
 
   const reemplazarTodo = db.transaction((lista) => {
-    stmtBorrar.run();
+    stmtBorrar.run(tenantId);
     for (const m of lista) {
       stmtInsertar.run({
         id: m.id,
@@ -59,14 +61,16 @@ export function crearSqliteMemoryStore(db) {
         cifrado: m.cifrado ?? null,
         salt: m.salt ?? null,
         iv: m.iv ?? null,
-        tag: m.tag ?? null
+        tag: m.tag ?? null,
+        tenant_id: tenantId
       });
     }
   });
 
   return Object.freeze({
+    tenantId,
     leer() {
-      return stmtTodo.all().map(filaAMemoria);
+      return stmtTodo.all(tenantId).map(filaAMemoria);
     },
     guardar(lista) {
       // Observabilidad: span db_write (solo entidad/operacion, nunca datos).

@@ -83,6 +83,76 @@ export const MIGRACIONES = [
         valor TEXT NOT NULL
       );
     `
+  },
+  {
+    // Fundamentos de tenancy, ADITIVOS: todo dato existente queda en el tenant
+    // 'propietario' (DEFAULT). Presupuestos y config cambian de clave primaria
+    // (categoria/clave -> tenant+categoria/clave): SQLite no altera PK, asi que
+    // se reconstruyen copiando TODAS las filas en la misma transaccion.
+    // No se habilita ningun usuario: solo existe el tenant propietario.
+    version: 2,
+    nombre: '002_tenancy_fundamentos',
+    sql: `
+      CREATE TABLE tenants (
+        id TEXT PRIMARY KEY,
+        nombre TEXT NOT NULL,
+        rol TEXT NOT NULL DEFAULT 'usuario',
+        estado TEXT NOT NULL DEFAULT 'activo',
+        creado_en TEXT NOT NULL
+      );
+      INSERT INTO tenants (id, nombre, rol, estado, creado_en)
+        VALUES ('propietario', 'Propietario', 'propietario', 'activo', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+
+      CREATE TABLE identidades (
+        tenant_id TEXT NOT NULL REFERENCES tenants(id),
+        canal TEXT NOT NULL,
+        identificador TEXT NOT NULL,
+        creada_en TEXT NOT NULL,
+        PRIMARY KEY (canal, identificador)
+      );
+
+      ALTER TABLE memorias ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'propietario';
+      ALTER TABLE finanzas_gastos ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'propietario';
+      ALTER TABLE finanzas_suscripciones ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'propietario';
+      ALTER TABLE finanzas_borradores ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'propietario';
+      CREATE INDEX idx_memorias_tenant ON memorias(tenant_id);
+      CREATE INDEX idx_gastos_tenant ON finanzas_gastos(tenant_id);
+      CREATE INDEX idx_subs_tenant ON finanzas_suscripciones(tenant_id);
+      CREATE INDEX idx_borr_tenant ON finanzas_borradores(tenant_id);
+
+      CREATE TABLE finanzas_presupuestos_t (
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        categoria TEXT NOT NULL,
+        limite REAL NOT NULL CHECK (limite > 0),
+        PRIMARY KEY (tenant_id, categoria)
+      );
+      INSERT INTO finanzas_presupuestos_t (categoria, limite)
+        SELECT categoria, limite FROM finanzas_presupuestos ORDER BY rowid;
+      DROP TABLE finanzas_presupuestos;
+      ALTER TABLE finanzas_presupuestos_t RENAME TO finanzas_presupuestos;
+
+      CREATE TABLE finanzas_config_t (
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        clave TEXT NOT NULL,
+        valor TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, clave)
+      );
+      INSERT INTO finanzas_config_t (clave, valor)
+        SELECT clave, valor FROM finanzas_config ORDER BY rowid;
+      DROP TABLE finanzas_config;
+      ALTER TABLE finanzas_config_t RENAME TO finanzas_config;
+
+      -- Libro persistente de TOKENS reales (no coste). Sin precios aqui.
+      CREATE TABLE uso_tokens (
+        tenant_id TEXT NOT NULL,
+        dia TEXT NOT NULL,
+        modelo TEXT NOT NULL,
+        entrada INTEGER NOT NULL DEFAULT 0,
+        salida INTEGER NOT NULL DEFAULT 0,
+        llamadas INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (tenant_id, dia, modelo)
+      );
+    `
   }
 ];
 

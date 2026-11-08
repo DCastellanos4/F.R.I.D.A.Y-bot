@@ -10,6 +10,7 @@
  * Strict Policy: Zero Emojis.
  */
 import { conSpanPosibleSincrono } from '../../../../observability/telemetry.js';
+import { TENANT_PROPIETARIO, afirmarTenantId } from '../../../../core/tenancy.js';
 
 function filaAGasto(f) {
   return {
@@ -50,40 +51,41 @@ function filaABorrador(f) {
   return borrador;
 }
 
-export function crearSqliteFinanceStore(db) {
-  const qGastos = db.prepare('SELECT * FROM finanzas_gastos ORDER BY rowid');
-  const qSubs = db.prepare('SELECT * FROM finanzas_suscripciones ORDER BY rowid');
-  const qPres = db.prepare('SELECT categoria, limite FROM finanzas_presupuestos ORDER BY rowid');
-  const qBorr = db.prepare('SELECT * FROM finanzas_borradores ORDER BY rowid');
-  const qConf = db.prepare('SELECT clave, valor FROM finanzas_config');
+export function crearSqliteFinanceStore(db, { tenantId = TENANT_PROPIETARIO } = {}) {
+  afirmarTenantId(tenantId);
+  const qGastos = db.prepare('SELECT * FROM finanzas_gastos WHERE tenant_id = ? ORDER BY rowid');
+  const qSubs = db.prepare('SELECT * FROM finanzas_suscripciones WHERE tenant_id = ? ORDER BY rowid');
+  const qPres = db.prepare('SELECT categoria, limite FROM finanzas_presupuestos WHERE tenant_id = ? ORDER BY rowid');
+  const qBorr = db.prepare('SELECT * FROM finanzas_borradores WHERE tenant_id = ? ORDER BY rowid');
+  const qConf = db.prepare('SELECT clave, valor FROM finanzas_config WHERE tenant_id = ?');
 
-  const delGastos = db.prepare('DELETE FROM finanzas_gastos');
-  const delSubs = db.prepare('DELETE FROM finanzas_suscripciones');
-  const delPres = db.prepare('DELETE FROM finanzas_presupuestos');
-  const delBorr = db.prepare('DELETE FROM finanzas_borradores');
-  const delConf = db.prepare('DELETE FROM finanzas_config');
+  const delGastos = db.prepare('DELETE FROM finanzas_gastos WHERE tenant_id = ?');
+  const delSubs = db.prepare('DELETE FROM finanzas_suscripciones WHERE tenant_id = ?');
+  const delPres = db.prepare('DELETE FROM finanzas_presupuestos WHERE tenant_id = ?');
+  const delBorr = db.prepare('DELETE FROM finanzas_borradores WHERE tenant_id = ?');
+  const delConf = db.prepare('DELETE FROM finanzas_config WHERE tenant_id = ?');
 
   const insGasto = db.prepare(`
-    INSERT INTO finanzas_gastos (id, importe, comercio, categoria, fecha, notas, origen, creado_en)
-    VALUES (@id, @importe, @comercio, @categoria, @fecha, @notas, @origen, @creado_en)
+    INSERT INTO finanzas_gastos (id, importe, comercio, categoria, fecha, notas, origen, creado_en, tenant_id)
+    VALUES (@id, @importe, @comercio, @categoria, @fecha, @notas, @origen, @creado_en, @tenant_id)
   `);
   const insSub = db.prepare(`
-    INSERT INTO finanzas_suscripciones (id, nombre, importe, dia_renovacion, categoria, ultimo_aviso_para, creada_en)
-    VALUES (@id, @nombre, @importe, @dia_renovacion, @categoria, @ultimo_aviso_para, @creada_en)
+    INSERT INTO finanzas_suscripciones (id, nombre, importe, dia_renovacion, categoria, ultimo_aviso_para, creada_en, tenant_id)
+    VALUES (@id, @nombre, @importe, @dia_renovacion, @categoria, @ultimo_aviso_para, @creada_en, @tenant_id)
   `);
-  const insPres = db.prepare('INSERT INTO finanzas_presupuestos (categoria, limite) VALUES (?, ?)');
+  const insPres = db.prepare('INSERT INTO finanzas_presupuestos (tenant_id, categoria, limite) VALUES (?, ?, ?)');
   const insBorr = db.prepare(`
-    INSERT INTO finanzas_borradores (id, estado, chat_id, datos, dudas, gasto_id, creado_en)
-    VALUES (@id, @estado, @chat_id, @datos, @dudas, @gasto_id, @creado_en)
+    INSERT INTO finanzas_borradores (id, estado, chat_id, datos, dudas, gasto_id, creado_en, tenant_id)
+    VALUES (@id, @estado, @chat_id, @datos, @dudas, @gasto_id, @creado_en, @tenant_id)
   `);
-  const insConf = db.prepare('INSERT INTO finanzas_config (clave, valor) VALUES (?, ?)');
+  const insConf = db.prepare('INSERT INTO finanzas_config (tenant_id, clave, valor) VALUES (?, ?, ?)');
 
   const reemplazarTodo = db.transaction((estado) => {
-    delGastos.run();
-    delSubs.run();
-    delPres.run();
-    delBorr.run();
-    delConf.run();
+    delGastos.run(tenantId);
+    delSubs.run(tenantId);
+    delPres.run(tenantId);
+    delBorr.run(tenantId);
+    delConf.run(tenantId);
     for (const g of estado.gastos || []) {
       insGasto.run({
         id: g.id,
@@ -93,7 +95,8 @@ export function crearSqliteFinanceStore(db) {
         fecha: g.fecha,
         notas: g.notas ?? null,
         origen: g.origen || 'manual',
-        creado_en: g.creadoEn
+        creado_en: g.creadoEn,
+        tenant_id: tenantId
       });
     }
     for (const s of estado.suscripciones || []) {
@@ -104,11 +107,12 @@ export function crearSqliteFinanceStore(db) {
         dia_renovacion: s.diaRenovacion,
         categoria: s.categoria,
         ultimo_aviso_para: s.ultimoAvisoPara ?? null,
-        creada_en: s.creadaEn
+        creada_en: s.creadaEn,
+        tenant_id: tenantId
       });
     }
     for (const [categoria, limite] of Object.entries(estado.presupuestos || {})) {
-      insPres.run(categoria, limite);
+      insPres.run(tenantId, categoria, limite);
     }
     for (const b of estado.borradores || []) {
       insBorr.run({
@@ -118,20 +122,22 @@ export function crearSqliteFinanceStore(db) {
         datos: JSON.stringify(b.datos),
         dudas: JSON.stringify(Array.isArray(b.dudas) ? b.dudas : []),
         gasto_id: b.gastoId ?? null,
-        creado_en: b.creadoEn
+        creado_en: b.creadoEn,
+        tenant_id: tenantId
       });
     }
     for (const [clave, valor] of Object.entries(estado.config || {})) {
-      insConf.run(clave, JSON.stringify(valor));
+      insConf.run(tenantId, clave, JSON.stringify(valor));
     }
   });
 
   return Object.freeze({
+    tenantId,
     leer() {
       const presupuestos = {};
-      for (const fila of qPres.all()) presupuestos[fila.categoria] = fila.limite;
+      for (const fila of qPres.all(tenantId)) presupuestos[fila.categoria] = fila.limite;
       const config = {};
-      for (const fila of qConf.all()) {
+      for (const fila of qConf.all(tenantId)) {
         try {
           config[fila.clave] = JSON.parse(fila.valor);
         } catch {
@@ -139,11 +145,11 @@ export function crearSqliteFinanceStore(db) {
         }
       }
       return {
-        gastos: qGastos.all().map(filaAGasto),
-        suscripciones: qSubs.all().map(filaASuscripcion),
+        gastos: qGastos.all(tenantId).map(filaAGasto),
+        suscripciones: qSubs.all(tenantId).map(filaASuscripcion),
         presupuestos,
         config,
-        borradores: qBorr.all().map(filaABorrador)
+        borradores: qBorr.all(tenantId).map(filaABorrador)
       };
     },
     guardar(estado) {

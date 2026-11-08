@@ -17,6 +17,7 @@ import { crearJsonlClassifierMetricsStore } from '../adapters/outbound/persisten
 import { crearMessageProcessor } from '../core/messageProcessor.js';
 import { DATA_DIR } from '../config/paths.js';
 import { registrarStoreMemoriasPorDefecto } from '../services/memoryService.js';
+import { registrarStoreUsoPorDefecto } from '../services/usageLedgerService.js';
 import { registrarStoreFinanzasPorDefecto } from '../services/financeService.js';
 import { registrarFuenteMemoriasPorDefecto } from '../services/semanticMemoryService.js';
 import { crearPersistenciaSqlite } from '../adapters/outbound/persistence/sqlite/persistenciaSqlite.js';
@@ -51,6 +52,7 @@ function crearPersistenciaActiva(overrides) {
   // leer y escribir en SQLite. Una rutaArchivo explicita sigue yendo a
   // JSON (aislamiento de pruebas).
   registrarStoreMemoriasPorDefecto(persistencia.memoryStore);
+  registrarStoreUsoPorDefecto(persistencia.usageStore);
   registrarStoreFinanzasPorDefecto(persistencia.financeStore);
   registrarFuenteMemoriasPorDefecto(persistencia.fuenteSemantica);
   const memoryRepository = crearSqliteMemoryRepository({

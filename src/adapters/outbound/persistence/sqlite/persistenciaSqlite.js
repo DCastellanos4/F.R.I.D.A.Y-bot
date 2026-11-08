@@ -16,6 +16,8 @@ import { ejecutarMigraciones } from './migraciones.js';
 import { crearSqliteMemoryStore } from './sqliteMemoryStore.js';
 import { crearSqliteFinanceStore } from './sqliteFinanceStore.js';
 import { crearSqliteUserRepository } from './sqliteUserRepository.js';
+import { crearSqliteTenantRepository } from './sqliteTenantRepository.js';
+import { crearSqliteUsageStore } from './sqliteUsageStore.js';
 import { importarJsonASqlite, comprobarEstadoConsistente } from './importExport.js';
 
 export function crearPersistenciaSqlite({ rutaDb, rutaMemoriasJson = null, rutaFinanzasJson = null, rutaUsuariosJson = null } = {}) {
@@ -26,6 +28,8 @@ export function crearPersistenciaSqlite({ rutaDb, rutaMemoriasJson = null, rutaF
   const memoryStore = crearSqliteMemoryStore(db);
   const financeStore = crearSqliteFinanceStore(db);
   const userRepository = crearSqliteUserRepository(db);
+  const tenantRepository = crearSqliteTenantRepository(db);
+  const usageStore = crearSqliteUsageStore(db);
 
   const problema = comprobarEstadoConsistente(db);
   if (problema) {
@@ -68,6 +72,8 @@ export function crearPersistenciaSqlite({ rutaDb, rutaMemoriasJson = null, rutaF
     memoryStore,
     financeStore,
     userRepository,
+    tenantRepository,
+    usageStore,
     fuenteSemantica,
     importacion,
     cerrar: () => db.close()
