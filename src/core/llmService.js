@@ -410,7 +410,11 @@ export async function chatCompletion({
         break;
       } catch (err) {
         ultimoError = err;
-        if (!esErrorConmutable(err)) throw err;
+        if (!esErrorConmutable(err)) {
+          // Metadato acotado para observabilidad: SOLO el nombre del modelo.
+          try { err.modeloFallido = candidato; } catch { /* error congelado */ }
+          throw err;
+        }
         const esperaSugerida = segundosRetryAfter(err);
         const esperaMs = (esperaSugerida ?? 1) * 1000;
         if (esperaMs > ESPERA_MAX_REINTENTO_MS) {
@@ -432,6 +436,8 @@ export async function chatCompletion({
     const detalle = ultimoError ? ` Ultimo error: ${String(ultimoError.message || ultimoError).slice(0, 200)}` : '';
     const err = new Error(`Todos los modelos configurados estan sin cuota o no disponibles ahora mismo (${cadena.join(' -> ')}).${detalle}`);
     err.name = 'CuotaAgotadaError';
+    // Metadato acotado (nombres de modelo y contadores, sin mensajes ni claves).
+    err.failover = { modeloPrincipal, cadena: [...cadena], saltadosPorCircuito: [...saltadosPorCircuito], intentos: intentosTotales };
     throw err;
   }
   if (modeloUsado !== modeloPrincipal) {

@@ -168,6 +168,38 @@ test('label modelo: el modelo REAL de la respuesta (router), no "desconocido" cu
   assert.match(reg, /jarvis_llm_tokens_total\{[^}]*modelo="openai\/gpt-oss-120b"/);
 });
 
+test('label modelo: respaldo por failover etiqueta el modelo EFECTIVO; fallo con metadato acotado; sin secretos', async () => {
+  await iniciarObservabilidad({ forzarTrazas: false, forzarMetricas: true });
+  const PRINCIPAL = 'openai/gpt-oss-120b';
+  const RESPALDO = 'llama-3.3-70b-versatile';
+  let modo = 'principal';
+  const llm = async () => {
+    if (modo === 'principal') return { message: { role: 'assistant', content: 'ok, senor.' }, usage: { prompt_tokens: 5, completion_tokens: 1 }, model: PRINCIPAL, degradado: false };
+    if (modo === 'respaldo') return { message: { role: 'assistant', content: 'ok, senor.' }, usage: { prompt_tokens: 7, completion_tokens: 1 }, model: RESPALDO, degradado: true, failover: { modeloPrincipal: PRINCIPAL, motivoPrincipal: 'cuota', cadena: [PRINCIPAL, RESPALDO] } };
+    if (modo === 'agotada') { const e = new Error('Todos sin cuota (secreto-sk-abc123)'); e.name = 'CuotaAgotadaError'; e.failover = { modeloPrincipal: PRINCIPAL, cadena: [PRINCIPAL, RESPALDO], intentos: 4 }; throw e; }
+    const e = new Error('400 secreto-sk-abc123'); e.modeloFallido = RESPALDO; throw e;
+  };
+  for (const m of ['principal', 'respaldo', 'agotada', 'noconmutable']) {
+    modo = m;
+    try { await consultarJarvis(`consulta ${m}`, [], { chatId: CHAT_ID, chatCompletion: llm }); } catch { /* el error LLM puede propagarse */ }
+  }
+  const reg = await atenderMetricasLocal();
+  const filas = reg.split('\n').filter((x) => x.startsWith('jarvis_llm_duracion_segundos_count{'));
+  const cuenta = (modelo, res) => {
+    const l = filas.find((x) => x.includes(`modelo="${modelo}"`) && x.includes(`resultado="${res}"`));
+    return l ? Number(l.split(' ').pop()) : 0;
+  };
+  assert.ok(cuenta(PRINCIPAL, 'ok') >= 1, 'exito del principal bajo el principal');
+  assert.ok(cuenta(RESPALDO, 'ok') >= 1, 'exito del respaldo bajo el respaldo, no bajo el principal');
+  assert.ok(cuenta('cadena_agotada', 'error') >= 1, 'cadena agotada atribuida como tal');
+  assert.ok(cuenta(RESPALDO, 'error') >= 1, 'error no conmutable atribuido al modelo que fallo');
+  assert.equal(cuenta(PRINCIPAL, 'error'), 0, 'ningun error se pinta como del principal');
+  assert.ok(!filas.some((x) => x.includes('modelo="desconocido"')), 'ya no hay serie desconocido');
+  assert.ok(!reg.includes('secreto-sk-abc123'), 'el mensaje de error no llega a las metricas');
+  const tokResp = reg.split('\n').find((x) => x.startsWith('jarvis_llm_tokens_total{') && x.includes(`modelo="${RESPALDO}"`) && x.includes('tipo="entrada"'));
+  assert.ok(tokResp && tokResp.endsWith(' 7'), 'tokens del respaldo bajo el modelo respaldo');
+});
+
 async function atenderMetricasLocal() {
   return new Promise((resolve, reject) => {
     const req = { url: '/metrics', socket: { remoteAddress: '127.0.0.1' } };

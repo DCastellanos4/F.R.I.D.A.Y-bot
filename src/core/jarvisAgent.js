@@ -1962,8 +1962,15 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
       if (r && r.degradado && r.failover) failoverDetectado = r.failover;
       return r;
     } catch (errLlm) {
+      // Atribucion del fallo con metadato acotado del router: modelo concreto
+      // que fallo (error no conmutable), o "cadena_agotada" si fallaron todos
+      // los de la cadena. Nunca el mensaje del error. Sin metadato: el de la
+      // peticion o "desconocido".
+      const modeloFallo = (errLlm && errLlm.modeloFallido)
+        || (errLlm && errLlm.failover ? 'cadena_agotada' : null)
+        || (peticion && peticion.model);
       registrarFinLLM({
-        modelo: peticion && peticion.model,
+        modelo: modeloFallo,
         sesion: opciones.chatId,
         duracionSeg: (Date.now() - inicioLlm) / 1000,
         error: errLlm
