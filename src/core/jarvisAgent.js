@@ -50,7 +50,7 @@ import { estadisticasChat } from '../services/groupStatsService.js';
 import { registrarAvisoLlegada, listarAvisosLlegada, cancelarAvisoLlegada } from '../services/arrivalWatchService.js';
 import { verificarYRegistrarIdempotencia, guardarResultadoIdempotencia } from '../services/idempotencyService.js';
 import { obtenerContextoGrafo } from '../services/graphMemoryService.js';
-import { registrarParadaFavorita, listarParadasFavoritas, eliminarParadaFavorita, proximasLlegadas, extraerDestinoHacia } from '../services/transportService.js';
+import { registrarParadaFavorita, listarParadasFavoritas, eliminarParadaFavorita, proximasLlegadas, extraerDestinoHacia, extraerOrigenDesde } from '../services/transportService.js';
 import { registrarContacto, buscarContacto, listarContactos } from '../services/contactsService.js';
 import { buscarSemantico } from '../services/brainSearchService.js';
 import { generarDigest, configurarDigestSemanal } from '../services/brainDigestService.js';
@@ -608,6 +608,28 @@ const HERRAMIENTAS_IDEMPOTENTES = new Set([
   'explicar_recorrido'
 ]);
 
+// Resultado parcial del router: solo se declara un EFECTO cuando la
+// herramienta no es de consulta (conjunto idempotente verificado: lectura)
+// y el payload confirma exito (un 'ok' con texto de fallo NO es efecto).
+// Las descripciones son castellano llano: sin nombres internos de tools y
+// sin contenido de memoria/credenciales (basta "la informacion se ha
+// guardado" cuando esta confirmado).
+const MARCAS_FALLO_PAYLOAD = /^\s*(error\b|no se pudo|no pude|no he podido|no se ha podido|no se ha registrado|no fue posible|fallo\b|falló)/i;
+
+function describirEfectoConfirmado(nombreFuncion, resultadoTool) {
+  if (HERRAMIENTAS_IDEMPOTENTES.has(nombreFuncion)) return null; // consulta: sin efectos
+  if (typeof resultadoTool !== 'string' || !resultadoTool.trim()) return null;
+  if (MARCAS_FALLO_PAYLOAD.test(resultadoTool)) return null; // el payload indica fallo
+  if (nombreFuncion === 'guardar_memoria' || nombreFuncion === 'guardar_nota_personal') return 'la informacion se ha guardado';
+  if (nombreFuncion === 'olvidar_memoria') return 'el dato se ha borrado';
+  if (/^(enviar_|programar_mensaje_whatsapp|crear_encuesta_whatsapp)/.test(nombreFuncion)) return 'el envio esta hecho';
+  if (/^(cancelar_|eliminar_|vaciar_|dejar_vigilar|tachar_)/.test(nombreFuncion)) return 'la cancelacion o eliminacion esta hecha';
+  if (/^(registrar_|anotar_|crear_quedada|crear_flashcard|escribir_diario|marcar_habito|anadir_compra|agregar_contacto_vip)/.test(nombreFuncion)) return 'el registro se ha guardado';
+  if (/^(configurar_|activar_|desactivar_|vigilar_|poner_menu|actualizar_|priorizar_)/.test(nombreFuncion)) return 'el cambio esta aplicado';
+  if (nombreFuncion === 'execute_bash_command') return 'el comando se ha ejecutado';
+  return 'la accion solicitada esta hecha';
+}
+
 // Herramientas que envian contenido a terceros. Antes de ejecutarlas, el
 // numero de destino debe constar en fuentes confiables (un mensaje de David
 // en este chat o una ficha de contacto), nunca basta un numero generado por
@@ -1054,12 +1076,16 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
         const res = eliminarParadaFavorita(args.criterio, { rutaArchivo: opciones.rutaArchivoTransporte });
         resultadoTool = res.ok ? `Borrada la parada "${res.parada.nombre}", David.` : res.error;
       } else if (nombreFuncion === 'proximas_llegadas_transporte') {
-        // Destino determinista: se extrae del mensaje de David ("hacia X") y
-        // prevalece sobre el argumento del modelo; no dependemos de que el
-        // modelo rellene destino (fallo observado 8 nov 2026).
+        // Destino y origen deterministas: se extraen del mensaje de David
+        // ("hacia X", "desde Y", "salen de Y") y prevalecen sobre los
+        // argumentos del modelo; no dependemos de que el modelo los rellene
+        // y NUNCA se pasa un codigo inventado pudiendo resolver por nombre
+        // (fallos observados 8 nov 2026 con el modelo de respaldo).
         const destinoNatural = extraerDestinoHacia(opciones.mensajeUsuario);
+        const origenNatural = extraerOrigenDesde(opciones.mensajeUsuario);
         const destinoFinal = destinoNatural || args.destino;
-        const res = await proximasLlegadas({ parada: args.parada, tipo: args.tipo, codigo: args.codigo, destino: destinoFinal }, { rutaArchivo: opciones.rutaArchivoTransporte, fetchFnEmt: opciones.fetchFnEmt, fetchFnCercanias: opciones.fetchFnCercanias, clientIdEmt: opciones.clientIdEmt, passKeyEmt: opciones.passKeyEmt });
+        const paradaFinal = origenNatural || args.parada;
+        const res = await proximasLlegadas({ parada: paradaFinal, tipo: args.tipo, codigo: args.codigo, destino: destinoFinal }, { rutaArchivo: opciones.rutaArchivoTransporte, fetchFn: opciones.fetchFnTransporte, fetchFnEmt: opciones.fetchFnEmt, fetchFnCercanias: opciones.fetchFnCercanias, clientIdEmt: opciones.clientIdEmt, passKeyEmt: opciones.passKeyEmt, rutaCache: opciones.rutaCacheEstacionesRenfe, rutaCacheHorarios: opciones.rutaCacheHorariosRenfe, ahora: opciones.ahoraTransporte });
         if (!res.ok) {
           resultadoTool = res.error;
         } else if (res.contrastados && res.contrastados.length > 0) {
@@ -2240,7 +2266,8 @@ Directrices de selección:
         if (salida.enlaces) enlacesParaAdjuntar = salida.enlaces;
         const esNoReconocida = resultadoTool === 'Función no reconocida.' || resultadoTool === 'Funcion no reconocida.';
         const resultadoEstado = esNoReconocida ? 'no_reconocida' : 'ok';
-        traza.llamadas.push({ nombre: nombreFuncion, ronda, resultado: resultadoEstado });
+        const efecto = resultadoEstado === 'ok' ? describirEfectoConfirmado(nombreFuncion, resultadoTool) : null;
+        traza.llamadas.push({ nombre: nombreFuncion, ronda, resultado: resultadoEstado, ...(efecto ? { efecto } : {}) });
         resultadosRonda.push({ id: llamada.id, name: nombreFuncion, result: resultadoTool, status: resultadoEstado });
       } catch (errTool) {
         resultadoTool = describirErrorHerramienta(nombreFuncion, errTool, HERRAMIENTAS_IDEMPOTENTES.has(nombreFuncion));
@@ -2331,9 +2358,9 @@ Directrices de selección:
     // TODOS los modelos sin cuota/no disponibles: resultado parcial exacto.
     // Las acciones ya ejecutadas se conservan y se nombran; NO se invita a
     // repetir la peticion (lo hecho esta hecho una sola vez).
-    const ejecutadasOk = traza.llamadas.filter((l) => l.resultado === 'ok').map((l) => l.nombre);
-    textoFinal = ejecutadasOk.length > 0
-      ? `Señor, he completado estas acciones: ${ejecutadasOk.join(', ')}. No he podido redactarle la respuesta final porque el modelo principal y el de respaldo estan sin cuota o no disponibles ahora mismo. Lo que esta hecho esta hecho una sola vez: no hace falta que repita la peticion.`
+    const efectosConfirmados = traza.llamadas.filter((l) => l.efecto).map((l) => l.efecto);
+    textoFinal = efectosConfirmados.length > 0
+      ? `Señor, antes de quedarme sin respuesta deje hecho esto: ${efectosConfirmados.join('; ')}. No he podido redactarle la respuesta final porque el modelo principal y el de respaldo estan sin cuota o no disponibles ahora mismo. Lo que esta hecho esta hecho una sola vez: no hace falta que repita la peticion.`
       : 'Señor, no he podido responder: el modelo principal y el de respaldo estan sin cuota o no disponibles ahora mismo. No se ha completado ninguna accion; intentelo de nuevo en unos minutos.';
     traza.cuotaAgotada = true;
     console.warn('[J.A.R.V.I.S.] Cuota agotada en todos los modelos; se entrega resultado parcial exacto.');

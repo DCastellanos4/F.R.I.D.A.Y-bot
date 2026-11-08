@@ -147,7 +147,8 @@ test('Consulta de parada desconocida: error honesto sin inventar', async () => {
   const rutaTransporte = path.join(dirEntorno, 'transporte3.json');
   const r = await proximasLlegadas({ parada: 'no-existe' }, { rutaArchivo: rutaTransporte });
   assert.equal(r.ok, false);
-  assert.match(r.error, /Registrala primero/);
+  assert.match(r.error, /registrala como favorita/i);
+  assert.doesNotMatch(r.error, /dime su codigo/i, 'no traslada la resolucion tecnica al usuario');
 });
 
 test('Metro: el servicio rechaza el tipo y explica por que', async () => {

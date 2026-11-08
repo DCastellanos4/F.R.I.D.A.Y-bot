@@ -408,3 +408,62 @@ assert.strictEqual(extraerDestinoHacia('que trenes hay para atocha'), 'atocha');
 assert.strictEqual(extraerDestinoHacia('buenas noches'), null);
 
 console.log('renfe_tren.test.js OK (recorrido + filtro + extraccion)');
+
+// 15) Regresion grounding de argumentos (fallo del modelo de respaldo, smoke
+// 8 nov 2026): codigos de estacion INVENTADOS nunca llegan a la fuente
+// pudiendo resolver por nombre, y la resolucion tecnica no se traslada a David.
+const depsRecG = depsRec('g', feedVacio);
+try { fs.unlinkSync(depsRecG.rutaCache); } catch { /* nada */ }
+try { fs.unlinkSync(depsRecG.rutaArchivo); } catch { /* nada */ }
+fs.rmSync(depsRecG.rutaCacheHorarios, { recursive: true, force: true });
+const rCodInv = await proximasLlegadas({ parada: 'aranjuez', codigo: 'R1', tipo: 'r1' }, depsRecG);
+assert.ok(rCodInv.ok, 'codigo y tipo inventados + nombre explicito: resuelve por nombre');
+assert.strictEqual(rCodInv.programadas.length, 2, 'mismas salidas que resolviendo por nombre');
+const rCodSolo = await proximasLlegadas({ codigo: 'R1', tipo: 'cercanias' }, depsRecG);
+assert.ok(!rCodSolo.ok, 'codigo inventado sin nombre: no llega a la fuente');
+assert.match(rCodSolo.error, /NOMBRE/, 'pide el nombre, no el codigo');
+assert.doesNotMatch(rCodSolo.error, /dime su codigo|proporciona.*codigo/i, 'no traslada resolucion tecnica al usuario');
+const rCodInex = await proximasLlegadas({ codigo: '99999', tipo: 'cercanias' }, depsRecG);
+assert.ok(!rCodInex.ok, 'codigo numerico inexistente en el indice: error');
+assert.match(rCodInex.error, /NOMBRE/);
+console.log('OK 15/16 grounding de argumentos (servicio)');
+
+// 16) Frase 2 EXACTA del smoke con argumentos inventados por el modelo:
+// el agente extrae origen/destino del mensaje y resuelve por nombre.
+const { consultarJarvis: consultarJarvisRenfe } = await import('../../src/core/jarvisAgent.js');
+const depsRecH = depsRec('h', feedVacio);
+try { fs.unlinkSync(depsRecH.rutaCache); } catch { /* nada */ }
+try { fs.unlinkSync(depsRecH.rutaArchivo); } catch { /* nada */ }
+fs.rmSync(depsRecH.rutaCacheHorarios, { recursive: true, force: true });
+const registroRenfe = [];
+let llamadasRenfe = 0;
+const clienteRenfe = {
+  chat: { completions: { create: async (payload) => {
+    registroRenfe.push(payload);
+    llamadasRenfe += 1;
+    if (llamadasRenfe === 1) {
+      return { choices: [{ message: { role: 'assistant', content: '', tool_calls: [{ id: 't1', type: 'function', function: { name: 'proximas_llegadas_transporte', arguments: { codigo: 'R1', tipo: 'r1', destino: 'Madrid' } } }] }, finish_reason: 'tool_calls' }] };
+    }
+    return { choices: [{ message: { role: 'assistant', content: 'Salidas programadas desde Aranjuez hacia Madrid, senor.' }, finish_reason: 'stop' }] };
+  } } }
+};
+await consultarJarvisRenfe('que trenes hay ahora mismo hacia madrid desde aranjuez', [], {
+  chatCompletion: async (peticion) => {
+    const cruda = await clienteRenfe.chat.completions.create(peticion);
+    return { message: cruda.choices[0].message, model: 'test-falso' };
+  },
+  rutaArchivoTransporte: depsRecH.rutaArchivo,
+  fetchFnTransporte: depsRecH.fetchFn,
+  fetchFnCercanias: depsRecH.fetchFnCercanias,
+  rutaCacheEstacionesRenfe: depsRecH.rutaCache,
+  rutaCacheHorariosRenfe: depsRecH.rutaCacheHorarios,
+  ahoraTransporte: ahoraSabado
+});
+const msgsR1 = registroRenfe[1] && (registroRenfe[1].messages || registroRenfe[1].mensajes);
+const msgToolRenfe = msgsR1 && msgsR1.find((m) => m.role === 'tool');
+assert.ok(msgToolRenfe, 'la herramienta se ejecuto');
+assert.match(msgToolRenfe.content, /salidas programadas/i, 'resuelve por nombre pese a codigo/tipo inventados');
+assert.match(msgToolRenfe.content, /Aranjuez/);
+assert.doesNotMatch(msgToolRenfe.content, /codigo/i, 'no pide codigo ni menciona codigos a David');
+console.log('OK 16/16 frase 2 exacta con argumentos inventados (agente)');
+console.log('renfe_tren.test.js OK (grounding de argumentos)');

@@ -269,7 +269,8 @@ test('Integrado: herramienta escribe y TODOS los modelos caen despues; contador=
   const contenido = fs.existsSync(rutaMem) ? fs.readFileSync(rutaMem, 'utf-8') : '';
   assert.equal((contenido.match(/clave failover xyz/g) || []).length, 1, 'la escritura ocurrio EXACTAMENTE una vez pese al fallo posterior');
   assert.equal(registro.length, 3, 'tool 120b + sintesis 120b + sintesis 20b, sin bucles ni repeticion de la herramienta');
-  assert.match(r, /guardar_memoria/, 'la accion ejecutada se conserva y se nombra');
+  assert.match(r, /la informacion se ha guardado/, 'el efecto se declara en castellano, sin nombre interno ni contenido');
+  assert.doesNotMatch(r, /guardar_memoria|clave failover xyz/, 'sin nombres internos ni contenido de la memoria');
   assert.match(r, /una sola vez/, 'declara que lo hecho no se repitio');
   assert.match(r, /no hace falta que repita/, 'NO invita a repetir la peticion');
   assert.doesNotMatch(r, /No se ha completado ninguna accion/, 'no niega la accion ya ejecutada');
@@ -283,4 +284,30 @@ test('Integrado: TODOS los modelos caen SIN ninguna herramienta previa: mensaje 
   const r = await consultarJarvis('que tiempo hace en Madrid?', [], { chatCompletion: chatConRouterReal(cliente) });
   assert.match(r, /No se ha completado ninguna accion/, 'cierto aqui: nada se ejecuto');
   assert.match(r, /intentelo de nuevo/i, 'aqui SI se invita a reintentar');
+});
+
+test('Integrado: consulta sin efectos + caida total -> se invita a reintentar (nada quedo escrito)', async () => {
+  reiniciarCircuitoModelos();
+  const registro = [];
+  const pasoConsulta = { role: 'assistant', content: '', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'buscar_memoria', arguments: { consulta: 'talla de zapatillas' } } }] };
+  const cliente = clienteIntegrado({ [PRIMARIO]: [pasoConsulta, error429(3600)], [RESPALDO]: [error429(3600)] }, registro);
+  const r = await consultarJarvis('que talla de zapatillas tengo guardada?', [], {
+    chatCompletion: chatConRouterReal(cliente),
+    memoryRepository: { buscar: () => [] }
+  });
+  assert.match(r, /No se ha completado ninguna accion/, 'una consulta no es un efecto: repetir es seguro y se dice');
+  assert.match(r, /intentelo de nuevo/i);
+  assert.doesNotMatch(r, /una sola vez/, 'sin consultas en la lista de efectos');
+});
+
+test('Integrado: payload de FALLO con resultado ok NO se declara como efecto', async () => {
+  reiniciarCircuitoModelos();
+  const registro = [];
+  const cliente = clienteIntegrado({ [PRIMARIO]: [PASO_TOOL_MEMORIA, error429(3600)], [RESPALDO]: [error429(3600)] }, registro);
+  const r = await consultarJarvis('recuerda que la clave failover xyz es 42', [], {
+    chatCompletion: chatConRouterReal(cliente),
+    memoryRepository: { guardar: () => ({ ok: false, error: 'disco lleno' }) }
+  });
+  assert.doesNotMatch(r, /se ha guardado|una sola vez/, 'un ok con payload de error no es efecto confirmado');
+  assert.match(r, /No se ha completado ninguna accion/, 'honesto: nada confirmado');
 });

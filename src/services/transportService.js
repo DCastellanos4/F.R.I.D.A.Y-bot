@@ -105,12 +105,14 @@ export async function proximasLlegadas({ parada, tipo, codigo, destino } = {}, d
   if (parada) {
     const c = String(parada).trim().toLowerCase();
     objetivo = leerEstado(deps).paradas.find((p) => p.id === parada || p.nombre.toLowerCase().includes(c)) || null;
-    if (!objetivo && !codigo) {
-      // Sin favorita ni codigo: intentar resolver el NOMBRE de la estacion
-      // contra el indice GTFS oficial de Renfe (cache local, TTL 7 dias).
+    if (!objetivo) {
+      // Resolver el NOMBRE de la estacion contra el indice GTFS oficial de
+      // Renfe (cache local, TTL 7 dias). El nombre prevalece siempre sobre
+      // un codigo del modelo: los modelos pequeños inventan codigos (fallo
+      // observado 8 nov 2026). El codigo solo se usa si el nombre falla.
       try {
         let candidatas = await resolverEstaciones(parada, deps);
-        if (tipo) {
+        if (tipo && TIPOS.includes(String(tipo).trim().toLowerCase())) {
           const t = String(tipo).trim().toLowerCase();
           candidatas = candidatas.filter((e2) => e2.tipo === t);
         }
@@ -122,22 +124,46 @@ export async function proximasLlegadas({ parada, tipo, codigo, destino } = {}, d
           vistos.add(e2.id);
           return true;
         });
+        const codigoDigits = /^\d{4,6}$/.test(String(codigo || '').trim()) ? String(codigo).trim() : null;
         if (candidatas.length === 1) {
           resuelta = candidatas[0];
         } else if (candidatas.length > 1) {
-          const lista = candidatas.map((e2) => `- ${e2.nombre} (${e2.tipo === 'tren' ? 'AVE/LD/MD' : 'Cercanias'})`).join('\n');
-          return { ok: false, error: `"${parada}" puede ser varias estaciones:\n${lista}\nDime cual.` };
+          const porCodigo = codigoDigits ? candidatas.filter((e2) => String(e2.id) === codigoDigits) : [];
+          if (porCodigo.length >= 1) {
+            resuelta = porCodigo[0]; // el codigo desambigua SOLO contra candidatas del nombre
+          } else {
+            const lista = candidatas.map((e2) => `- ${e2.nombre} (${e2.tipo === 'tren' ? 'AVE/LD/MD' : 'Cercanias'})`).join('\n');
+            return { ok: false, error: `"${parada}" puede ser varias estaciones:\n${lista}\nDime cual.` };
+          }
         }
       } catch { /* sin indice disponible: se informa abajo */ }
-      if (!resuelta) {
-        return { ok: false, error: `No tengo ninguna parada favorita que encaje con "${parada}" y no encuentro esa estacion. Registrala primero (por ejemplo: "mi parada de casa es la EMT 1234") o dime su codigo.` };
+      if (!resuelta && !codigo) {
+        return { ok: false, error: `No tengo ninguna parada favorita que encaje con "${parada}" y no la encuentro en el indice oficial de Renfe. Dime el nombre tal como aparece en Renfe (o registrala como favorita).` };
       }
     }
   }
   const tipoFinal = (objetivo && objetivo.tipo) || (resuelta && resuelta.tipo) || String(tipo || '').toLowerCase();
-  const codigoFinal = (objetivo && objetivo.codigo) || (resuelta && resuelta.id) || String(codigo || '').replace(/\D/g, '');
+  let codigoFinal = (objetivo && objetivo.codigo) || (resuelta && resuelta.id) || '';
+  if (!codigoFinal && codigo) {
+    // Codigo a secas (sin nombre): solo se acepta si tiene formato oficial
+    // y existe en el indice de Renfe; un codigo inventado NUNCA se pasa a
+    // la fuente ni se le pide al usuario que lo corrija: se pide el nombre.
+    const limpio = String(codigo).trim();
+    if (!/^\d{4,6}$/.test(limpio)) {
+      return { ok: false, error: `No reconozco "${limpio}" como estacion. Dime el NOMBRE de la estacion (por ejemplo: "Aranjuez") y lo busco.` };
+    }
+    if (tipoFinal !== 'emt') {
+      try {
+        const indice = await cargarIndiceEstaciones(deps);
+        if (!indice.some((e) => String(e.id) === limpio)) {
+          return { ok: false, error: `El codigo ${limpio} no corresponde a ninguna estacion del indice oficial de Renfe. Dime el NOMBRE de la estacion y lo busco.` };
+        }
+      } catch { /* sin indice disponible: formato valido basta */ }
+    }
+    codigoFinal = limpio;
+  }
   if (!TIPOS.includes(tipoFinal) || !codigoFinal) {
-    return { ok: false, error: 'Dime la parada (favorita, nombre de estacion o codigo) y si es EMT, Cercanias o tren (AVE/LD/MD). El Metro no tiene fuente publica de llegadas en vivo.' };
+    return { ok: false, error: 'Dime la parada por su nombre (por ejemplo: "Aranjuez") y si es EMT, Cercanias o tren (AVE/LD/MD). El Metro no tiene fuente publica de llegadas en vivo.' };
   }
   if (tipoFinal === 'emt') {
     const r = await llegadasEmt(codigoFinal, { fetchFn: deps.fetchFnEmt, clientId: deps.clientIdEmt, passKey: deps.passKeyEmt });
@@ -242,6 +268,26 @@ export function extraerDestinoHacia(texto) {
   const t = String(texto || '');
   const PALABRA = '[a-záéíóúñü]+';
   const m = t.match(new RegExp(`(?:hacia|para)\\s+(${PALABRA}(?:\\s+${PALABRA}){0,2}?)(?=\\s+(?:de|desde|del|hacia|para|con|que|y|en|a|al|por)\\b|[,.?!;:]|$)`, 'i'));
+  if (!m) return null;
+  const limpio = m[1].replace(/^(el|la|los|las|un|una)\s+/i, '').trim();
+  return limpio || null;
+}
+
+/**
+ * Extraccion determinista del ORIGEN pedido en lenguaje natural
+ * ("desde Aranjuez", "de Atocha a Aranjuez", "trenes que salen de
+ * Aranjuez"), para no depender de que el modelo rellene la parada ni de
+ * que invente codigos de estacion (fallo observado 8 nov 2026 con el
+ * modelo de respaldo). Devuelve null si no hay origen explicito.
+ */
+export function extraerOrigenDesde(texto) {
+  const t = String(texto || '');
+  const PALABRA = '[a-záéíóúñü]+';
+  const LUGAR = `(${PALABRA}(?:\\s+${PALABRA}){0,2}?)`;
+  const FIN = '(?=\\s+(?:hacia|para|con|que|y|en|a|al|por|de|desde|del|hasta)\\b|[,.?!;:]|$)';
+  let m = t.match(new RegExp(`\\bdesde\\s+${LUGAR}${FIN}`, 'i'));
+  if (!m) m = t.match(new RegExp(`\\bde\\s+${LUGAR}(?=\\s+(?:a|al|hacia|para|hasta)\\b)`, 'i')); // "de X a Y"
+  if (!m) m = t.match(new RegExp(`\\b(?:salen|salgo|salir|sale|salidas?)\\b(?:\\s+${PALABRA}){0,4}?\\s+de\\s+${LUGAR}${FIN}`, 'i')); // "salen ... de X"
   if (!m) return null;
   const limpio = m[1].replace(/^(el|la|los|las|un|una)\s+/i, '').trim();
   return limpio || null;
