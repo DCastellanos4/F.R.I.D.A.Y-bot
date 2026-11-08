@@ -183,3 +183,23 @@ test('agente: controlUso inyectado deniega a un tenant ANTES del LLM; el propiet
   await consultarJarvisEnAmbito('hola', [], { tenantId: 'sint-a', chatId: 'c', chatCompletion, controlUso: { autorizar: () => ({ permitido: true }) } });
   assert.ok(llamadasLlm > antes, 'permitido: llega al LLM');
 });
+
+test('E2E agente + controlador SQLite + libro real: usage del modelo agota cuota, siguiente peticion no llama al LLM', async () => {
+  const { consultarJarvisEnAmbito } = await import('../../src/core/jarvisAgent.js');
+  const { registrarStoreUsoPorDefecto } = await import('../../src/services/usageLedgerService.js');
+  const { db, uso, lim } = montar();
+  lim.configurar('sint-a', { tokensDia: 10 });
+  registrarStoreUsoPorDefecto(uso);
+  let llamadas = 0;
+  const chatCompletion = async () => { llamadas++; return { model: 'stub', usage: { prompt_tokens: 10, completion_tokens: 1 }, message: { role: 'assistant', content: 'ok' } }; };
+  try {
+    const opts = { tenantId: 'sint-a', chatId: 'quota-e2e', chatCompletion, controlUso: lim };
+    await consultarJarvisEnAmbito('hola', [], opts);
+    assert.ok(llamadas >= 1);
+    const antes = llamadas;
+    assert.ok(uso.rango('sint-a', '2000-01-01', '2100-12-31').entrada >= 10);
+    const r = await consultarJarvisEnAmbito('hola otra vez', [], opts);
+    assert.match(String(r), /Limite de uso/);
+    assert.equal(llamadas, antes);
+  } finally { registrarStoreUsoPorDefecto(null); db.close(); }
+});

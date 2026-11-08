@@ -149,3 +149,23 @@ test('con la lista blanca vacia (produccion) un tenant no ejecuta buscar_recuerd
   assert.ok(todo.includes('no_en_lista_blanca'));
   assert.ok(!todo.includes('NOTA-PROPIA-A'));
 });
+
+test('E2E RBAC: programadores owner-only se deniegan antes de ejecutar aun con allowlist completa', async () => {
+  const herramientas = ['crear_recordatorio', 'configurar_repaso_flashcards', 'configurar_radar_ofertas', 'ejecutar_skill', 'trigger_encrypted_backup'];
+  for (const nombre of herramientas) {
+    let efectos = 0; let ronda = 0; const capturas = [];
+    const chatCompletion = async (p) => {
+      capturas.push(JSON.stringify(p)); ronda++;
+      return ronda === 1
+        ? { model: 'stub', message: { role: 'assistant', content: '', tool_calls: [{ id: 'deny-' + nombre, function: { name: nombre, arguments: {} } }] } }
+        : { model: 'stub', message: { role: 'assistant', content: 'ok' } };
+    };
+    await consultarJarvisEnAmbito('ejecuta la accion solicitada', [], {
+      tenantId: 'sint-a', chatId: 'denegar-' + nombre, rolDeTenant: () => 'usuario',
+      permitidasUsuario: herramientas, chatCompletion,
+      ejecutores: { [nombre]: () => { efectos++; return 'EJECUTADO'; } }
+    });
+    assert.equal(efectos, 0, nombre);
+    assert.ok(capturas.join('\n').includes('solo_propietario'), nombre);
+  }
+});
