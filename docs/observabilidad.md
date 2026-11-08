@@ -106,8 +106,13 @@ algo explicitamente habilitado.
    - `DAVIS_METRICS_PUERTO_WS` (def: 9464) / `DAVIS_METRICS_PUERTO_API` (def: 9465)
    - `DAVIS_METRICS_ENABLED` (def: sigue a `DAVIS_OTEL_ENABLED`)
 4. Verificacion post-despliegue (obligatoria antes de cerrar):
-   - `curl 172.30.50.1:9464/metrics` y `172.30.50.1:9465/metrics` devuelven
-     HELP/TYPE (conectividad disenada, desde el host y desde un contenedor).
+   - Consulta de metricas DESDE UN CONTENEDOR de la red del stack (nunca
+     desde la LAN): `docker exec davis-prometheus wget -qO-
+     172.30.50.1:9464/metrics` (y :9465) devuelve HELP/TYPE.
+     OJO: un curl desde el HOST del VPS recibe 403 aunque el TCP conecte:
+     el kernel origina con la IP principal del VPS (VCN), que NO esta en la
+     allowlist 172.30.50.0/24. Es el comportamiento disenado; NO ampliar la
+     allowlist a la LAN para "arreglarlo".
    - `curl 127.0.0.1:9464/metrics` NO responde (bind solo al gateway).
    - Desde fuera del VPS, esos puertos NO responden (firewall + loopback).
 
