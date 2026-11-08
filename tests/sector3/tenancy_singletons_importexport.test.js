@@ -82,6 +82,7 @@ test('singleton libro de uso: cada tenant se mide en su fila; el defecto no abso
       medirUso({ tenantId: 'sint-b', modelo: 'm', usage: { prompt_tokens: 100, completion_tokens: 2 }, ahora });
       medirUso({ modelo: 'm', usage: { prompt_tokens: 1000, completion_tokens: 3 }, ahora });
     }
+    assert.equal(medirUso({ tenantId: '../x', modelo: 'm', usage: { prompt_tokens: 5000, completion_tokens: 1 }, ahora }), false, 'tenant invalido: no se mide');
     const filas = db.prepare('SELECT tenant_id, SUM(entrada) e, SUM(salida) s FROM uso_tokens GROUP BY tenant_id ORDER BY tenant_id').all();
     const por = Object.fromEntries(filas.map((f) => [f.tenant_id, [f.e, f.s]]));
     assert.deepEqual(por['sint-a'], [30, 3]);

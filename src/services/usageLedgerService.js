@@ -30,7 +30,10 @@ export function medirUso({ tenantId = TENANT_PROPIETARIO, modelo, usage, store =
     const entrada = Number(usage.prompt_tokens ?? usage.promptTokens) || 0;
     const salida = Number(usage.completion_tokens ?? usage.completionTokens) || 0;
     if (entrada <= 0 && salida <= 0) return false;
-    const tid = esTenantIdValido(tenantId) ? tenantId : TENANT_PROPIETARIO;
+    // Sin tenantId (historico) = propietario; un id presente pero invalido NO se
+    // atribuye al propietario: no se mide.
+    const tid = tenantId === undefined || tenantId === null ? TENANT_PROPIETARIO : tenantId;
+    if (!esTenantIdValido(tid)) return false;
     store.registrar({ tenantId: tid, dia: diaLocal(ahora), modelo, entrada, salida });
     return true;
   } catch {

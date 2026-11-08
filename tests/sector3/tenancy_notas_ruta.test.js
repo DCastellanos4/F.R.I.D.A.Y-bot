@@ -41,3 +41,10 @@ test('diario con carpeta de tenant: aparte del propietario', () => {
   const r = leerDiario({ fecha: '2026-01-02' }, { carpetaDiario: op.carpetaDiario });
   assert.match(JSON.stringify(r), /diario del tenant/);
 });
+
+test('getNoteByPath: no lee fuera de la carpeta de notas indicada', async () => {
+  const { getNoteByPath } = await import('../../src/services/notesService.js');
+  const ajeno = path.join(DIR, 'secreto.md'); fs.writeFileSync(ajeno, '# s\nSECRETO');
+  await assert.rejects(() => getNoteByPath(ajeno, { carpetaNotas: op.carpetaNotas }), /outside/);
+  await assert.rejects(() => getNoteByPath(path.join(op.carpetaNotas, '..', '..', '..', 'secreto.md'), { carpetaNotas: op.carpetaNotas }), /outside/);
+});

@@ -499,9 +499,15 @@ export async function listRecentNotes(limit = 10, options = {}) {
  * @param {string} filePath - Absolute path to markdown note file.
  * @returns {Promise<object>} Structured note object.
  */
-export async function getNoteByPath(filePath) {
+export async function getNoteByPath(filePath, options = {}) {
   if (typeof filePath !== 'string' || filePath.trim().length === 0) {
     throw new Error('File path must be a non-empty string');
+  }
+  // Solo dentro de la carpeta de notas (la inyectada o la del propietario).
+  const base = path.resolve(baseNotas(options));
+  const destino = path.resolve(filePath);
+  if (destino !== base && !destino.startsWith(base + path.sep)) {
+    throw new Error('File path outside the notes folder');
   }
 
   const rawContent = await fs.readFile(filePath, 'utf8');
