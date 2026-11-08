@@ -106,3 +106,20 @@ test('import/export rechaza stores de tenant o sin ambito antes de leer/escribir
   assert.deepEqual(conteos(db), antes);
   db.close();
 });
+
+test('recuperacion en COPIA NUEVA permite operar A sin modificar B/owner ni base original (no restauracion selectiva activa)', async () => {
+  const { raiz,dataDir,db }=montarDatos();
+  crearSqliteTenantRepository(db).registrarTenant({id:'sint-b',nombre:'B'});
+  crearSqliteMemoryStore(db,{tenantId:'sint-b'}).guardar([mem('b1','DB-TENANT-B')]);
+  const antesOriginal=JSON.stringify(db.prepare('SELECT * FROM memorias ORDER BY tenant_id,id').all());
+  const r=await createEncryptedBackup({passphrase:PASS,rootDir:raiz,dataDir,backupDir:path.join(raiz,'backup-copia'),configFiles:[]});
+  const destino=path.join(raiz,'ensayo-nuevo');await restoreEncryptedBackup(r.backupPath,PASS,destino);
+  const copia=abrirBaseDatos(path.join(destino,'data','jarvis.db'));
+  const a=crearSqliteMemoryStore(copia,{tenantId:'sint-a'}),b=crearSqliteMemoryStore(copia,{tenantId:'sint-b'}),o=crearSqliteMemoryStore(copia);
+  const antesB=JSON.stringify(b.leer()),antesO=JSON.stringify(o.leer());
+  a.guardar([mem('a-copia','SOLO-COPIA-A')]);a.guardar([]);
+  assert.equal(JSON.stringify(b.leer()),antesB);assert.equal(JSON.stringify(o.leer()),antesO);
+  assert.equal(JSON.stringify(db.prepare('SELECT * FROM memorias ORDER BY tenant_id,id').all()),antesOriginal,'base original intacta');
+  assert.equal(copia.pragma('integrity_check',{simple:true}),'ok');assert.deepEqual(copia.pragma('foreign_key_check'),[]);
+  copia.close();db.close();
+});

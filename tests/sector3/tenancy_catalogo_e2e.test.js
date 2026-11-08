@@ -50,11 +50,25 @@ test('matriz cubre cada herramienta datos_tenant exactamente en familia o extra'
  assert.deepEqual([...new Set(covered)].sort(),[...allow].sort());
 });
 
-test('guardar_memoria respeta A con store SQLite del propietario registrado y no invoca su escritor',async()=>{
+test('memoria E2E read/write/delete con SQLite OWNER real registrado por defecto: A no lee ni modifica owner',async()=>{
  const { registrarStoreMemoriasPorDefecto }=await import('../../src/services/memoryService.js');
- let ownerWrites=0;
- registrarStoreMemoriasPorDefecto({leer:()=>[],guardar:()=>{ownerWrites++;}});
- try {await tool('sint-a','guardar_memoria',{sujeto:'solo-a-sqlite',dato:'solo-a-sqlite'});
- assert.equal(ownerWrites,0);assert.ok(fs.readFileSync(path.join(DIR,'tenants','sint-a','brain_memory.json'),'utf8').includes('solo-a-sqlite'));
- }finally{registrarStoreMemoriasPorDefecto(null);}
+ const { registrarFuenteMemoriasPorDefecto }=await import('../../src/services/semanticMemoryService.js');
+ const { default: Database }=await import('better-sqlite3');
+ const { ejecutarMigraciones }=await import('../../src/adapters/outbound/persistence/sqlite/migraciones.js');
+ const { crearSqliteMemoryStore }=await import('../../src/adapters/outbound/persistence/sqlite/sqliteMemoryStore.js');
+ const db=new Database(':memory:');ejecutarMigraciones(db);
+ const owner=crearSqliteMemoryStore(db);
+ owner.guardar([{id:'owner-rw',sujeto:'tesoro-rw',dato:'SECRETO-SQLITE-OWNER-RW',categoria:'general',tags:[],fechaRegistro:'2026-01-01'}]);
+ const antes=JSON.stringify(owner.leer());registrarStoreMemoriasPorDefecto(owner);
+ registrarFuenteMemoriasPorDefecto({leerMemorias:()=>owner.leer(),firma:()=> 'owner-real-rw'});
+ try {
+  await tool('sint-a','guardar_memoria',{sujeto:'solo-a-sqlite',dato:'DATO-SOLO-A-SQLITE'});
+  assert.equal(JSON.stringify(owner.leer()),antes,'crear no escribe owner SQLite');
+  for(const [h,args]of [['listar_memorias',{}],['buscar_memoria',{consulta:'solo-a-sqlite'}],['buscar_recuerdo_semantico',{consulta:'solo-a-sqlite'}]]) {
+   const r=await tool('sint-a',h,args);assert.ok(!r.includes('SECRETO-SQLITE-OWNER-RW'),h);
+  }
+  await tool('sint-a','olvidar_memoria',{criterio:'solo-a-sqlite'});
+  assert.ok(!fs.readFileSync(path.join(DIR,'tenants','sint-a','brain_memory.json'),'utf8').includes('DATO-SOLO-A-SQLITE'),'borra A realmente');
+  assert.equal(JSON.stringify(owner.leer()),antes,'borrar A no modifica owner SQLite');
+ }finally{registrarStoreMemoriasPorDefecto(null);registrarFuenteMemoriasPorDefecto(null);db.close();}
 });
