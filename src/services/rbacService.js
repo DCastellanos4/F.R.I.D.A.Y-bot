@@ -27,7 +27,8 @@ export const HERRAMIENTAS_PERMITIDAS_USUARIO_POR_DEFECTO = Object.freeze([]);
  *  global_sistema    monitores, colas o configuracion del sistema con canal del propietario
  *  datos_propietario datos personales aun SIN aislar por tenant
  *  datos_tenant      datos con ruta/ambito de tenant verificados con test de servicio
- *  sin_estado        consulta externa o utilidad sin datos del propietario
+ *  sin_estado        consulta externa o utilidad cuyo UNICO origen de datos es la entrada del
+ *                    tenant o una fuente publica fija (verificado leyendo el camino de datos)
  */
 export const CLASIFICACION_HERRAMIENTAS = Object.freeze({
   host: [
@@ -37,7 +38,7 @@ export const CLASIFICACION_HERRAMIENTAS = Object.freeze({
     'crear_backup_sesion', 'verificar_backup_sesion', 'auditar_dependencias',
     'configurar_vigilancia_dependencias', 'informe_metricas', 'configurar_informe_metricas',
     'consultar_estado_servidor', 'descargar_multimedia', 'capturar_pagina', 'navegar_y_leer_noticia',
-    'resumir_enlace', 'generar_wiki', 'proximas_llegadas_transporte', 'registrar_parada_favorita',
+    'resumir_enlace', 'generar_wiki', 'generar_changelog', 'verificar_oferta', 'proximas_llegadas_transporte', 'registrar_parada_favorita',
     'listar_paradas_favoritas', 'eliminar_parada_favorita'
   ],
   credenciales: [
@@ -69,7 +70,7 @@ export const CLASIFICACION_HERRAMIENTAS = Object.freeze({
     'registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones',
     'configurar_presupuesto', 'estado_presupuestos', 'escribir_diario', 'leer_diario', 'preguntar_documentos',
     'sugerir_menu', 'recomendar_serie_pelicula', 'iniciar_simulacro_entrevista', 'analizar_cv_oferta',
-    'resumir_apuntes', 'priorizar_ideas'
+    'resumir_apuntes', 'priorizar_ideas', 'consultar_clima'
   ],
   datos_tenant: [
     'guardar_memoria', 'buscar_memoria', 'listar_memorias', 'olvidar_memoria', 'buscar_recuerdo_semantico',
@@ -80,8 +81,7 @@ export const CLASIFICACION_HERRAMIENTAS = Object.freeze({
     'eliminar_fecha_senalada'
   ],
   sin_estado: [
-    'consultar_clima', 'obtener_noticias_actuales', 'resumen_deportivo', 'buscar_producto', 'verificar_oferta',
-    'generar_changelog', 'guiar_depuracion'
+    'obtener_noticias_actuales', 'resumen_deportivo', 'buscar_producto', 'guiar_depuracion'
   ]
 });
 

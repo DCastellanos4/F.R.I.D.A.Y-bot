@@ -172,21 +172,21 @@ test('desconocidos no crean tenants; identidad exacta de tenant registrado resue
 });
 
 test('RBAC: propietario intacto; resto denegado por defecto; desconocidos denegados', () => {
-  const catalogo = new Set(['consultar_clima', 'execute_bash_command', 'manage_tunnel']);
+  const catalogo = new Set(['obtener_noticias_actuales', 'execute_bash_command', 'manage_tunnel']);
   for (const h of catalogo) {
     assert.equal(puedeEjecutarHerramienta({ tenantId: undefined, herramienta: h, catalogo }).permitido, true);
     assert.equal(puedeEjecutarHerramienta({ tenantId: 'propietario', herramienta: h, catalogo }).permitido, true);
   }
   const rolDe = (t) => (t === 'sint-a' ? 'usuario' : null);
-  for (const h of ['consultar_clima', 'execute_bash_command', 'manage_tunnel', 'inventada']) {
+  for (const h of ['obtener_noticias_actuales', 'execute_bash_command', 'manage_tunnel', 'inventada']) {
     const r = puedeEjecutarHerramienta({ tenantId: 'sint-a', herramienta: h, catalogo, rolDe });
     assert.equal(r.permitido, false, `usuario sin lista blanca: ${h}`);
   }
-  assert.equal(puedeEjecutarHerramienta({ tenantId: 'sint-a', herramienta: 'consultar_clima', catalogo, rolDe, permitidasUsuario: ['consultar_clima'] }).permitido, true);
-  assert.equal(puedeEjecutarHerramienta({ tenantId: 'sint-a', herramienta: 'execute_bash_command', catalogo, rolDe, permitidasUsuario: ['consultar_clima'] }).permitido, false);
+  assert.equal(puedeEjecutarHerramienta({ tenantId: 'sint-a', herramienta: 'obtener_noticias_actuales', catalogo, rolDe, permitidasUsuario: ['obtener_noticias_actuales'] }).permitido, true);
+  assert.equal(puedeEjecutarHerramienta({ tenantId: 'sint-a', herramienta: 'execute_bash_command', catalogo, rolDe, permitidasUsuario: ['obtener_noticias_actuales'] }).permitido, false);
   assert.equal(puedeEjecutarHerramienta({ tenantId: 'sint-a', herramienta: 'inventada', catalogo, rolDe, permitidasUsuario: ['inventada'] }).permitido, false, 'fuera de catalogo');
-  assert.equal(puedeEjecutarHerramienta({ tenantId: 'fantasma', herramienta: 'consultar_clima', catalogo, rolDe, permitidasUsuario: ['consultar_clima'] }).permitido, false, 'tenant desconocido');
-  assert.equal(puedeEjecutarHerramienta({ tenantId: 'MAL ID', herramienta: 'consultar_clima', catalogo }).permitido, false);
+  assert.equal(puedeEjecutarHerramienta({ tenantId: 'fantasma', herramienta: 'obtener_noticias_actuales', catalogo, rolDe, permitidasUsuario: ['obtener_noticias_actuales'] }).permitido, false, 'tenant desconocido');
+  assert.equal(puedeEjecutarHerramienta({ tenantId: 'MAL ID', herramienta: 'obtener_noticias_actuales', catalogo }).permitido, false);
 });
 
 test('libro de tokens: persistente, por tenant/dia/modelo, solo mide', () => {
