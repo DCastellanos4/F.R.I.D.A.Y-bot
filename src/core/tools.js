@@ -2061,6 +2061,14 @@ export const herramientasJarvis = [
   }
 ];
 
+/** Catalogo CERRADO de nombres de herramientas declaradas. Unico origen
+ *  valido para etiquetas de telemetria: un nombre emitido por el LLM que no
+ *  este en este set NUNCA llega a un label/span (cardinalidad y secretos:
+ *  una regex no basta, un secreto alfanumerico la cumpliria). */
+export const NOMBRES_HERRAMIENTAS_JARVIS = new Set(
+  herramientasJarvis.map((h) => h && h.function && h.function.name).filter(Boolean)
+);
+
 /**
  * Mapa intencion -> herramientas, usado por el enrutador hibrido
  * (regex primero, clasificador por modelo como respaldo).

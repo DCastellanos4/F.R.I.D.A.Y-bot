@@ -16,7 +16,9 @@
  * Activacion por entorno (todo opcional y con no-op seguro):
  *   DAVIS_OTEL_ENABLED=true            apagado por defecto
  *   DAVIS_OTEL_ENDPOINT                def: http://127.0.0.1:4318/v1/traces
- *   DAVIS_OTEL_SERVICIO                def: jarvis
+ *   DAVIS_OTEL_SERVICIO                def: por proceso (jarvis-whatsapp /
+ *                                        jarvis-api en sus entrypoints; 'jarvis'
+ *                                        como ultimo recurso)
  *   DAVIS_METRICS_ENABLED              def: sigue a DAVIS_OTEL_ENABLED
  *
  * Strict Policy: Zero Emojis.
@@ -77,7 +79,8 @@ async function cargarDepsTrazas() {
     const api = await import('@opentelemetry/api');
     const sdk = await import('@opentelemetry/sdk-trace-node');
     const { OTLPTraceExporter } = await import('@opentelemetry/exporter-trace-otlp-http');
-    return { api, sdk, OTLPTraceExporter };
+    const { Resource } = await import('@opentelemetry/resources');
+    return { api, sdk, OTLPTraceExporter, Resource };
   } catch {
     return null;
   }
@@ -117,14 +120,18 @@ export async function iniciarObservabilidad(opts = {}) {
     const deps = await cargarDepsTrazas();
     if (deps) {
       try {
-        const { api, sdk, OTLPTraceExporter } = deps;
+        const { api, sdk, OTLPTraceExporter, Resource } = deps;
         const endpoint = opts.endpoint || process.env.DAVIS_OTEL_ENDPOINT || 'http://127.0.0.1:4318/v1/traces';
+        const servicio = opts.servicio || process.env.DAVIS_OTEL_SERVICIO || 'jarvis';
         const processor = opts.spanProcessor ||
           new sdk.BatchSpanProcessor(new OTLPTraceExporter({ url: endpoint }));
-        const provider = new sdk.NodeTracerProvider({ spanProcessors: [processor] });
+        // service.name EXPLICITO en el resource: sin el, Jaeger agrupa todo
+        // bajo "unknown_service:node" y no se distingue whatsapp de API.
+        const resource = Resource.default().merge(new Resource({ 'service.name': servicio }));
+        const provider = new sdk.NodeTracerProvider({ resource, spanProcessors: [processor] });
         provider.register();
         estado.provider = provider;
-        estado.tracer = api.trace.getTracer(opts.servicio || process.env.DAVIS_OTEL_SERVICIO || 'jarvis');
+        estado.tracer = api.trace.getTracer(servicio);
         estado.trazasActivas = true;
         console.log('[Observabilidad] Trazas OTel activas (OTLP HTTP).');
       } catch (err) {

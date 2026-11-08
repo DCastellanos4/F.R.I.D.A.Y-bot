@@ -37,7 +37,7 @@ import { iniciarObservabilidad, atenderMetricas } from './src/observability/tele
 
 // Observabilidad (Mejora 3): OTel + Prometheus, apagada salvo
 // DAVIS_OTEL_ENABLED=true. No-op seguro si las deps faltan.
-iniciarObservabilidad({ puertoMetricas: Number(process.env.DAVIS_METRICS_PUERTO_API || 9465) })
+iniciarObservabilidad({ servicio: 'jarvis-api', puertoMetricas: Number(process.env.DAVIS_METRICS_PUERTO_API || 9465) })
   .catch((e) => console.error('[Observabilidad] init fallido:', e.message));
 
 const PUERTO = config.port;

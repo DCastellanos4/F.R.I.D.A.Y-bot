@@ -86,6 +86,38 @@ test('jerarquia de spans y TraceId unico en una consulta con tool', async () => 
   assert.equal(traces.size, 1, 'un solo TraceId de extremo a extremo');
 });
 
+test('service.name explicito en el resource (nunca unknown_service:node)', async () => {
+  await iniciarObservabilidad({ forzarTrazas: true, spanProcessor: processor, servicio: 'jarvis-prueba-svc' });
+  await conSpan('sonda', {}, () => 'ok');
+  const spans = exporter.getFinishedSpans();
+  assert.ok(spans.length > 0, 'span exportado');
+  assert.equal(spans[0].resource.attributes['service.name'], 'jarvis-prueba-svc');
+});
+
+test('label herramienta: solo catalogo cerrado; arbitrario o inexistente -> desconocida', async () => {
+  await iniciarObservabilidad({ forzarTrazas: true, forzarMetricas: true, spanProcessor: processor });
+  // 1) Secreto alfanumerico: cumpliria una regex de identificador.
+  const SECRETO_ALNUM = 'sk9f8wefuhbwef8734hbf';
+  // 2) Herramienta inexistente sintacticamente valida.
+  const INEXISTENTE = 'borrar_todo_el_sistema';
+  await consultarJarvis('prueba', [], {
+    chatId: CHAT_ID,
+    chatCompletion: clienteGuion([
+      { llama: SECRETO_ALNUM },
+      { llama: INEXISTENTE },
+      { llama: 'consultar_clima' },
+      { texto: 'Hecho, senor.' }
+    ]),
+    ejecutores: { consultar_clima: async () => 'sol' }
+  });
+  const labels = exporter.getFinishedSpans()
+    .filter((sp) => sp.name === 'tool')
+    .map((sp) => sp.attributes['herramienta']);
+  assert.ok(labels.includes('desconocida'), `arbitrario -> desconocida (${labels})`);
+  assert.ok(labels.includes('consultar_clima'), `catalogo pasa tal cual (${labels})`);
+  assert.ok(!labels.includes(SECRETO_ALNUM) && !labels.includes(INEXISTENTE), `sin nombres fuera de catalogo (${labels})`);
+});
+
 test('PRIVACIDAD: ningun atributo contiene el texto del mensaje ni argumentos', async () => {
   await iniciarObservabilidad({ forzarTrazas: true, forzarMetricas: true, spanProcessor: processor });
   await consultarJarvis(`que tiempo hace ${MENSAJE_SECRETO}`, [], {

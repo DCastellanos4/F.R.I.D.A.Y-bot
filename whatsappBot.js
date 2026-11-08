@@ -461,7 +461,7 @@ function inicializarServiciosProactivos() {
 export async function iniciarWhatsApp() {
   // Observabilidad (Mejora 3): OTel + Prometheus, apagada salvo
   // DAVIS_OTEL_ENABLED=true. No-op seguro si las deps faltan.
-  iniciarObservabilidad({ puertoMetricas: Number(process.env.DAVIS_METRICS_PUERTO_WS || 9464) })
+  iniciarObservabilidad({ servicio: 'jarvis-whatsapp', puertoMetricas: Number(process.env.DAVIS_METRICS_PUERTO_WS || 9464) })
     .catch((e) => console.error('[Observabilidad] init fallido:', e.message));
   const { state, saveCreds } = await useMultiFileAuthState(CARPETA_AUTH);
   const { version } = await fetchLatestBaileysVersion();

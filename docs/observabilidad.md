@@ -110,6 +110,44 @@ algo explicitamente habilitado.
      HELP/TYPE (conectividad disenada, desde el host y desde un contenedor).
    - `curl 127.0.0.1:9464/metrics` NO responde (bind solo al gateway).
    - Desde fuera del VPS, esos puertos NO responden (firewall + loopback).
+
+### 5. Firewall (regla necesaria, verificada en produccion)
+
+El firewall del VPS es restrictivo. Los exporters del bot escuchan en
+172.30.50.1 (la IP del host en el bridge), asi que los contenedores de
+Prometheus entran por la interfaz del bridge: hay que PERMITIR ese trafico
+antes de la regla REJECT/DROP general de INPUT:
+
+    # iptables (persistir con netfilter-persistent o el mecanismo del VPS)
+    iptables -I INPUT -i br-<id_bridge_davis> -s 172.30.50.0/24 \
+      -p tcp -m multiport --dports 9464,9465 -j ACCEPT
+
+  - El nombre de la interfaz sale de `docker network inspect` (br-<id>).
+  - Regla estrecha: solo la subred interna del stack, solo 9464/9465.
+  - Sin esta regla, el scrape aparece como DOWN aunque el listener exista.
+  - No abrir 9464/9465 a otras redes ni al exterior.
+
+### 6. Runbook de recuperacion
+
+- Stack caido: `docker compose -f deploy/observabilidad/docker-compose.yml up -d`
+  y verificar `docker compose ps` (3 servicios Up).
+- Bot sin trazas en Jaeger: comprobar log de arranque del pm2 correspondiente;
+  con DAVIS_OTEL_ENABLED=true un fallo es RUIDOSO (mensaje ERROR en log).
+  Causas tipicas: stack caido, endpoint 4318 no alcanzable, deps sin instalar
+  (npm ci tras pull).
+- Scrape DOWN en Prometheus: revisar (1) listeners del bot (`ss -tlnp | grep
+  946[45]` deben estar en 172.30.50.1), (2) regla de firewall de la seccion 5,
+  (3) que el .env de produccion tiene DAVIS_METRICS_HOST=172.30.50.1 y
+  DAVIS_METRICS_REDES_PERMITIDAS=172.30.50.0/24, y reiniciar con
+  `pm2 restart <proceso> --update-env`.
+- Trazas con service.name "unknown_service:node": la version del codigo no
+  fija el resource; actualizar a la version que incluye el nombre por
+  proceso (jarvis-whatsapp / jarvis-api) y reiniciar.
+- Grafana sin datos (paneles "No data"): Prometheus sin series todavia (el
+  bot no ha procesado actividad) o scrape DOWN; comprobar primero
+  http://127.0.0.1:9090/targets (via SSH tunnel), luego generar actividad
+  real. No cerrar la verificacion con paneles vacios.
+
    - `ss -tlnp` en el VPS: NINGUN listener de Jaeger/Prometheus/Grafana en
      0.0.0.0 (solo 127.0.0.1). Los listeners del bot en 172.30.50.1, no en
      0.0.0.0.
