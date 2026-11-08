@@ -172,6 +172,7 @@ export function aislarOpcionesTenant(opciones, dataDir) {
     chatId: claveChatTenant(tid, opciones.chatId),
     rutaArchivoMemorias: rutaDatosTenant(dataDir, tid, 'brain_memory.json'),
     storePath: undefined,
+    semanticaSoloArchivo: true,
     vectorsPath: rutaDatosTenant(dataDir, tid, 'knowledge_vectors.json'),
     rutaVectores: undefined,
     rutaArchivoGrafo: rutaDatosTenant(dataDir, tid, 'knowledge_graph.json')

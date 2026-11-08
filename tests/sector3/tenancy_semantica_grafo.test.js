@@ -81,6 +81,7 @@ test('aislarOpcionesTenant: fuerza rutas y chatId del tenant, ignora overrides; 
   assert.equal(t.rutaArchivoMemorias, path.join(BASE, 'tenants', 'sint-a', 'brain_memory.json'));
   assert.equal(t.vectorsPath, path.join(BASE, 'tenants', 'sint-a', 'knowledge_vectors.json'));
   assert.equal(t.storePath, undefined);
+  assert.equal(t.semanticaSoloArchivo, true);
   assert.throws(() => aislarOpcionesTenant({ tenantId: '../x' }, BASE));
 });
 

@@ -1925,6 +1925,7 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
     const memSemanticas = await buscarMemoriaSemantica(mensajeUsuario, {
       storePath: opciones.rutaArchivoMemorias || opciones.storePath,
       vectorsPath: opciones.vectorsPath || opciones.rutaVectores,
+      soloArchivo: opciones.semanticaSoloArchivo === true,
       topK: opciones.topKMemorias || 4,
       minScore: opciones.minScoreMemoria || 0.15
     });
