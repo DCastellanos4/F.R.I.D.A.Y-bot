@@ -882,7 +882,8 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
           minutosEnElFuturo: args.minutosEnElFuturo,
           hora: args.hora,
           fecha: args.fecha,
-          inmediato: args.inmediato
+          inmediato: args.inmediato,
+          tenantId: opciones.tenantId
         });
         if (res.ok) {
           if (res.inmediato) {
@@ -894,14 +895,14 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
           resultadoTool = `No ha sido posible programar el mensaje, señor. Detalle: ${res.error}`;
         }
       } else if (nombreFuncion === 'listar_mensajes_programados') {
-        const lista = listarMensajesProgramados(true, { rutaArchivo: opciones.rutaArchivoProgramados });
+        const lista = listarMensajesProgramados(true, { rutaArchivo: opciones.rutaArchivoProgramados, tenantId: opciones.tenantId });
         if (lista.length === 0) {
           resultadoTool = 'No hay ningún mensaje de WhatsApp programado pendiente de envío, señor.';
         } else {
           resultadoTool = 'Mensajes de WhatsApp programados pendientes:\n' + lista.map((m, i) => `${i + 1}. [${m.fechaHoraLocal}] Para +${m.numero}: "${m.mensaje}" (ID: ${m.id})`).join('\n');
         }
       } else if (nombreFuncion === 'cancelar_mensaje_programado') {
-        const res = cancelarMensajeProgramado(args.criterio, { rutaArchivo: opciones.rutaArchivoProgramados });
+        const res = cancelarMensajeProgramado(args.criterio, { rutaArchivo: opciones.rutaArchivoProgramados, tenantId: opciones.tenantId });
         if (res.ok) {
           resultadoTool = res.mensaje || 'Mensaje programado cancelado con éxito, señor.';
         } else {

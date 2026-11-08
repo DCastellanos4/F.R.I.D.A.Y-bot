@@ -237,7 +237,16 @@ export function calcularTimestampMensaje({ minutosEnElFuturo = null, hora = null
 /**
  * Programa o envía un mensaje de WhatsApp para su entrega (inmediata o futura).
  */
-export function programarMensaje({ numero, mensaje, minutosEnElFuturo = null, hora = null, fecha = null, inmediato = false }) {
+// Dueño de un registro de cola: sin campo o 'propietario' = propietario (formato
+// historico intacto). Otro valor = tenant no propietario.
+function duenoDe(m) {
+  return m && m.tenantId ? m.tenantId : 'propietario';
+}
+function esDe(m, tenantId) {
+  return duenoDe(m) === (tenantId || 'propietario');
+}
+
+export function programarMensaje({ numero, mensaje, minutosEnElFuturo = null, hora = null, fecha = null, inmediato = false, tenantId = undefined }) {
   if (!mensaje || !String(mensaje).trim()) {
     return { ok: false, error: 'Debe especificar el texto del mensaje a enviar.' };
   }
@@ -294,7 +303,8 @@ export function programarMensaje({ numero, mensaje, minutosEnElFuturo = null, ho
     intentos: 0,
     ultimoError: null,
     whatsappId: null,
-    creadoEn: new Date().toISOString()
+    creadoEn: new Date().toISOString(),
+    ...(tenantId && tenantId !== 'propietario' ? { tenantId: String(tenantId) } : {})
   };
 
   const lista = leerMensajesProgramados();
@@ -321,7 +331,7 @@ export function programarMensaje({ numero, mensaje, minutosEnElFuturo = null, ho
  * Consulta la lista de mensajes programados.
  */
 export function listarMensajesProgramados(soloPendientes = true, deps = {}) {
-  const lista = leerMensajesProgramados(deps);
+  const lista = leerMensajesProgramados(deps).filter(m => esDe(m, deps.tenantId));
   if (soloPendientes) {
     return lista.filter(m => !m.enviado);
   }
@@ -332,12 +342,17 @@ export function listarMensajesProgramados(soloPendientes = true, deps = {}) {
  * Cancela un mensaje programado según criterio (ID, teléfono, texto o '*' para todos).
  */
 export function cancelarMensajeProgramado(criterio, deps = {}) {
-  const lista = leerMensajesProgramados(deps);
+  const todas = leerMensajesProgramados(deps);
+  // Solo se ve y se cancela lo PROPIO: un tenant nunca toca la cola de otro,
+  // ni con '*' ni por id/telefono/texto.
+  const lista = todas.filter(m => esDe(m, deps.tenantId));
+  const ajenas = todas.filter(m => !esDe(m, deps.tenantId));
+  const guardar = (propias) => guardarMensajesProgramados([...propias, ...ajenas], deps);
   const crit = (criterio || '').toString().toLowerCase().trim();
 
   if (crit === '*' || crit === 'todos' || crit === 'todas' || crit.includes('todo') || crit.includes('toda')) {
     const pendientes = lista.filter(m => !m.enviado).length;
-    guardarMensajesProgramados([], deps);
+    guardar([]);
     return {
       ok: true,
       mensaje: `Se han cancelado todos los envíos programados del sistema (${pendientes} pendientes eliminados), señor.`
@@ -357,7 +372,7 @@ export function cancelarMensajeProgramado(criterio, deps = {}) {
   }
 
   const [eliminado] = lista.splice(index, 1);
-  guardarMensajesProgramados(lista, deps);
+  guardar(lista);
 
   return {
     ok: true,
@@ -386,6 +401,9 @@ export async function despacharMensajesPendientes() {
   const modificados = new Map();
 
   for (const m of lista) {
+    // Fail-closed: el canal de envio es el del PROPIETARIO. Un registro de otro
+    // tenant nunca se despacha por ese canal (queda pendiente, sin tocar).
+    if (duenoDe(m) !== 'propietario') continue;
     if (!m.enviado && m.timestamp <= ahora) {
       huboCambios = true;
 
