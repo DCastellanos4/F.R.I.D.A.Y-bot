@@ -193,6 +193,12 @@ export async function iniciarObservabilidad(opts = {}) {
   if (estado.metricasActivas && puerto > 0) {
     try {
       const { default: http } = await import('node:http');
+      // Bind configurable y EXPLICITO: 127.0.0.1 (def, nadie mas lo alcanza)
+      // o la IP gateway de la red bridge interna del stack (p. ej.
+      // 172.30.50.1: solo la subred interna y el propio host; NUNCA 0.0.0.0
+      // indiscriminado). Un listener en 127.0.0.1 NO es alcanzable desde
+      // los contenedores: el bridge entra por otra interfaz.
+      const hostBind = opts.hostMetricas ?? process.env.DAVIS_METRICS_HOST ?? '127.0.0.1';
       estado.servidorMetricas = http.createServer((req, res) => {
         atenderMetricas(req, res).then((atendida) => {
           if (!atendida) {
@@ -205,9 +211,9 @@ export async function iniciarObservabilidad(opts = {}) {
       });
       await new Promise((resolve, reject) => {
         estado.servidorMetricas.once('error', reject);
-        estado.servidorMetricas.listen(puerto, '127.0.0.1', resolve);
+        estado.servidorMetricas.listen(puerto, hostBind, resolve);
       });
-      console.log(`[Observabilidad] /metrics de este proceso en http://127.0.0.1:${puerto}/metrics (solo loopback).`);
+      console.log(`[Observabilidad] /metrics de este proceso en http://${hostBind}:${puerto}/metrics`);
     } catch (err) {
       estado.error = `servidor metricas: ${err.message}`;
       console.error(`[Observabilidad] ERROR: no se pudo abrir el puerto de metricas ${puerto}:`, err.message);
@@ -264,25 +270,35 @@ export async function reiniciarObservabilidadParaPruebas() {
  * Ejecuta fn dentro de un span activo (no-op transparente si las trazas
  * estan apagadas). Los atributos deben ser SOLO metadatos (ver privacidad).
  */
+/** Enum Duro de clases de error permitidas (labels y exception.type).
+ *  Una clase recibida no es de confianza: puede contener un secreto o ser
+ *  infinitamente variable. Lo no reconocido va a 'otro'. */
+const CLASES_ERROR_PERMITIDAS = new Set([
+  'error', 'typeerror', 'referenceerror', 'syntaxerror', 'rangeerror',
+  'evalerror', 'urierror', 'aggregateerror', 'aborterror',
+  'timeout', 'red', 'econnrefused', 'econnreset', 'enotfound', 'etimedout',
+  'socketerror', 'cuota', 'quota', 'ratelimit', 'rate_limit',
+  'config_required', 'validacion', 'estado', 'resultado_error', 'otro'
+]);
+
+/** Clase de error acotada: enum permitido o 'otro'. Nunca un mensaje, un
+ *  codigo arbitrario ni una clase no reconocida (secretos / cardinalidad). */
+function claseErrorLabel(err) {
+  const cruda = String(err && (err.name || err.tipo || err.code) || 'error');
+  const normalizada = cruda.toLowerCase().replace(/[^a-z0-9_]/g, '');
+  return CLASES_ERROR_PERMITIDAS.has(normalizada) ? normalizada : 'otro';
+}
+
 /**
- * Registra un error en el span SIN contenido arbitrario: solo la CLASE
- * (err.name, acotada). Nunca err.message ni stack: pueden arrastrar
- * secretos o datos privados a los atributos exception.* del span.
+ * Registra un error en el span SIN contenido arbitrario: solo la CLASE del
+ * enum. Nunca err.message ni stack: pueden arrastrar secretos o datos
+ * privados a los atributos exception.* del span.
  */
 function registrarErrorEnSpan(span, err) {
   try {
-    span.recordException({ name: String(err && err.name || 'Error').slice(0, 40), message: '' });
+    span.recordException({ name: claseErrorLabel(err), message: '' });
     span.setStatus({ code: 2, message: 'error' }); // 2 = ERROR, mensaje estatico
   } catch { /* nada */ }
-}
-
-/** Clase de error acotada para labels: alfanumerica corta o 'error'.
- *  Nunca un mensaje ni un codigo arbitrario (podrian filtrar secretos o
- *  disparar la cardinalidad). */
-function claseErrorLabel(err) {
-  const cruda = String(err && (err.name || err.tipo || err.code) || 'error');
-  const limpia = cruda.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 30);
-  return limpia || 'error';
 }
 
 export async function conSpan(nombre, atributos, fn) {

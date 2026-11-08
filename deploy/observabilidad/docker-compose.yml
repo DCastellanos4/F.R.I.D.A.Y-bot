@@ -16,8 +16,13 @@
 #   16686 Jaeger UI      3001 Grafana (3000 lo ocupa la API del bot)
 #   9090  Prometheus SOLO dentro de la red interna (no se publica al host)
 #
-# El bot (pm2, en el host) permite el scrape desde la subred interna con:
-#   DAVIS_METRICS_REDES_PERMITIDAS=172.30.50.0/24  (en jarvis-estado/.env)
+# El bot (pm2, en el host) bindea sus listeners de metricas a la IP
+# gateway de esta red y permite el scrape solo desde la subred interna:
+#   DAVIS_METRICS_HOST=172.30.50.1
+#   DAVIS_METRICS_REDES_PERMITIDAS=172.30.50.0/24   (en jarvis-estado/.env)
+# Un listener en 127.0.0.1 NO es alcanzable desde los contenedores (el
+# bridge entra por otra interfaz); 172.30.50.1 solo es alcanzable desde
+# esta subred interna y el propio host. NUNCA 0.0.0.0.
 #
 # Uso (executor, en el VPS):
 #   cd deploy/observabilidad && docker compose up -d

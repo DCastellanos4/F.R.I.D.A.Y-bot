@@ -29,19 +29,29 @@ dentro de la red interna. Imagenes multi-arch (arm64 OK).
 
 | Puerto host | Servicio | Publicacion |
 | --- | --- | --- |
-| 9464 | /metrics jarvis-whatsapp (el agente) | 127.0.0.1 (proceso pm2) |
-| 9465 | /metrics jarvis-api | 127.0.0.1 (proceso pm2) |
+| 9464 | /metrics jarvis-whatsapp (el agente) | 172.30.50.1 (gateway del bridge) |
+| 9465 | /metrics jarvis-api | 172.30.50.1 (gateway del bridge) |
 | 4318 | OTLP HTTP (Jaeger) | 127.0.0.1 via port mapping |
 | 16686 | Jaeger UI | 127.0.0.1 via port mapping |
 | 3001 | Grafana | 127.0.0.1 via port mapping (3000 lo ocupa la API) |
 | 9090 | Prometheus | NO publicado al host; solo red interna |
 
-Prometheus scrapea los listeners del host via `host.docker.internal`
-(172.30.50.0/24); el bot lo permite con
-`DAVIS_METRICS_REDES_PERMITIDAS=172.30.50.0/24` en `jarvis-estado/.env`
-(whitelist CIDR estricta, no se debilita la auth de la API: /metrics no
-pide token, se protege por origen; el fail-closed 503 del resto del API
-intacto y la ruta /metrics va antes del gate API_TOKEN, deliberado).
+Reconciliacion de conectividad: un listener bindeado a 127.0.0.1 en el
+host NO es alcanzable desde un contenedor (el bridge entra por otra
+interfaz; `host.docker.internal` resuelve a 172.30.50.1, no a loopback).
+Por eso el bot bindea sus listeners de metricas a la IP GATEWAY del bridge
+(`DAVIS_METRICS_HOST=172.30.50.1`): alcanzable solo desde la subred
+interna y el propio host, NUNCA 0.0.0.0 indiscriminado. El origen del
+scrape es una IP de 172.30.50.0/24, autorizada por la whitelist CIDR
+estricta `DAVIS_METRICS_REDES_PERMITIDAS=172.30.50.0/24` en
+`jarvis-estado/.env`. La auth del API no se debilita: /metrics no pide
+token y se protege por origen; el fail-closed 503 del resto del API esta
+intacto y la ruta /metrics va antes del gate API_TOKEN, deliberado. La
+ruta /metrics del puerto 3000 sigue siendo solo localhost (no la scrapea
+Prometheus; la via son los listeners dedicados).
+Orden de arranque: primero `docker compose up -d` (crea la red y su
+gateway), despues el reinicio pm2; si el bridge no existe al bindear, el
+listener falla RUIDOSO (console.error + estado.error) y el bot sigue.
 
 Acceso a UIs por tunel SSH: `ssh -L 3001:127.0.0.1:3001 -L 16686:127.0.0.1:16686 vps`.
 
@@ -79,20 +89,22 @@ algo explicitamente habilitado.
    (Docker se instala en el VPS via apt `docker.io` + plugin compose;
    alternativa bare metal: apt `prometheus` + repo oficial Grafana +
    binario Jaeger arm64, mismos puertos loopback).
-3. Bot: `DAVIS_OTEL_ENABLED=true` y `DAVIS_METRICS_REDES_PERMITIDAS=172.30.50.0/24`
-   en `jarvis-estado/.env` y reinicio pm2 de `jarvis-whatsapp` y
-   `jarvis-api` con `--update-env`.
+3. Bot en `jarvis-estado/.env` y reinicio pm2 de ambos con `--update-env`:
+   - `DAVIS_OTEL_ENABLED=true`
+   - `DAVIS_METRICS_HOST=172.30.50.1` (gateway del bridge; def: 127.0.0.1)
+   - `DAVIS_METRICS_REDES_PERMITIDAS=172.30.50.0/24`
    - `DAVIS_OTEL_ENDPOINT` (def: `http://127.0.0.1:4318/v1/traces`)
    - `DAVIS_METRICS_PUERTO_WS` (def: 9464) / `DAVIS_METRICS_PUERTO_API` (def: 9465)
    - `DAVIS_METRICS_ENABLED` (def: sigue a `DAVIS_OTEL_ENABLED`)
-   - `DAVIS_METRICS_REDES_PERMITIDAS` (CIDRs permitidos para /metrics;
-     def: ninguna, solo localhost)
 4. Verificacion post-despliegue (obligatoria antes de cerrar):
-   - `curl 127.0.0.1:9464/metrics` y `127.0.0.1:9465/metrics` devuelven HELP/TYPE.
+   - `curl 172.30.50.1:9464/metrics` y `172.30.50.1:9465/metrics` devuelven
+     HELP/TYPE (conectividad disenada, desde el host y desde un contenedor).
+   - `curl 127.0.0.1:9464/metrics` NO responde (bind solo al gateway).
    - Desde fuera del VPS, esos puertos NO responden (firewall + loopback).
    - `ss -tlnp` en el VPS: NINGUN listener de Jaeger/Prometheus/Grafana en
      0.0.0.0 (solo 127.0.0.1); comprobar tambien los auxiliares de Jaeger
-     (14250/14268/14269/6831/6832 no aparecen fuera del bridge).
+     (14250/14268/14269/6831/6832 no aparecen fuera del bridge). Los
+     listeners del bot en 172.30.50.1, no en 0.0.0.0.
    - Un mensaje real de prueba deja un trace en Jaeger con spans
      `mensaje_entrante → consulta → llm_call → tool → db_write` y un solo
      TraceId.

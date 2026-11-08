@@ -259,16 +259,18 @@ test('errores en spans: nunca mensaje arbitrario, solo clase acotada', async () 
   assert.equal(span.status.message, 'error', 'status estatico');
 });
 
-test('label de error acotada: clases raras se normalizan', async () => {
+test('label de error: enum permitido o "otro" (clase recibida no es confianza)', async () => {
   await iniciarObservabilidad({ forzarMetricas: true, forzarTrazas: false });
   registrarFinTool({ herramienta: 't-x', duracionSeg: 0.01, error: { tipo: `sk-secreto-123 ${MENSAJE_SECRETO}` } });
   registrarFinTool({ herramienta: 't-x', duracionSeg: 0.01, error: new TypeError('boom') });
+  registrarFinTool({ herramienta: 't-x', duracionSeg: 0.01, error: { name: 'ClaseInventada123' } });
   const salida = await atenderMetricasLocal();
   const lineas = salida.split('\n').filter((l) => l.startsWith('jarvis_tool_errores_total{'));
   for (const l of lineas) {
     assert.ok(!l.includes('sk-secreto'), `label sin secreto (${l})`);
     assert.ok(!l.includes(MENSAJE_SECRETO), `label sin privado (${l})`);
+    assert.ok(!l.includes('ClaseInventada'), `clase no reconocida fuera (${l})`);
   }
-  assert.ok(lineas.some((l) => l.includes('tipo="sksecreto123textoprivadoquenun"')), 'clase sanitizada y truncada a 30');
-  assert.ok(lineas.some((l) => l.includes('tipo="typeerror"')), 'clase TypeError');
+  assert.ok(lineas.some((l) => l.includes('tipo="typeerror"')), 'clase TypeError del enum');
+  assert.ok(lineas.filter((l) => l.includes('tipo="otro"')).length >= 1, 'no reconocidas van a "otro"');
 });
