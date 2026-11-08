@@ -2769,6 +2769,11 @@ export async function consultarJarvisEnAmbito(mensajeUsuario, historial = [], op
     if (!dec || dec.permitido !== true) return 'Limite de uso alcanzado para este usuario.';
   }
   if (opciones && typeof opciones === 'object') opciones = aislarOpcionesTenant(opciones, DATA_DIR_TENANCY);
-  return conSpan('consulta', { sesion: hashSesion(opciones && opciones.chatId) }, () => consultarJarvisInterna(mensajeUsuario, historial, opciones));
+  try {
+    return await conSpan('consulta', { sesion: hashSesion(opciones && opciones.chatId) }, () => consultarJarvisInterna(mensajeUsuario, historial, opciones));
+  } catch (e) {
+    if (e?.name === 'LimiteUso') return 'Limite de uso alcanzado para este usuario.';
+    throw e;
+  }
 }
 
