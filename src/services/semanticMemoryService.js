@@ -86,7 +86,11 @@ export function registrarFuenteMemoriasPorDefecto(fuente) {
 }
 
 function fuenteDe(options, storePath) {
-  const fuente = (options && options.fuente) || fuenteMemoriasPorDefecto;
+  // Una ruta de almacen EXPLICITA (la de un tenant) nunca cae a la fuente por
+  // defecto (SQLite del propietario): solo la fuente inyectada explicitamente
+  // en options.fuente puede sustituirla.
+  const rutaExplicita = !!(options && typeof options === 'object' && (options.storePath || options.memoryFilePath));
+  const fuente = (options && options.fuente) || (rutaExplicita ? null : fuenteMemoriasPorDefecto);
   if (fuente && typeof fuente.leerMemorias === 'function' && typeof fuente.firma === 'function') {
     return fuente;
   }

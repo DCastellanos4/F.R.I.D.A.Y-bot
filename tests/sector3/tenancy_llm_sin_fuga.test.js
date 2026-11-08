@@ -74,3 +74,24 @@ test('control: el propietario SI recibe sus datos (el stub detectaria una fuga)'
   await consultarJarvisEnAmbito('que sabes de ana y del tesoro azul zeta', [], { chatId: 'chat1', chatCompletion: llmStub(cap), memoryRepository: repoOwner });
   assert.ok(cap.join('\n').includes('SECRETO-OWNER-SQLITE'));
 });
+
+test('con la fuente SQLite del propietario REGISTRADA por defecto (como en prod), la semantica de un tenant sigue usando su ruta', async () => {
+  const S = await import('../../src/services/semanticMemoryService.js');
+  S.registrarFuenteMemoriasPorDefecto({
+    leerMemorias: () => mem('o9', 'tesoro azul zeta SECRETO-OWNER-FUENTE-DEFECTO'),
+    firma: () => 'firma-owner'
+  });
+  try {
+    const cap = [];
+    await consultarJarvisEnAmbito('que sabes de ana y del tesoro azul zeta', [], {
+      tenantId: 'sint-a', chatId: 'chat1', chatCompletion: llmStub(cap)
+    });
+    const todo = cap.join('\n');
+    assert.ok(!todo.includes('SECRETO-OWNER-FUENTE-DEFECTO'), 'el LLM del tenant no recibe la fuente por defecto del propietario');
+    assert.ok(todo.includes('DATO-PROPIO-A'));
+    // control: el propietario (sin ruta explicita) SI usa la fuente por defecto
+    const cap2 = [];
+    await consultarJarvisEnAmbito('que sabes de ana y del tesoro azul zeta', [], { chatId: 'chat1', chatCompletion: llmStub(cap2) });
+    assert.ok(cap2.join('\n').includes('SECRETO-OWNER-FUENTE-DEFECTO'), 'control: propietario conserva su fuente');
+  } finally { S.registrarFuenteMemoriasPorDefecto(null); }
+});
