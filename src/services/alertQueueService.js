@@ -108,6 +108,9 @@ export function enqueueAlert(alertData, options = {}) {
     priority: alertData.priority || 'normal',
     ...alertData
   };
+  // Dueño: el canal que drena la cola es el del PROPIETARIO. Una alerta de otro
+  // tenant se etiqueta y nunca sale por ese canal (drainAlerts solo vacia las del propietario).
+  if (options.tenantId && options.tenantId !== 'propietario') normalizedAlert.tenantId = String(options.tenantId);
 
   normalizedAlert.id = normalizedAlert.id || crypto.randomUUID();
   normalizedAlert.timestamp = normalizedAlert.timestamp || new Date().toISOString();
@@ -129,10 +132,11 @@ export function enqueueAlert(alertData, options = {}) {
  */
 export function drainAlerts(options = {}) {
   const queuePath = options.queuePath || DEFAULT_QUEUE_FILE;
-  const pendingAlerts = readAlertsRaw(queuePath);
+  const todas = readAlertsRaw(queuePath);
+  const pendingAlerts = todas.filter((a) => !a || !a.tenantId);
 
-  if (pendingAlerts.length > 0) {
-    writeAlertsRaw([], queuePath);
+  if (todas.length > 0 && pendingAlerts.length > 0) {
+    writeAlertsRaw(todas.filter((a) => a && a.tenantId), queuePath);
   }
 
   return pendingAlerts;
@@ -147,7 +151,7 @@ export function drainAlerts(options = {}) {
  */
 export function peekAlerts(options = {}) {
   const queuePath = options.queuePath || DEFAULT_QUEUE_FILE;
-  return readAlertsRaw(queuePath);
+  return readAlertsRaw(queuePath).filter((a) => !a || !a.tenantId);
 }
 
 /**
@@ -159,7 +163,7 @@ export function peekAlerts(options = {}) {
  */
 export function getQueueLength(options = {}) {
   const queuePath = options.queuePath || DEFAULT_QUEUE_FILE;
-  return readAlertsRaw(queuePath).length;
+  return readAlertsRaw(queuePath).filter((a) => !a || !a.tenantId).length;
 }
 
 /**
@@ -171,7 +175,7 @@ export function getQueueLength(options = {}) {
  */
 export function clearQueue(options = {}) {
   const queuePath = options.queuePath || DEFAULT_QUEUE_FILE;
-  writeAlertsRaw([], queuePath);
+  writeAlertsRaw(readAlertsRaw(queuePath).filter((a) => a && a.tenantId), queuePath);
   return true;
 }
 

@@ -213,7 +213,18 @@ export async function extraerPrecioYTitulo(url) {
   }
 }
 
-export async function vigilarProducto({ url, nombre = null, precioObjetivo }) {
+// Dueño de cada articulo: sin campo o 'propietario' = propietario (formato
+// historico). Un tenant solo ve y modifica lo suyo; la ronda de precios y su
+// canal de alerta son del propietario y nunca procesan articulos ajenos.
+function esDe(item, tenantId) {
+  return (item && item.tenantId ? item.tenantId : 'propietario') === (tenantId || 'propietario');
+}
+function fusionar(todas, propias, tenantId) {
+  return [...propias, ...todas.filter((i) => !esDe(i, tenantId))];
+}
+
+export async function vigilarProducto({ url, nombre = null, precioObjetivo }, deps = {}) {
+  const tid = deps && deps.tenantId;
   const precioObj = parseFloat(precioObjetivo);
   if (isNaN(precioObj) || precioObj <= 0) {
     return { ok: false, error: 'Debes indicar un precio objetivo numérico válido en euros.' };
@@ -222,7 +233,8 @@ export async function vigilarProducto({ url, nombre = null, precioObjetivo }) {
   // Caso especial: actualizar el precio de un producto ya en seguimiento sin necesidad de volver a pasar la URL
   if (!url || typeof url !== 'string' || !url.startsWith('http')) {
     if (nombre && nombre.trim().length > 2) {
-      const lista = leerItems();
+      const todas = leerItems();
+      const lista = todas.filter((i) => esDe(i, tid));
       const nLower = nombre.toLowerCase().trim();
       const itemExistente = lista.find(i => i.nombre.toLowerCase().includes(nLower) || nLower.includes(i.nombre.toLowerCase()));
 
@@ -230,7 +242,7 @@ export async function vigilarProducto({ url, nombre = null, precioObjetivo }) {
         const precioViejo = itemExistente.precioObjetivo;
         itemExistente.precioObjetivo = precioObj;
         itemExistente.alertaDisparada = false;
-        guardarItems(lista);
+        guardarItems(fusionar(todas, lista, tid));
         console.log(`[Sniper] [Sniper Actualizado] "${itemExistente.nombre}" -> Precio objetivo modificado: ${precioViejo}€ ➔ ${precioObj}€`);
         return {
           ok: true,
@@ -253,7 +265,9 @@ export async function vigilarProducto({ url, nombre = null, precioObjetivo }) {
   const fechaStr = new Date().toISOString();
   const urlFinal = data.url || url.trim();
 
-  const lista = leerItems();
+  const todas = leerItems();
+
+  const lista = todas.filter((i) => esDe(i, tid));
 
   // Si la misma URL ya estaba vigilada, actualizarla
   const idxExistente = lista.findIndex(i => i.url === urlFinal);
@@ -261,7 +275,7 @@ export async function vigilarProducto({ url, nombre = null, precioObjetivo }) {
     lista[idxExistente].precioObjetivo = precioObj;
     if (precioActual) lista[idxExistente].precioActual = precioActual;
     lista[idxExistente].alertaDisparada = false;
-    guardarItems(lista);
+    guardarItems(fusionar(todas, lista, tid));
     return {
       ok: true,
       accion: 'actualizado',
@@ -280,11 +294,12 @@ export async function vigilarProducto({ url, nombre = null, precioObjetivo }) {
     disponible: true,
     ultimaComprobacion: fechaStr,
     alertaDisparada: false,
-    activo: true
+    activo: true,
+    ...(tid && tid !== 'propietario' ? { tenantId: String(tid) } : {})
   };
 
   lista.push(nuevo);
-  guardarItems(lista);
+  guardarItems(fusionar(todas, lista, tid));
 
   console.log(`[Sniper] [Sniper Activado] "${nuevo.nombre}" -> Precio actual: ${nuevo.precioActual}€ | Meta: ${nuevo.precioObjetivo}€`);
 
@@ -294,18 +309,22 @@ export async function vigilarProducto({ url, nombre = null, precioObjetivo }) {
   };
 }
 
-export function listarProductosVigilados() {
-  const lista = leerItems();
-  return lista.filter(i => i.activo);
+export function listarProductosVigilados(deps = {}) {
+  const tid = deps && deps.tenantId;
+  const todas = leerItems();
+  const lista = todas.filter((i) => esDe(i, tid));
+  return lista.filter(i => i.activo && esDe(i, tid));
 }
 
-export function cancelarVigilancia(criterio) {
-  const lista = leerItems();
+export function cancelarVigilancia(criterio, deps = {}) {
+  const tid = deps && deps.tenantId;
+  const todas = leerItems();
+  const lista = todas.filter((i) => esDe(i, tid));
   const crit = (criterio || '').toLowerCase().trim();
 
   if (crit === '*' || crit === 'todos' || crit === 'todas' || crit.includes('todo') || crit.includes('toda')) {
     const total = lista.length;
-    guardarItems([]);
+    guardarItems(fusionar(todas, [], tid));
     return { ok: true, mensaje: `Se han cancelado todas las vigilancias activas (${total} artículos eliminados del tracker).` };
   }
 
@@ -315,13 +334,14 @@ export function cancelarVigilancia(criterio) {
   }
 
   const [eliminado] = lista.splice(idx, 1);
-  guardarItems(lista);
+  guardarItems(fusionar(todas, lista, tid));
   return { ok: true, item: eliminado, mensaje: `Vigilancia cancelada para: "${eliminado.nombre}".` };
 }
 
 export async function ejecutarRondaSniper(callbackAlerta = null) {
   const lista = leerItems();
-  const activos = lista.filter(i => i.activo);
+  // Fail-closed: la ronda y su alerta son del propietario; articulos de otro tenant no se procesan.
+  const activos = lista.filter(i => i.activo && esDe(i, 'propietario'));
   if (activos.length === 0) return [];
 
   console.log(`[Sniper] [Sniper] Comprobando precios de ${activos.length} productos vigilados...`);

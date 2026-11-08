@@ -31,3 +31,5 @@ Sin aislar (no probado, global, riesgo alto: datos personales o envios): `contac
 Sin aislar, riesgo medio: `ideas.json`, `study_plans.json`, `skills.json`, `traductor.json`, `recomendador.json`, `digest_cerebro.json`, `fechas_senaladas.json`, `modo_nocturno.json`, `transporte.json`.
 Globales de sistema (no son datos de usuario, pero comparten registro): `ops_config.json`, `manifiesto.json`, `watchdog_state.json`, `metricas*.jsonl`, `*.log`.
 Hoy los protege solo la compuerta cerrada y RBAC vacio (probado sobre todo el catalogo de herramientas), no un aislamiento propio.
+
+Actualizacion: `tracked_items.json` (sniper) y `alerts_queue.json` llevan dueño por registro (propietario = sin campo). La cola de alertas la drena el canal del propietario: las alertas etiquetadas con tenant no salen por ahi. Ningun servicio llama aun a `enqueueAlert` con `tenantId` (los servicios de tenant no estan activos), por lo que el etiquetado es defensa preparada. `calendar_events.json` solo lo usa el briefing del propietario (ninguna herramienta lo expone al LLM); la API de Google Calendar usa credenciales del propietario y no debe ofrecerse a tenants.

@@ -1611,21 +1611,21 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
           url: args.url,
           nombre: args.nombre,
           precioObjetivo: args.precioObjetivo
-        });
+        }, { tenantId: opciones.tenantId });
         if (res.ok) {
           resultadoTool = res.mensaje || `Producto añadido al Sniper con éxito. Nombre: "${res.item.nombre}". Precio actual: ${res.item.precioActual}€. Alerta si baja a: ${res.item.precioObjetivo}€.`;
         } else {
           resultadoTool = `Error al añadir al Sniper: ${res.error}`;
         }
       } else if (nombreFuncion === 'listar_productos_vigilados') {
-        const items = listarProductosVigilados();
+        const items = listarProductosVigilados({ tenantId: opciones.tenantId });
         if (items.length === 0) {
           resultadoTool = 'No hay ningún producto bajo vigilancia en este momento, señor.';
         } else {
           resultadoTool = 'Productos vigilados en el Sniper:\n' + items.map((item, i) => `${i + 1}. [${item.id}] ${item.nombre}: ${item.precioActual}€ -> Meta: ${item.precioObjetivo}€\n   ${item.url}`).join('\n');
         }
       } else if (nombreFuncion === 'cancelar_vigilancia') {
-        const res = cancelarVigilancia(args.criterio);
+        const res = cancelarVigilancia(args.criterio, { tenantId: opciones.tenantId });
         if (res.ok) {
           resultadoTool = res.mensaje || (res.item ? `Vigilancia cancelada para: "${res.item.nombre}".` : 'Vigilancia cancelada con éxito, señor.');
         } else {
