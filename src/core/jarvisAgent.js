@@ -2731,8 +2731,18 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
     if (!tenantsHabilitados()) return 'Acceso no disponible para este usuario.';
     const rol = typeof opciones.rolDeTenant === 'function' ? opciones.rolDeTenant(tid) : null;
     if (rol !== 'usuario') return 'Acceso no disponible para este usuario.';
-    opciones = aislarOpcionesTenant(opciones, DATA_DIR_TENANCY);
   }
+  return consultarJarvisEnAmbito(mensajeUsuario, historial, opciones);
+}
+
+/**
+ * Punto interno: aplica el ambito del tenant (rutas, chatId, puertos del
+ * propietario fuera) y consulta. NO comprueba la compuerta: solo lo llama
+ * consultarJarvis (tras la compuerta) y las pruebas. No esta cableado a ningun
+ * canal de entrada.
+ */
+export async function consultarJarvisEnAmbito(mensajeUsuario, historial = [], opciones = {}) {
+  if (opciones && typeof opciones === 'object') opciones = aislarOpcionesTenant(opciones, DATA_DIR_TENANCY);
   return conSpan('consulta', { sesion: hashSesion(opciones && opciones.chatId) }, () => consultarJarvisInterna(mensajeUsuario, historial, opciones));
 }
 

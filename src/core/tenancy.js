@@ -127,8 +127,11 @@ export function aislarOpcionesTenant(opciones, dataDir) {
   const tid = opciones && opciones.tenantId;
   if (tid === undefined || tid === null || tid === TENANT_PROPIETARIO) return opciones;
   afirmarTenantId(tid);
+  // Puertos inyectados que contienen datos del PROPIETARIO (repositorio de memorias
+  // SQLite del contenedor, buscador de memorias, contactos): un tenant no los hereda.
+  const { memoryRepository, obtenerMemorias, contactosConocidos, ...resto } = opciones;
   return {
-    ...opciones,
+    ...resto,
     chatId: claveChatTenant(tid, opciones.chatId),
     rutaArchivoMemorias: rutaDatosTenant(dataDir, tid, 'brain_memory.json'),
     storePath: undefined,
