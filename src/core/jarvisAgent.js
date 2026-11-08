@@ -717,6 +717,17 @@ function textoResultadoTransporte(res) {
 const CONSULTA_TRENES = /\b(tren|trenes|cercan[ií]as|renfe|ave|alvia|avant)\b/i;
 const AFIRMACION_INCAPACIDAD = /(no dispongo de acceso|sin (la )?(clave|token|credenciales|configuraci[oó]n)|no (puedo|podemos|pueden|tengo|se puede|puedo ahora mismo) (obtener|acceder|consultar|ver|decirte|darte)|no tengo acceso|sin acceso en tiempo real|requiere[ns]? (clave|token|credenciales|configuraci[oó]n)|necesit\w+ (clave|token|credenciales|una clave|configuraci[oó]n))/i;
 
+// Consulta de salidas/llegadas actuales: para estas, los datos DEBEN venir
+// de la herramienta con presentacion determinista verificable; no basta
+// detectar la frase de incapacidad (el modelo tambien puede inventar
+// horarios sin llamar a la tool). Vigilancia/precios van por otra via.
+function esConsultaSalidasTrenes(texto) {
+  const t = String(texto || '');
+  if (!CONSULTA_TRENES.test(t)) return false;
+  if (/\b(vigila|vigilar|avisa|avisame|av[ií]same|precio|billete|baja|comprar)\b/i.test(t)) return false;
+  return /\b(salen|sale|salir|salidas?|llegan|llega|llegadas?|pr[oó]xim[oa]s?|hay|pasan|pasa|ahora)\b/i.test(t);
+}
+
 function repoMemoriaDe(opciones) {
   const repo = opciones && opciones.memoryRepository;
   return {
@@ -1941,6 +1952,61 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
   traza.intenciones = analisis.intenciones;
   traza.reactSteps = [];
 
+  // CAMINO DETERMINISTA de salidas de tren (falsedad de produccion 8 nov
+  // 2026: el modelo copiaba del HISTORIAL afirmaciones falsas de
+  // incapacidad; la repro aislada no es determinista). Para consultas de
+  // salidas de alta confianza la herramienta es OBLIGATORIA y la salida
+  // es la fuente GTFS en presentacion determinista verificable: el modelo
+  // ni decide llamarla ni redacta. Sin origen claro: aclaracion honesta,
+  // nunca una consulta inventada ni un codigo placeholder como entidad.
+  // Efecto lateral honesto: estas consultas ya no gastan cuota LLM.
+  if (esConsultaSalidasTrenes(mensajeUsuario)) {
+    const origenDet = extraerOrigenDesde(mensajeUsuario);
+    let textoDet;
+    if (!origenDet) {
+      textoDet = 'Señor, ¿de que estacion me pide las salidas? Digame el nombre y se las consulto al momento con los datos oficiales de Renfe.';
+      traza.guardiaCapacidadTrenes = 'aclaracion_origen';
+    } else {
+      const destinoDet = extraerDestinoHacia(mensajeUsuario) || undefined;
+      const tipoDet = /\b(ave|alvia|avant|larga distancia|media distancia)\b/i.test(mensajeUsuario || '') ? 'tren' : (/cercan/i.test(mensajeUsuario || '') ? 'cercanias' : undefined);
+      const overrideDet = opciones.ejecutores && opciones.ejecutores['proximas_llegadas_transporte'];
+      if (typeof overrideDet === 'function') {
+        // Inyeccion de pruebas (bateria dorada): mismo canal de ejecucion
+        // que el resto de herramientas. En produccion no hay override.
+        try {
+          const resOv = await overrideDet({ parada: origenDet, tipo: tipoDet, destino: destinoDet });
+          textoDet = typeof resOv === 'string' ? resOv : ((resOv && resOv.texto) || JSON.stringify(resOv));
+          traza.llamadas.push({ nombre: 'proximas_llegadas_transporte', ronda: 0, resultado: 'ok', datos: String(textoDet).slice(0, 2000) });
+        } catch (errOv) {
+          textoDet = `Señor, no he podido consultar las salidas ahora mismo (${errOv.message}). Intentelo de nuevo en unos minutos.`;
+          traza.llamadas.push({ nombre: 'proximas_llegadas_transporte', ronda: 0, resultado: 'error', detalle: String(errOv && errOv.message).slice(0, 120) });
+        }
+      } else try {
+        const resDet = await proximasLlegadas({ parada: origenDet, tipo: tipoDet, destino: destinoDet }, depsTransporteDe(opciones));
+        textoDet = textoResultadoTransporte(resDet);
+        traza.llamadas.push({ nombre: 'proximas_llegadas_transporte', ronda: 0, resultado: resDet.ok ? 'ok' : 'error', ...(resDet.ok ? { datos: textoDet.slice(0, 2000) } : { detalle: String(resDet.error || '').slice(0, 120) }) });
+      } catch (errDet) {
+        textoDet = `Señor, no he podido consultar las salidas ahora mismo (${errDet.message}). Intentelo de nuevo en unos minutos.`;
+        traza.llamadas.push({ nombre: 'proximas_llegadas_transporte', ronda: 0, resultado: 'error', detalle: String(errDet && errDet.message).slice(0, 120) });
+      }
+    }
+    traza.via = 'determinista_salidas_trenes';
+    try {
+      const valDet = validarMensajeSalida(textoDet, { traza, destinatario: opciones.chatId, canal: 'whatsapp', contactosConocidos: opciones.contactosConocidos || [] });
+      if (valDet && valDet.textoFinal) textoDet = valDet.textoFinal;
+      if (valDet && valDet.bloqueado && valDet.motivoBloqueo) textoDet = valDet.motivoBloqueo;
+    } catch (errG2) {
+      console.warn('[J.A.R.V.I.S. Guardrail] Error en camino determinista de trenes:', errG2.message);
+    }
+    const respuestaDet = limpiarRespuestaJarvis(textoDet);
+    traza.respuestaFinal = respuestaDet;
+    traza.duracionMs = Date.now() - traza.inicio;
+    guardarTraza(traza, opciones);
+    console.log('[J.A.R.V.I.S.] Salidas de tren servidas por camino determinista (fuente GTFS, sin LLM).');
+    if (opciones.retornarObjeto || opciones.retornarTraza) return { respuesta: respuestaDet, traza };
+    return respuestaDet;
+  }
+
   if (analisis.safetyNet) {
     const clasificacion = await clasificarIntencionConModelo(mensajeUsuario, { ...opciones, chatCompletion: chatImpl });
     // Vigilancia de salud del clasificador: aviso acotado (1/24h) si la
@@ -2429,35 +2495,61 @@ Directrices de selección:
     console.warn('[J.A.R.V.I.S.] Respuesta vacia tras las rondas de herramientas; se entrega fallback honesto.');
   }
 
-  // Guardia de capacidad en trenes: una afirmacion falsa de incapacidad
-  // ("Renfe necesita clave/token", "no tengo acceso") NUNCA se entrega
-  // cuando la consulta es de trenes: se ejecuta la consulta real o se
-  // reutilizan los datos ya obtenidos y se entregan los datos GTFS.
-  if (textoFinal && CONSULTA_TRENES.test(mensajeUsuario || '') && AFIRMACION_INCAPACIDAD.test(textoFinal) && !/mobilitylabs|\bemt\b/i.test(textoFinal)) {
+  // Guardia de capacidad y fuente en trenes:
+  // 1) Consultas de salidas identificadas: los datos DEBEN venir de la
+  //    herramienta con presentacion determinista verificable. Si la tool
+  //    ya se ejecuto ok se reutilizan sus datos (sin doble consulta); si
+  //    no, se ejecuta directamente (origen/destino deterministas del
+  //    mensaje). Lo que dijera el modelo se sustituye: ni incapacidad
+  //    falsa ni horarios inventados sin fuente llegan a David.
+  // 2) Sin origen extraible ni ejecucion previa: si la respuesta da
+  //    horarios sin fuente, se sustituye por una aclaracion honesta.
+  // 3) Otras consultas de trenes con afirmacion falsa de incapacidad:
+  //    misma correccion (la falsedad 12:22 nunca se entrega).
+  if (textoFinal && esConsultaSalidasTrenes(mensajeUsuario)) {
+    const origenG = extraerOrigenDesde(mensajeUsuario);
     const llamadaPrevia = [...(traza.llamadas || [])].reverse().find((l) => l.nombre === 'proximas_llegadas_transporte' && l.resultado === 'ok' && l.datos);
-    if (llamadaPrevia) {
-      textoFinal = `Señor, corrijo lo anterior: Renfe no necesita clave ni token, usa datos abiertos oficiales. Los datos son estos:\n\n${llamadaPrevia.datos}`;
-      traza.guardiaCapacidadTrenes = 'datos_reutilizados';
-    } else {
-      try {
-        const paradaG = extraerOrigenDesde(mensajeUsuario) || undefined;
-        const destinoG = extraerDestinoHacia(mensajeUsuario) || undefined;
-        const tipoG = /\b(ave|alvia|avant|larga distancia|media distancia)\b/i.test(mensajeUsuario || '') ? 'tren' : (/cercan/i.test(mensajeUsuario || '') ? 'cercanias' : undefined);
-        const resG = await proximasLlegadas({ parada: paradaG, tipo: tipoG, destino: destinoG }, depsTransporteDe(opciones));
-        const textoG = textoResultadoTransporte(resG);
-        if (resG.ok) {
-          textoFinal = `Señor, corrijo lo anterior: Renfe no necesita clave ni token, usa datos abiertos oficiales. Los datos son estos:\n\n${textoG}`;
-          traza.llamadas.push({ nombre: 'proximas_llegadas_transporte', ronda: 0, resultado: 'ok', datos: textoG.slice(0, 2000) });
-          traza.guardiaCapacidadTrenes = 'consulta_ejecutada';
-        } else {
-          textoFinal = `Señor, corrijo lo anterior: Renfe no necesita clave ni token. ${textoG}`;
-          traza.guardiaCapacidadTrenes = 'consulta_fallida_honesta';
+    if (origenG || llamadaPrevia) {
+      let datosG = llamadaPrevia ? llamadaPrevia.datos : null;
+      let modoG = llamadaPrevia ? 'datos_reutilizados' : null;
+      if (!datosG) {
+        try {
+          const destinoG = extraerDestinoHacia(mensajeUsuario) || undefined;
+          const tipoG = /\b(ave|alvia|avant|larga distancia|media distancia)\b/i.test(mensajeUsuario || '') ? 'tren' : (/cercan/i.test(mensajeUsuario || '') ? 'cercanias' : undefined);
+          const resG = await proximasLlegadas({ parada: origenG, tipo: tipoG, destino: destinoG }, depsTransporteDe(opciones));
+          const textoG = textoResultadoTransporte(resG);
+          if (resG.ok) {
+            datosG = textoG.slice(0, 2000);
+            traza.llamadas.push({ nombre: 'proximas_llegadas_transporte', ronda: 0, resultado: 'ok', datos: datosG });
+            modoG = 'consulta_ejecutada';
+          } else {
+            textoFinal = textoG; // error honesto (estacion desconocida, etc.)
+            traza.guardiaCapacidadTrenes = 'consulta_fallida_honesta';
+          }
+        } catch (errG) {
+          console.warn('[J.A.R.V.I.S.] Guardia de capacidad: la consulta directa fallo:', errG.message);
         }
-      } catch (errG) {
-        console.warn('[J.A.R.V.I.S.] Guardia de capacidad: la consulta directa fallo:', errG.message);
       }
+      if (datosG) {
+        const prefijo = AFIRMACION_INCAPACIDAD.test(textoFinal)
+          ? 'Señor, corrijo lo anterior: para estas salidas de Renfe no hace falta clave ni token, uso los datos abiertos oficiales.\n\n'
+          : '';
+        textoFinal = `${prefijo}${datosG}`;
+        traza.guardiaCapacidadTrenes = modoG;
+      }
+    } else if (/\b\d{1,2}:\d{2}\b/.test(textoFinal)) {
+      // Sin origen extraible ni tool ejecutada: horarios sin fuente NO se
+      // entregan; aclaracion honesta sin consulta inventada.
+      textoFinal = 'Señor, ¿de que estacion me pide las salidas? Digame el nombre y se las consulto al momento con los datos oficiales de Renfe.';
+      traza.guardiaCapacidadTrenes = 'aclaracion_origen';
     }
-    if (traza.guardiaCapacidadTrenes) console.warn(`[J.A.R.V.I.S.] Guardia de capacidad aplicada (${traza.guardiaCapacidadTrenes}): afirmacion falsa de incapacidad sustituida por datos reales.`);
+    if (traza.guardiaCapacidadTrenes) console.warn(`[J.A.R.V.I.S.] Guardia de capacidad aplicada (${traza.guardiaCapacidadTrenes}).`);
+  } else if (textoFinal && CONSULTA_TRENES.test(mensajeUsuario || '') && AFIRMACION_INCAPACIDAD.test(textoFinal) && !/mobilitylabs|\bemt\b/i.test(textoFinal)) {
+    // Trenes fuera de consulta de salidas: la falsedad de credenciales
+    // nunca se entrega; se corrige sin inventar datos.
+    textoFinal = 'Señor, corrijo lo anterior: para consultar salidas de Renfe no hace falta clave ni token; uso los datos abiertos oficiales. Digame la estacion y lo consulto al momento.';
+    traza.guardiaCapacidadTrenes = 'correccion_incapacidad';
+    console.warn('[J.A.R.V.I.S.] Guardia de capacidad aplicada (correccion_incapacidad).');
   }
 
   // Chequeo de consistencia: si la respuesta quedo cortada por el limite de

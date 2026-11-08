@@ -428,29 +428,46 @@ assert.ok(!rCodInex.ok, 'codigo numerico inexistente en el indice: error');
 assert.match(rCodInex.error, /NOMBRE/);
 console.log('OK 15/16 grounding de argumentos (servicio)');
 
-// 16) Frase 2 EXACTA del smoke con argumentos inventados por el modelo:
-// el agente extrae origen/destino del mensaje y resuelve por nombre.
+// 16) Frase 2 EXACTA del smoke: camino determinista OBLIGATORIO (la tool no
+// depende de que el modelo decida; el modelo ni se consulta). Un cliente
+// guionizado que devolveria argumentos inventados NO se llega a llamar.
 const { consultarJarvis: consultarJarvisRenfe } = await import('../../src/core/jarvisAgent.js');
 const depsRecH = depsRec('h', feedVacio);
 try { fs.unlinkSync(depsRecH.rutaCache); } catch { /* nada */ }
 try { fs.unlinkSync(depsRecH.rutaArchivo); } catch { /* nada */ }
 fs.rmSync(depsRecH.rutaCacheHorarios, { recursive: true, force: true });
 const registroRenfe = [];
-let llamadasRenfe = 0;
 const clienteRenfe = {
   chat: { completions: { create: async (payload) => {
     registroRenfe.push(payload);
-    llamadasRenfe += 1;
-    if (llamadasRenfe === 1) {
-      return { choices: [{ message: { role: 'assistant', content: '', tool_calls: [{ id: 't1', type: 'function', function: { name: 'proximas_llegadas_transporte', arguments: { codigo: 'R1', tipo: 'r1', destino: 'Madrid' } } }] }, finish_reason: 'tool_calls' }] };
-    }
-    return { choices: [{ message: { role: 'assistant', content: 'Salidas programadas desde Aranjuez hacia Madrid, senor.' }, finish_reason: 'stop' }] };
+    return { choices: [{ message: { role: 'assistant', content: '', tool_calls: [{ id: 't1', type: 'function', function: { name: 'proximas_llegadas_transporte', arguments: { codigo: 'R1', tipo: 'r1', destino: 'Madrid' } } }] }, finish_reason: 'tool_calls' }] };
   } } }
 };
-await consultarJarvisRenfe('que trenes hay ahora mismo hacia madrid desde aranjuez', [], {
-  chatCompletion: async (peticion) => {
-    const cruda = await clienteRenfe.chat.completions.create(peticion);
-    return { message: cruda.choices[0].message, model: 'test-falso' };
+const rFrase2 = await consultarJarvisRenfe('que trenes hay ahora mismo hacia madrid desde aranjuez', [], {
+  chatCompletion: (peticion) => clienteRenfe.chat.completions.create(peticion),
+  rutaArchivoTransporte: depsRecH.rutaArchivo,
+  fetchFnTransporte: depsRecH.fetchFn,
+  fetchFnCercanias: depsRecH.fetchFnCercanias,
+  rutaCacheEstacionesRenfe: depsRecH.rutaCache,
+  rutaCacheHorariosRenfe: depsRecH.rutaCacheHorarios,
+  ahoraTransporte: ahoraSabado
+});
+assert.strictEqual(registroRenfe.length, 0, 'camino determinista: cero llamadas LLM (ni cuota ni decision del modelo)');
+assert.match(rFrase2, /salidas programadas/i, 'salida fuente-backed');
+assert.match(rFrase2, /Aranjuez/, 'origen resuelto por nombre');
+assert.doesNotMatch(rFrase2, /codigo/i, 'sin codigos hacia David');
+assert.match(rFrase2, /Madrid-Atocha/, 'T1 (para en Madrid)');
+assert.match(rFrase2, /Villalba/, 'T3 (terminal Villalba pero para en Madrid)');
+assert.ok(!/MD-1|Sol/.test(rFrase2), 'T2 (no pasa por Madrid) excluida');
+console.log('OK 16/16 frase 2 exacta: camino determinista sin LLM');
+// 17) Frase 3 del smoke: camino determinista (la sintesis vacia del modelo ya
+// no aplica aqui; el modelo ni se invoca). La defensa de sintesis vacia sigue
+// activa para el resto de herramientas (cubierta en llm_failover).
+let llamadasRenfeVacia = 0;
+const rFrase3 = await consultarJarvisRenfe('dime los trenes que salen de aranjuez ahora', [], {
+  chatCompletion: async () => {
+    llamadasRenfeVacia++;
+    return { choices: [{ message: { role: 'assistant', content: ' ' }, finish_reason: 'stop' }] };
   },
   rutaArchivoTransporte: depsRecH.rutaArchivo,
   fetchFnTransporte: depsRecH.fetchFn,
@@ -459,54 +476,13 @@ await consultarJarvisRenfe('que trenes hay ahora mismo hacia madrid desde aranju
   rutaCacheHorariosRenfe: depsRecH.rutaCacheHorarios,
   ahoraTransporte: ahoraSabado
 });
-const msgsR1 = registroRenfe[1] && (registroRenfe[1].messages || registroRenfe[1].mensajes);
-const msgToolRenfe = msgsR1 && msgsR1.find((m) => m.role === 'tool');
-assert.ok(msgToolRenfe, 'la herramienta se ejecuto');
-assert.match(msgToolRenfe.content, /salidas programadas/i, 'resuelve por nombre pese a codigo/tipo inventados');
-assert.match(msgToolRenfe.content, /Aranjuez/);
-assert.doesNotMatch(msgToolRenfe.content, /codigo/i, 'no pide codigo ni menciona codigos a David');
-console.log('OK 16/16 frase 2 exacta con argumentos inventados (agente)');
-console.log('renfe_tren.test.js OK (grounding de argumentos)');
-
-// 17) Frase 3 del smoke (8 nov 2026): tool Renfe de LECTURA correcta pero
-// sintesis del modelo de respaldo VACIA -> salida determinista segura con
-// horarios/destinos, sin LLM extra, sin reejecutar la tool, sin efectos
-// falsos ni peticion de otra ronda.
-const depsRecI = depsRec('i', feedVacio);
-try { fs.unlinkSync(depsRecI.rutaCache); } catch { /* nada */ }
-try { fs.unlinkSync(depsRecI.rutaArchivo); } catch { /* nada */ }
-fs.rmSync(depsRecI.rutaCacheHorarios, { recursive: true, force: true });
-const registroRenfeVacia = [];
-let llamadasRenfeVacia = 0;
-const clienteRenfeVacia = {
-  chat: { completions: { create: async (payload) => {
-    registroRenfeVacia.push(payload);
-    llamadasRenfeVacia += 1;
-    if (llamadasRenfeVacia === 1) {
-      return { choices: [{ message: { role: 'assistant', content: '', tool_calls: [{ id: 't1', type: 'function', function: { name: 'proximas_llegadas_transporte', arguments: { parada: 'aranjuez' } } }] }, finish_reason: 'tool_calls' }] };
-    }
-    return { choices: [{ message: { role: 'assistant', content: '' }, finish_reason: 'stop' }] };
-  } } }
-};
-const rVacia = await consultarJarvisRenfe('dime los trenes que salen ahora mismo de aranjuez', [], {
-  chatCompletion: async (peticion) => {
-    const cruda = await clienteRenfeVacia.chat.completions.create(peticion);
-    return { message: cruda.choices[0].message, model: 'test-falso' };
-  },
-  rutaArchivoTransporte: depsRecI.rutaArchivo,
-  fetchFnTransporte: depsRecI.fetchFn,
-  fetchFnCercanias: depsRecI.fetchFnCercanias,
-  rutaCacheEstacionesRenfe: depsRecI.rutaCache,
-  rutaCacheHorariosRenfe: depsRecI.rutaCacheHorarios,
-  ahoraTransporte: ahoraSabado
-});
-assert.strictEqual(llamadasRenfeVacia, 2, 'sin LLM extra ni reejecucion de la tool');
-assert.match(rVacia, /salidas programadas/i, 'salida determinista con horarios');
-assert.match(rVacia, /15:50|16:00/, 'horarios reales presentes');
-assert.match(rVacia, /Madrid-Atocha/, 'destinos presentes');
-assert.doesNotMatch(rVacia, /SI se ejecuto|una sola vez|pideme un resumen|reformula/i, 'sin efectos falsos ni peticion de otra ronda');
-console.log('OK 17/17 frase 3: sintesis vacia -> datos Renfe deterministas');
-console.log('renfe_tren.test.js OK (sintesis vacia Renfe)');
+assert.strictEqual(llamadasRenfeVacia, 0, 'cero llamadas LLM en el camino determinista');
+console.log('FRASE3>>', JSON.stringify(rFrase3));
+assert.match(rFrase3, /salidas programadas/i);
+assert.ok(!/C3-102/.test(rFrase3), 'servicio fuera de la ventana excluido');
+assert.match(rFrase3, /Madrid-Atocha/, 'destino real');
+assert.match(rFrase3, /(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]/, 'horas reales de la fuente');
+console.log('OK 17/16 frase 3: camino determinista, horas de la fuente GTFS');
 
 // 18) Guardia de capacidad (falsedad REAL de produccion, 8 nov 2026 12:22):
 // el modelo afirmo "No dispongo de acceso en tiempo real a la API de Renfe;
@@ -541,28 +517,26 @@ function opcionesGuardia(cliente, deps) {
     ahoraTransporte: ahoraSabado
   };
 }
-// 18a: afirmacion falsa SIN ejecutar la herramienta -> la guardia la ejecuta
+// 18a: el modelo INSISTE con la falsedad sin ejecutar la herramienta -> con el
+// camino determinista el modelo ni se consulta (stub que devolveria la
+// falsedad verbatim de la incidencia real, fabricado aqui: no es historial
+// privado real).
 const cA = clienteFalsedad(FALSO_RENFE);
 const rA = await consultarJarvisRenfe('que trenes salen ahora de aranjuez', [], opcionesGuardia(cA, depsRecJ));
+assert.strictEqual(cA.llamadas(), 0, 'cero llamadas LLM: la tool es obligatoria, no la decide el modelo');
 assert.doesNotMatch(rA, /no dispongo|sin la clave|no puedo obtener/i, 'la falsedad no se entrega');
-assert.match(rA, /no necesita clave ni token/, 'correccion explicita');
 assert.match(rA, /salidas programadas/i, 'datos GTFS entregados');
 assert.match(rA, /Madrid-Atocha/, 'destinos reales');
-assert.strictEqual(cA.llamadas(), 1, 'sin LLM extra: la guardia no llama al modelo');
-console.log('OK 18a falsedad sin tool -> guardia ejecuta y corrige');
-// 18b: herramienta ejecutada ok y la sintesis AUN ASI afirma incapacidad -> datos reutilizados, sin reejecutar
-const cB = clienteFalsedad(null);
-cB.chat.completions.createOriginal = null;
+console.log('OK 18a modelo insiste sin tool -> camino determinista, fuente GTFS');
+// 18b: stub que ejecutaria la tool y luego afirmaria incapacidad -> tampoco se
+// consulta; la salida es la fuente, una sola consulta.
 let nB = 0;
-cB.chat.completions.create = async (payload) => {
-  nB += 1;
-  if (nB === 1) return { choices: [{ message: { role: 'assistant', content: '', tool_calls: [{ id: 't1', type: 'function', function: { name: 'proximas_llegadas_transporte', arguments: { parada: 'aranjuez' } } }] }, finish_reason: 'tool_calls' }] };
-  return { choices: [{ message: { role: 'assistant', content: FALSO_RENFE }, finish_reason: 'stop' }] };
-};
+const cB = { chat: { completions: { create: async () => { nB += 1; return { choices: [{ message: { role: 'assistant', content: FALSO_RENFE }, finish_reason: 'stop' }] }; } } }, llamadas: () => nB };
 const rB = await consultarJarvisRenfe('que trenes salen ahora de aranjuez', [], opcionesGuardia(cB, depsRecJ));
+assert.strictEqual(cB.llamadas(), 0, 'cero llamadas LLM');
 assert.doesNotMatch(rB, /no dispongo|sin la clave/i, 'la falsedad no contradice los datos');
-assert.match(rB, /salidas programadas/i, 'datos reutilizados');
-console.log('OK 18b tool ok + falsedad -> datos reutilizados');
+assert.match(rB, /salidas programadas/i, 'datos de la fuente');
+console.log('OK 18b falsedad tras tool -> fuente impuesta sin LLM');
 // 18c: EMT config-required legitimo NO se toca
 const cC = clienteFalsedad('Para la EMT hace falta configurar el acceso gratuito de MobilityLabs; en cuanto lo actives te doy las llegadas.');
 const rC = await consultarJarvisRenfe('cuando llega el bus 132 a mi parada', [], opcionesGuardia(cC, depsRecJ));
@@ -574,3 +548,43 @@ const rD = await consultarJarvisRenfe('enciende mi pc', [], opcionesGuardia(cD, 
 assert.match(rD, /No puedo acceder a ese dispositivo/, 'otras respuestas no se tocan');
 console.log('OK 18d consulta no-tren intacta');
 console.log('renfe_tren.test.js OK (guardia de capacidad)');
+
+// 18e: stub que INVENTA horarios -> el camino determinista lo ignora; la
+// respuesta ES la salida de la fuente.
+const cE = clienteFalsedad('Si senor, ahora mismo salen de Aranjuez el C3 a las 14:05 y el C3A a las 14:35, ambos hacia Atocha. Buen viaje.');
+const rE = await consultarJarvisRenfe('que trenes salen ahora de aranjuez', [], opcionesGuardia(cE, depsRecJ));
+assert.strictEqual(cE.llamadas(), 0, 'cero llamadas LLM');
+assert.match(rE, /^No hay trenes con informacion en vivo para Aranjuez/, 'la respuesta final es la salida determinista de la tool');
+assert.doesNotMatch(rE, /14:05|14:35|C3A/, 'los horarios inventados NO se entregan');
+assert.match(rE, /15:50|16:00/, 'los horarios reales de la fuente si');
+console.log('OK 18e horarios inventados -> fuente impuesta');
+// 18f: sin origen extraible -> aclaracion honesta determinista (sin consulta
+// inventada ni codigo placeholder como entidad), cero LLM.
+const cF = clienteFalsedad('Salen a las 14:05 y 14:35, senor.');
+const rF = await consultarJarvisRenfe('que trenes hay ahora', [], opcionesGuardia(cF, depsRecJ));
+assert.strictEqual(cF.llamadas(), 0, 'cero llamadas LLM');
+assert.match(rF, /de que estacion/i, 'aclaracion honesta sin consulta inventada');
+assert.doesNotMatch(rF, /14:05|14:35/, 'horarios sin fuente no se entregan');
+console.log('OK 18f sin origen -> aclaracion honesta');
+// 18g: vigilancia/precios con palabra tren NO se toca
+const cG = clienteFalsedad('Vigilo la ruta del tren a Madrid y te aviso si baja el precio, senor.');
+const rG = await consultarJarvisRenfe('vigila el tren a madrid y avisame si baja el precio', [], opcionesGuardia(cG, depsRecJ));
+assert.match(rG, /Vigilo la ruta/, 'vigilancia de precios intacta');
+console.log('OK 18g vigilancia intacta');
+// 18h: HISTORIAL con falsedades (texto fabricado para la prueba, NO historial
+// privado real): el camino determinista ignora el historial y entrega la
+// fuente. El stub parrotearia la falsedad del historial si se le llamara.
+const historialFalso = [
+  { rol: 'usuario', contenido: 'que trenes salen ahora de aranjuez' },
+  { rol: 'asistente', contenido: FALSO_RENFE },
+  { rol: 'usuario', contenido: 'y ahora?' },
+  { rol: 'asistente', contenido: 'Salen el C3 a las 14:05 y el C3A a las 14:35.' }
+];
+const cH = clienteFalsedad(FALSO_RENFE);
+const rH = await consultarJarvisRenfe('dime que trenes salen ahora mismo de aranjuez', historialFalso, opcionesGuardia(cH, depsRecJ));
+assert.strictEqual(cH.llamadas(), 0, 'cero llamadas LLM pese al historial envenenado');
+assert.doesNotMatch(rH, /no dispongo|sin la clave|14:05|14:35/, 'nada del historial falso se reproduce');
+assert.match(rH, /salidas programadas/i, 'fuente GTFS entregada');
+assert.match(rH, /Aranjuez/, 'origen resuelto');
+console.log('OK 18h historial con falsedades -> ignorado, fuente impuesta');
+console.log('renfe_tren.test.js OK (fuente impuesta en salidas)');

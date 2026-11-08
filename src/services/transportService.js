@@ -284,7 +284,7 @@ export function extraerOrigenDesde(texto) {
   const t = String(texto || '');
   const PALABRA = '[a-záéíóúñü]+';
   const LUGAR = `(${PALABRA}(?:\\s+${PALABRA}){0,2}?)`;
-  const FIN = '(?=\\s+(?:hacia|para|con|que|y|en|a|al|por|de|desde|del|hasta)\\b|[,.?!;:]|$)';
+  const FIN = '(?=\\s+(?:hacia|para|con|que|y|en|a|al|por|de|desde|del|hasta|ahora|mismo|hoy|mañana|tarde|noche|ya|proximo|próximo|proximos|próximos|siguiente|siguientes)\\b|[,.?!;:]|$)';
   let m = t.match(new RegExp(`\\bdesde\\s+${LUGAR}${FIN}`, 'i'));
   if (!m) m = t.match(new RegExp(`\\bde\\s+${LUGAR}(?=\\s+(?:a|al|hacia|para|hasta)\\b)`, 'i')); // "de X a Y"
   if (!m) m = t.match(new RegExp(`\\b(?:salen|salgo|salir|sale|salidas?)\\b(?:\\s+${PALABRA}){0,4}?\\s+de\\s+${LUGAR}${FIN}`, 'i')); // "salen ... de X"
