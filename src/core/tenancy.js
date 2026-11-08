@@ -32,7 +32,7 @@ export function afirmarTenantId(id) {
 }
 
 /**
- * Resolucion historica del propietario, extraida tal cual de whatsappBot.
+ * Resolucion historica del propietario, extraida tal cual del adaptador de canal.
  * @param {string} jid
  * @param {{phone?: string, lid?: string, leerMapeoInverso?: (rawId:string)=>(string|null)}} deps
  */
