@@ -76,7 +76,7 @@ test('3 procesos arrancan a la vez sobre la misma DB WAL: 002 se aplica una sola
       assert.ok(x.r && x.r.ok, `ronda ${ronda}: sin error de migracion (${x.r && x.r.error})`);
     }
     const aplicadas = res.flatMap((x) => x.r.aplicadasAhora);
-    assert.deepEqual(aplicadas, [2], `ronda ${ronda}: 002 aplicada exactamente una vez en total (${aplicadas})`);
+    assert.deepEqual([...aplicadas].sort(), [2, 3], `ronda ${ronda}: 002 y 003 aplicadas exactamente una vez en total (${aplicadas})`);
     const db = new Database(ruta);
     assert.equal(db.prepare('SELECT count(*) c FROM memorias').get().c, 300, 'sin perdida de memorias');
     assert.equal(db.prepare("SELECT count(*) c FROM memorias WHERE tenant_id = 'propietario'").get().c, 300);
