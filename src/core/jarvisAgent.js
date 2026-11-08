@@ -2745,6 +2745,14 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
  * canal de entrada.
  */
 export async function consultarJarvisEnAmbito(mensajeUsuario, historial = [], opciones = {}) {
+  // Limites de uso (cuota/ritmo) solo para tenants no propietarios y solo si hay
+  // un controlador inyectado; sin el, o sin limites configurados, no cambia nada.
+  const tid = opciones && opciones.tenantId;
+  if (tid !== undefined && tid !== null && tid !== 'propietario' && opciones.controlUso && typeof opciones.controlUso.autorizar === 'function') {
+    let dec;
+    try { dec = opciones.controlUso.autorizar({ tenantId: tid }); } catch { dec = { permitido: false, motivo: 'error_control_uso' }; }
+    if (!dec || dec.permitido !== true) return 'Limite de uso alcanzado para este usuario.';
+  }
   if (opciones && typeof opciones === 'object') opciones = aislarOpcionesTenant(opciones, DATA_DIR_TENANCY);
   return conSpan('consulta', { sesion: hashSesion(opciones && opciones.chatId) }, () => consultarJarvisInterna(mensajeUsuario, historial, opciones));
 }

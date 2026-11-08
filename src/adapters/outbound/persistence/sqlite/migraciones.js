@@ -153,6 +153,28 @@ export const MIGRACIONES = [
         PRIMARY KEY (tenant_id, dia, modelo)
       );
     `
+  },
+  {
+    // Limites de uso CONFIGURABLES por tenant. ADITIVA (solo CREATE TABLE).
+    // Sin fila o con NULL = sin limite: no se inserta ningun valor por defecto
+    // ni para el propietario ni para ningun tenant.
+    version: 3,
+    nombre: '003_limites_uso',
+    sql: `
+      CREATE TABLE tenant_limites (
+        tenant_id TEXT PRIMARY KEY REFERENCES tenants(id),
+        tokens_dia INTEGER,
+        tokens_mes INTEGER,
+        peticiones_minuto INTEGER,
+        actualizado_en TEXT NOT NULL
+      );
+      CREATE TABLE tenant_peticiones (
+        tenant_id TEXT NOT NULL,
+        ventana INTEGER NOT NULL,
+        n INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (tenant_id, ventana)
+      );
+    `
   }
 ];
 

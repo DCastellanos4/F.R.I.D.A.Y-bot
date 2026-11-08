@@ -16,7 +16,7 @@ export function registrarStoreUsoPorDefecto(store) {
   storePorDefecto = store || null;
 }
 
-function diaLocal(d = new Date(), zona = 'Europe/Madrid') {
+export function diaLocal(d = new Date(), zona = 'Europe/Madrid') {
   try {
     return new Intl.DateTimeFormat('en-CA', { timeZone: zona, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
   } catch {
