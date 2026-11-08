@@ -156,27 +156,65 @@ export const MIGRACIONES = [
   }
 ];
 
-export function ejecutarMigraciones(db) {
-  db.exec(`
+function dormirSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function esBusy(err) {
+  return err && (err.code === 'SQLITE_BUSY' || err.code === 'SQLITE_BUSY_SNAPSHOT' || /database is locked/i.test(String(err.message)));
+}
+
+/**
+ * Aplica las migraciones pendientes de forma SEGURA ENTRE PROCESOS.
+ *
+ * Varios procesos (p. ej. dos de pm2) abren la misma DB y migran al arrancar.
+ * La comprobacion "ya aplicada" y la aplicacion ocurren DENTRO de una unica
+ * transaccion BEGIN IMMEDIATE (toma el bloqueo de escritura al empezar): el
+ * segundo proceso espera (busy_timeout de la conexion) y, al entrar, RELEE
+ * schema_migrations y la salta. Nunca hay "leer fuera, escribir dentro".
+ * Si no hay nada pendiente no se toma el bloqueo de escritura. Ante
+ * SQLITE_BUSY tras el busy_timeout se reintenta de forma ACOTADA.
+ */
+export function ejecutarMigraciones(db, { reintentosBusy = 5, esperaBusyMs = 250 } = {}) {
+  const asegurarTabla = () => db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version INTEGER PRIMARY KEY,
       nombre TEXT NOT NULL,
       aplicada_en TEXT NOT NULL
     )
   `);
-  const aplicadas = new Set(
-    db.prepare('SELECT version FROM schema_migrations').all().map((r) => r.version)
-  );
+  const conReintento = (fn) => {
+    for (let intento = 0; ; intento++) {
+      try {
+        return fn();
+      } catch (err) {
+        if (!esBusy(err) || intento >= reintentosBusy) throw err;
+        dormirSync(esperaBusyMs * (intento + 1));
+      }
+    }
+  };
+
+  conReintento(asegurarTabla);
+  const hayPendientes = () => {
+    const aplicadas = new Set(db.prepare('SELECT version FROM schema_migrations').all().map((r) => r.version));
+    return MIGRACIONES.some((m) => !aplicadas.has(m.version));
+  };
   const aplicadasAhora = [];
-  for (const migracion of MIGRACIONES) {
-    if (aplicadas.has(migracion.version)) continue;
-    db.transaction(() => {
-      db.exec(migracion.sql);
-      db.prepare(
-        'INSERT INTO schema_migrations (version, nombre, aplicada_en) VALUES (?, ?, ?)'
-      ).run(migracion.version, migracion.nombre, new Date().toISOString());
-    })();
-    aplicadasAhora.push(migracion.version);
+  if (conReintento(hayPendientes)) {
+    for (const migracion of MIGRACIONES) {
+      const aplicarUna = db.transaction(() => {
+        // Recheck DENTRO de la transaccion IMMEDIATE: otro proceso pudo
+        // aplicarla mientras esperabamos el bloqueo.
+        const ya = db.prepare('SELECT 1 FROM schema_migrations WHERE version = ?').get(migracion.version);
+        if (ya) return false;
+        db.exec(migracion.sql);
+        db.prepare(
+          'INSERT INTO schema_migrations (version, nombre, aplicada_en) VALUES (?, ?, ?)'
+        ).run(migracion.version, migracion.nombre, new Date().toISOString());
+        return true;
+      });
+      if (conReintento(() => aplicarUna.immediate())) aplicadasAhora.push(migracion.version);
+    }
   }
   return { aplicadasAhora, total: MIGRACIONES.length };
 }

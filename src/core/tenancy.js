@@ -15,6 +15,8 @@
  * Strict Policy: Zero Emojis.
  */
 
+import path from 'node:path';
+
 export const TENANT_PROPIETARIO = 'propietario';
 
 const RE_TENANT = /^[a-z0-9][a-z0-9_-]{0,63}$/;
@@ -64,4 +66,38 @@ export function resolverTenant(jid, { propietario = {}, repositorioIdentidades =
     if (esTenantIdValido(id) && id !== TENANT_PROPIETARIO) return id;
   }
   return null;
+}
+
+/**
+ * Compuerta FAIL-CLOSED de tenants no propietarios.
+ *
+ * AISLAMIENTO_COMPLETO es una constante de CODIGO, no una variable de entorno:
+ * solo pasa a true cuando almacenamiento (SQLite, JSON, memoria semantica,
+ * grafo, vectores, historial), recuperacion (RAG), export/backup y colas
+ * proactivas esten aislados Y verificados. Mientras sea false, ningun tenant
+ * que no sea el propietario entra al LLM/RAG, aunque este registrado y tenga
+ * rol 'usuario': el prompt podria incluir datos privados del propietario.
+ * Ademas hace falta el interruptor explicito de runtime DAVIS_TENANTS_ENABLED=1.
+ */
+export const AISLAMIENTO_COMPLETO = false;
+
+export function tenantsHabilitados(env = process.env) {
+  return AISLAMIENTO_COMPLETO === true && env.DAVIS_TENANTS_ENABLED === '1';
+}
+
+/**
+ * Ruta de datos por tenant, a prueba de traversal. El propietario conserva la
+ * ruta historica (dataDir/nombre). Los demas viven en dataDir/tenants/<id>/.
+ * `nombre` es un nombre de fichero simple, nunca una ruta.
+ */
+export function rutaDatosTenant(dataDir, tenantId, nombre) {
+  afirmarTenantId(tenantId);
+  if (typeof nombre !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,100}$/.test(nombre) || nombre.includes('..')) {
+    throw new TypeError('nombre de fichero invalido (solo nombre simple, sin rutas).');
+  }
+  const base = path.resolve(dataDir);
+  const destino = tenantId === TENANT_PROPIETARIO ? path.join(base, nombre) : path.join(base, 'tenants', tenantId, nombre);
+  const rel = path.relative(base, destino);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) throw new Error('ruta fuera del directorio de datos.');
+  return destino;
 }

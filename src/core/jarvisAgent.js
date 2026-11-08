@@ -37,6 +37,7 @@ import { consultarClima } from '../services/weatherService.js';
 import { chatCompletion, esRespuestaTruncada } from './llmService.js';
 import { clasificarIntencionConModelo, seleccionarDominiosConModelo, comprobarYAvisarSalud, UMBRAL_CONFIANZA } from './intentRouterService.js';
 import { puedeEjecutarHerramienta } from '../services/rbacService.js';
+import { tenantsHabilitados } from './tenancy.js';
 import { medirUso } from '../services/usageLedgerService.js';
 import { conSpan, fijarAtributosSpan, hashSesion, registrarFinLLM, registrarFinTool, registrarFinConsulta } from '../observability/telemetry.js';
 import { buscarEpisodios } from '../services/episodicMemoryService.js';
@@ -2394,7 +2395,8 @@ Directrices de selección:
         checkIdemp = verificarYRegistrarIdempotencia({
           tool: nombreFuncion,
           args,
-          chatId: opciones.chatId || 'default'
+          chatId: opciones.chatId || 'default',
+          tenantId: opciones.tenantId
         }, { rutaArchivo: opciones.rutaArchivoIdempotencia });
       } catch { /* cache err */ }
 
@@ -2722,6 +2724,9 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
   // Sin tenantId (todos los llamantes historicos) o 'propietario': sin cambios.
   const tid = opciones && opciones.tenantId;
   if (tid !== undefined && tid !== null && tid !== 'propietario') {
+    // Fail-closed: mientras el aislamiento no este completo y verificado,
+    // NINGUN tenant ajeno entra al LLM/RAG (aunque tenga rol), con o sin rol.
+    if (!tenantsHabilitados()) return 'Acceso no disponible para este usuario.';
     const rol = typeof opciones.rolDeTenant === 'function' ? opciones.rolDeTenant(tid) : null;
     if (rol !== 'usuario') return 'Acceso no disponible para este usuario.';
   }

@@ -23,7 +23,7 @@ import { crearSqliteMemoryStore } from '../../src/adapters/outbound/persistence/
 import { crearSqliteFinanceStore } from '../../src/adapters/outbound/persistence/sqlite/sqliteFinanceStore.js';
 import { crearSqliteTenantRepository } from '../../src/adapters/outbound/persistence/sqlite/sqliteTenantRepository.js';
 import { crearSqliteUsageStore } from '../../src/adapters/outbound/persistence/sqlite/sqliteUsageStore.js';
-import { TENANT_PROPIETARIO, esPropietario, resolverTenant, afirmarTenantId } from '../../src/core/tenancy.js';
+import { TENANT_PROPIETARIO, AISLAMIENTO_COMPLETO, tenantsHabilitados, rutaDatosTenant, esPropietario, resolverTenant, afirmarTenantId } from '../../src/core/tenancy.js';
 import { puedeEjecutarHerramienta } from '../../src/services/rbacService.js';
 import { medirUso } from '../../src/services/usageLedgerService.js';
 
@@ -244,15 +244,112 @@ test('agente: tenantId desconocido NO ejecuta herramientas; sin tenantId (histor
     const respuesta = await consultarJarvis('tiempo', [], { chatId: 'c2', tenantId: 'sint-fantasma', chatCompletion: async () => { llamadasLlm += 1; return { message: { role: 'assistant', content: 'x' } }; }, ejecutores });
     assert.equal(llamadasLlm, 0, 'tenant desconocido: ni siquiera se llama al LLM');
     assert.match(String(respuesta), /no disponible/);
-    // Un tenant 'usuario' registrado entra, pero sin lista blanca no ejecuta herramientas.
-    await consultarJarvis('tiempo', [], { chatId: 'c3', tenantId: 'sint-a', rolDeTenant: (t) => (t === 'sint-a' ? 'usuario' : null), chatCompletion: guion(), ejecutores });
-    assert.equal(llamadas, 2, 'usuario sin lista blanca: herramienta denegada');
+    // Fail-closed: un tenant 'usuario' REGISTRADO tampoco entra al LLM/RAG mientras
+    // el aislamiento no este completo (el prompt podria llevar datos del propietario).
+    let llmUsuario = 0;
+    const rUsuario = await consultarJarvis('tiempo', [], {
+      chatId: 'c3', tenantId: 'sint-a', rolDeTenant: (t) => (t === 'sint-a' ? 'usuario' : null),
+      chatCompletion: async () => { llmUsuario += 1; return { message: { role: 'assistant', content: 'x' } }; }, ejecutores
+    });
+    assert.equal(llmUsuario, 0, 'usuario registrado: 0 llamadas al LLM con aislamiento incompleto');
+    assert.match(String(rUsuario), /no disponible/);
+    assert.equal(llamadas, 2, 'ninguna herramienta ejecutada');
+    // Incluso con el interruptor de runtime, la constante de codigo sigue cerrando.
+    process.env.DAVIS_TENANTS_ENABLED = '1';
+    try {
+      const rForz = await consultarJarvis('tiempo', [], {
+        chatId: 'c4', tenantId: 'sint-a', rolDeTenant: () => 'usuario',
+        chatCompletion: async () => { llmUsuario += 1; return { message: { role: 'assistant', content: 'x' } }; }, ejecutores
+      });
+      assert.equal(llmUsuario, 0, 'DAVIS_TENANTS_ENABLED=1 no basta: AISLAMIENTO_COMPLETO es false en codigo');
+      assert.match(String(rForz), /no disponible/);
+    } finally {
+      delete process.env.DAVIS_TENANTS_ENABLED;
+    }
     const dia = uso.rango('propietario', '2000-01-01', '2999-12-31');
     assert.equal(dia.entrada, 2 * (11 + 3), 'tokens del propietario medidos (2 consultas x 2 llamadas)');
     assert.equal(uso.rango('sint-fantasma', '2000-01-01', '2999-12-31').llamadas, 0, 'tenant desconocido no consume ni escribe');
-    assert.equal(uso.rango('sint-a', '2000-01-01', '2999-12-31').llamadas, 2, 'usuario registrado: medido a su nombre');
+    assert.equal(uso.rango('sint-a', '2000-01-01', '2999-12-31').llamadas, 0, 'usuario registrado sin acceso: nada medido');
   } finally {
     registrarStoreUsoPorDefecto(null);
     db.close();
   }
+});
+
+test('compuerta fail-closed: constante de codigo en false; el entorno no la abre', () => {
+  assert.equal(AISLAMIENTO_COMPLETO, false);
+  assert.equal(tenantsHabilitados({ DAVIS_TENANTS_ENABLED: '1' }), false);
+  assert.equal(tenantsHabilitados({}), false);
+});
+
+test('rutas por tenant: propietario conserva la ruta historica; traversal e ids hostiles rechazados', () => {
+  const base = path.join(os.tmpdir(), 'davis-data-x');
+  assert.equal(rutaDatosTenant(base, 'propietario', 'reminders.json'), path.join(base, 'reminders.json'));
+  assert.equal(rutaDatosTenant(base, 'sint-a', 'reminders.json'), path.join(base, 'tenants', 'sint-a', 'reminders.json'));
+  for (const id of ['../x', 'a/b', 'a\\b', '..', '.', '', 'A', 'a b', 'a\0b', '/etc']) {
+    assert.throws(() => rutaDatosTenant(base, id, 'x.json'), TypeError, `id ${JSON.stringify(id)}`);
+  }
+  for (const n of ['../x.json', 'a/b.json', '..', '.x/../y', '/etc/passwd', '', 'a\\b', 'x..y', 'a'.repeat(200)]) {
+    assert.throws(() => rutaDatosTenant(base, 'sint-a', n), TypeError, `nombre ${JSON.stringify(n)}`);
+  }
+  // Dos tenants distintos nunca comparten ruta.
+  assert.notEqual(rutaDatosTenant(base, 'sint-a', 'f.json'), rutaDatosTenant(base, 'sint-b', 'f.json'));
+});
+
+test('migracion 002: fallo a mitad => ROLLBACK completo (datos, PK y version intactos); FK e indices correctos tras exito', () => {
+  const m1 = MIGRACIONES.find((m) => m.version === 1);
+  const preparar = () => {
+    const db = dbNueva();
+    db.exec('CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, nombre TEXT NOT NULL, aplicada_en TEXT NOT NULL)');
+    db.exec(m1.sql);
+    db.prepare('INSERT INTO schema_migrations VALUES (1, ?, ?)').run(m1.nombre, 'x');
+    db.prepare("INSERT INTO finanzas_presupuestos (categoria, limite) VALUES ('cafe', 50)").run();
+    db.prepare("INSERT INTO finanzas_config (clave, valor) VALUES ('a', '1')").run();
+    db.prepare("INSERT INTO memorias (id, sujeto, dato, categoria, tags, fecha_registro) VALUES ('m1','a','uno','general','[]','2026-01-01')").run();
+    return db;
+  };
+  // Fallo forzado en la ULTIMA sentencia de 002 (tabla uso_tokens ya existente).
+  const roto = preparar();
+  roto.exec('CREATE TABLE uso_tokens (x INTEGER)');
+  assert.throws(() => ejecutarMigraciones(roto), /uso_tokens/);
+  assert.deepEqual(roto.prepare('SELECT version FROM schema_migrations').all().map((v) => v.version), [1], 'version 2 NO registrada');
+  assert.equal(roto.prepare("SELECT count(*) c FROM sqlite_master WHERE name = 'tenants'").get().c, 0, 'sin tabla tenants a medias');
+  assert.equal(roto.prepare("SELECT count(*) c FROM pragma_table_info('memorias') WHERE name = 'tenant_id'").get().c, 0, 'sin columna tenant_id a medias');
+  assert.equal(roto.prepare("SELECT count(*) c FROM pragma_table_info('finanzas_presupuestos') WHERE name = 'tenant_id'").get().c, 0, 'presupuestos sin reconstruir');
+  assert.deepEqual(roto.prepare('SELECT categoria, limite FROM finanzas_presupuestos').all(), [{ categoria: 'cafe', limite: 50 }], 'datos intactos');
+  assert.deepEqual(roto.prepare('SELECT clave, valor FROM finanzas_config').all(), [{ clave: 'a', valor: '1' }]);
+  roto.close();
+  // Camino feliz: integridad referencial, indices y sin tablas temporales huerfanas.
+  const ok = preparar();
+  ejecutarMigraciones(ok);
+  assert.deepEqual(ok.prepare('PRAGMA foreign_key_check').all(), [], 'sin violaciones de FK');
+  assert.equal(ok.pragma('integrity_check', { simple: true }), 'ok');
+  const indices = new Set(ok.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all().map((r) => r.name));
+  for (const i of ['idx_memorias_tenant', 'idx_gastos_tenant', 'idx_subs_tenant', 'idx_borr_tenant', 'idx_memorias_categoria', 'idx_memorias_sujeto', 'idx_gastos_fecha', 'idx_gastos_categoria']) {
+    assert.ok(indices.has(i), `indice ${i}`);
+  }
+  const tablas = ok.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name);
+  assert.ok(!tablas.some((t) => t.endsWith('_t')), `sin tablas temporales (${tablas})`);
+  // FK real: una identidad de un tenant inexistente falla; borrador con gasto inexistente falla.
+  assert.throws(() => ok.prepare("INSERT INTO identidades (tenant_id, canal, identificador, creada_en) VALUES ('nadie','w','x','y')").run(), /FOREIGN KEY/);
+  ok.close();
+});
+
+test('idempotencia: hash del propietario intacto; otro tenant con mismos tool/args/chatId NO comparte entrada ni resultado', async () => {
+  const { calcularHashIdempotencia, verificarYRegistrarIdempotencia, guardarResultadoIdempotencia } = await import('../../src/services/idempotencyService.js');
+  const base = calcularHashIdempotencia('registrar_gasto', { importe: 5 }, 'c1');
+  assert.equal(calcularHashIdempotencia('registrar_gasto', { importe: 5 }, 'c1', undefined), base, 'sin tenant = hash historico');
+  assert.equal(calcularHashIdempotencia('registrar_gasto', { importe: 5 }, 'c1', 'propietario'), base, 'propietario = hash historico');
+  assert.notEqual(calcularHashIdempotencia('registrar_gasto', { importe: 5 }, 'c1', 'sint-a'), base);
+  assert.notEqual(calcularHashIdempotencia('registrar_gasto', { importe: 5 }, 'c1', 'sint-a'), calcularHashIdempotencia('registrar_gasto', { importe: 5 }, 'c1', 'sint-b'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'davis-idem-'));
+  const deps = { rutaArchivo: path.join(dir, 'c.json') };
+  const a1 = verificarYRegistrarIdempotencia({ tool: 'registrar_gasto', args: { importe: 5 }, chatId: 'c1' }, deps);
+  assert.equal(a1.duplicado, false);
+  if (a1.clave) guardarResultadoIdempotencia(a1.clave, 'RESULTADO-PRIVADO-DEL-PROPIETARIO', deps);
+  const b1 = verificarYRegistrarIdempotencia({ tool: 'registrar_gasto', args: { importe: 5 }, chatId: 'c1', tenantId: 'sint-a' }, deps);
+  assert.equal(b1.duplicado, false, 'otro tenant no ve el registro del propietario');
+  assert.ok(!JSON.stringify(b1).includes('PRIVADO'), 'ni su resultado');
+  assert.equal(verificarYRegistrarIdempotencia({ tool: 'registrar_gasto', args: { importe: 5 }, chatId: 'c1' }, deps).duplicado, true, 'el propietario si detecta su duplicado');
+  fs.rmSync(dir, { recursive: true, force: true });
 });

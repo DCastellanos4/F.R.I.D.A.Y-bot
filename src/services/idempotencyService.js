@@ -50,9 +50,13 @@ export function normalizarArgumentos(args) {
 /**
  * Calcula un hash SHA256 determinista a partir de tool + args + chatId.
  */
-export function calcularHashIdempotencia(tool, args = {}, chatId = 'default') {
+export function calcularHashIdempotencia(tool, args = {}, chatId = 'default', tenantId = undefined) {
   const normArgs = JSON.stringify(normalizarArgumentos(args));
-  const fuente = `${String(tool).trim().toLowerCase()}|${String(chatId).trim()}|${normArgs}`;
+  // El propietario (o sin tenant: llamantes historicos) conserva EXACTAMENTE el hash
+  // de siempre; cualquier otro tenant lleva su id en el hash: misma herramienta, mismos
+  // args y mismo chatId en dos tenants nunca comparten entrada de cache (ni resultado).
+  const prefijoTenant = (tenantId === undefined || tenantId === null || tenantId === 'propietario') ? '' : `t:${String(tenantId)}|`;
+  const fuente = `${prefijoTenant}${String(tool).trim().toLowerCase()}|${String(chatId).trim()}|${normArgs}`;
   return crypto.createHash('sha256').update(fuente, 'utf-8').digest('hex');
 }
 
@@ -104,6 +108,7 @@ export function verificarYRegistrarIdempotencia({
   tool,
   args = {},
   chatId = 'default',
+  tenantId = undefined,
   ahora = Date.now(),
   ventanaMs = IDEMPOTENCY_DEFAULT_WINDOW_MS
 } = {}, deps = {}) {
@@ -112,7 +117,7 @@ export function verificarYRegistrarIdempotencia({
     return { esMutante: false, duplicado: false };
   }
 
-  const clave = calcularHashIdempotencia(nombreTool, args, chatId);
+  const clave = calcularHashIdempotencia(nombreTool, args, chatId, tenantId);
   const cache = leerCacheIdempotencia(deps);
   purgarCacheExpirada(cache, ahora, ventanaMs);
 
@@ -133,6 +138,7 @@ export function verificarYRegistrarIdempotencia({
   cache.registros[clave] = {
     tool: nombreTool,
     chatId: String(chatId),
+    tenantId: tenantId === undefined || tenantId === null ? 'propietario' : String(tenantId),
     timestamp: ahora,
     resultado: null
   };
