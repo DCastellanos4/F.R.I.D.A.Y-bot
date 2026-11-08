@@ -12,7 +12,12 @@ import { fileURLToPath } from 'url';
 
 import { config } from './src/config/config.js';
 import { DATA_DIR } from './src/config/paths.js';
-import { consultarJarvis } from './src/core/jarvisAgent.js';
+// El bot (capa de canal) ya no importa el cerebro: traduce cada mensaje de
+// Baileys al puerto de entrada InboundMessage y lo entrega al procesador
+// compuesto en la raiz de composicion, que inyecta los puertos de salida.
+import { procesarMensajeEntrante } from './src/composition/container.js';
+import { crearInboundDesdeWhatsApp } from './src/adapters/inbound/whatsapp/whatsappInboundAdapter.js';
+import { crearWhatsAppChannelAdapter } from './src/adapters/outbound/channels/whatsappChannelAdapter.js';
 import { normalizarMarkdownWhatsApp } from './src/services/textFormatService.js';
 import { confirmAndExecute } from './src/system/bashConsoleService.js';
 import { iniciarMonitorRecordatorios } from './src/services/reminderService.js';
@@ -986,6 +991,10 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         // 1. Confirmar lectura
         await sock.readMessages([msg.key]);
 
+        // Canal de salida via puerto: los envios de respuesta pasan por el
+        // adaptador de canal, no por llamadas sueltas al socket.
+        const canalWhatsapp = crearWhatsAppChannelAdapter(sock);
+
         // 2. Primer pulso de "escribiendo..."
         await sock.sendPresenceUpdate('composing', remoteJid);
 
@@ -994,7 +1003,10 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         const inicioJarvis = Date.now();
         let respuesta;
         try {
-          respuesta = await consultarJarvis(texto, historialPrevio, {
+          const inbound = crearInboundDesdeWhatsApp({ msg, texto, remoteJid });
+          respuesta = await procesarMensajeEntrante(inbound, {
+          historial: historialPrevio,
+          opciones: {
           chatId: remoteJid,
           urgencyDirective,
           chatCompletion: deps.chatCompletion,
@@ -1048,6 +1060,7 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
               text: `Codigo de autorizacion 2FA para el comando critico "${command}" (${reason}):\n\n${otpCode}\n\nValidez: ${ttlSeconds} segundos. Responde "confirmar otp ${otpCode}" para autorizar la ejecucion. Este codigo solo lo ves tu.`
             });
           }
+          }
         });
           registrarEventoMetrica({ tipo: 'comando', nombre: 'consulta_jarvis', duracionMs: Date.now() - inicioJarvis }, { rutaArchivo: deps.rutaArchivoMetricas });
         } catch (errJarvis) {
@@ -1074,10 +1087,10 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
             console.log(`[J.A.R.V.I.S. a David]: [Nota de voz PTT enviada con éxito]\n`);
           } catch (errTts) {
             console.error('Error generando nota de voz PTT, recurriendo a texto:', errTts.message);
-            await sock.sendMessage(remoteJid, { text: respuesta }, { quoted: msg });
+            await canalWhatsapp.enviarTexto(remoteJid, respuesta, { quoted: msg });
           }
         } else {
-          await sock.sendMessage(remoteJid, { text: respuesta }, { quoted: msg });
+          await canalWhatsapp.enviarTexto(remoteJid, respuesta, { quoted: msg });
           console.log(`[J.A.R.V.I.S. a David]: "${respuesta}"\n`);
         }
 

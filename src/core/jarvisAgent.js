@@ -642,6 +642,19 @@ function numerosCoinciden(a, b) {
 // claves no sensibles; el resto se redacta conservando el tipo.
 const CLAVES_ARGS_SENSIBLES = /numero|telefono|tel$|mensaje|nota|dato|contenido|texto|password|contrasena|clave|token|secreto|codigo|pin|consulta|titulo|tema|criterio/i;
 
+// Puerto de salida (arquitectura hexagonal): si el contenedor inyecta un
+// memoryRepository, el core habla con ese puerto; si no, los modulos
+// historicos actuan como adaptador por defecto. Comportamiento identico.
+function repoMemoriaDe(opciones) {
+  const repo = opciones && opciones.memoryRepository;
+  return {
+    guardar: repo && typeof repo.guardar === 'function' ? repo.guardar : guardarMemoria,
+    buscar: repo && typeof repo.buscar === 'function' ? repo.buscar : buscarMemorias,
+    listar: repo && typeof repo.listar === 'function' ? repo.listar : listarMemorias,
+    olvidar: repo && typeof repo.olvidar === 'function' ? repo.olvidar : olvidarMemoria
+  };
+}
+
 function argsParaLog(args) {
   if (!args || typeof args !== 'object') return args;
   const limpio = {};
@@ -1441,7 +1454,7 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
           resultadoTool = res.error;
         }
       } else if (nombreFuncion === 'guardar_memoria') {
-        const res = guardarMemoria({
+        const res = repoMemoriaDe(opciones).guardar({
           sujeto: args.sujeto,
           dato: args.dato,
           categoria: args.categoria
@@ -1452,14 +1465,14 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
           resultadoTool = `Error al guardar en la memoria: ${res.error}`;
         }
       } else if (nombreFuncion === 'buscar_memoria') {
-        const memorias = buscarMemorias(args.consulta);
+        const memorias = repoMemoriaDe(opciones).buscar(args.consulta);
         if (memorias.length === 0) {
           resultadoTool = `No encontré ningún recuerdo previo sobre "${args.consulta}" en el Second Brain, señor.`;
         } else {
           resultadoTool = `Recuerdos recuperados del Second Brain:\n` + memorias.map(m => `- [${m.sujeto.toUpperCase()}]: ${m.dato} (Registrado: ${m.fechaLocal})`).join('\n');
         }
       } else if (nombreFuncion === 'listar_memorias') {
-        const memorias = listarMemorias(args.categoria, { rutaArchivo: opciones.rutaArchivoMemorias });
+        const memorias = repoMemoriaDe(opciones).listar(args.categoria, { rutaArchivo: opciones.rutaArchivoMemorias });
         if (memorias.length === 0) {
           resultadoTool = 'Actualmente no hay ningún dato guardado en el Second Brain, señor.';
         } else {
@@ -1470,7 +1483,7 @@ async function ejecutarHerramientaJarvis(nombreFuncion, args, opciones = {}) {
         // argumento "confirmado" se ignora deliberadamente. La confirmacion
         // llega fuera de banda (mensaje directo de David) via
         // destructiveActionService, como el OTP de los comandos bash.
-        const res = olvidarMemoria(args.criterio, { confirmado: false });
+        const res = repoMemoriaDe(opciones).olvidar(args.criterio, { confirmado: false });
         if (res.requiereConfirmacion) {
           const idConfirmacion = opciones.chatId
             ? registrarBorradoMasivoPendiente(opciones.chatId, String(args.criterio), res.total)
@@ -1788,7 +1801,7 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
   try {
     const memExactas = typeof opciones.obtenerMemorias === 'function'
       ? opciones.obtenerMemorias(mensajeUsuario)
-      : buscarMemorias(mensajeUsuario, { rutaArchivo: opciones.rutaArchivoMemorias || opciones.storePath });
+      : repoMemoriaDe(opciones).buscar(mensajeUsuario, { rutaArchivo: opciones.rutaArchivoMemorias || opciones.storePath });
     if (Array.isArray(memExactas)) {
       memoriasProactivas.push(...memExactas);
     }
@@ -1826,7 +1839,13 @@ export async function consultarJarvis(mensajeUsuario, historial = [], opciones =
   }
 
   // LLM inyectable (pruebas con bateria dorada) o el real por defecto
-  const chatImpl = typeof opciones.chatCompletion === 'function' ? opciones.chatCompletion : chatCompletion;
+  // Puerto de salida LLM: una funcion chatCompletion explicita gana; si no,
+  // el proveedor inyectado por el contenedor; si no, el modulo historico.
+  const chatImpl = typeof opciones.chatCompletion === 'function'
+    ? opciones.chatCompletion
+    : (opciones.llmProvider && typeof opciones.llmProvider.chatCompletion === 'function'
+        ? (peticion) => opciones.llmProvider.chatCompletion(peticion)
+        : chatCompletion);
 
   // Memoria episodica: recupera fragmentos antiguos verbatim de ESTE chat
   // que la ventana y la condensacion ya no cubren, si aportan al mensaje.
