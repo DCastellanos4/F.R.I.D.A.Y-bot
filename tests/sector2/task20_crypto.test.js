@@ -25,7 +25,10 @@ import {
   estimatePoolSize,
   saveCredentialToMemory
 } from '../../src/services/cryptoGeneratorService.js';
-import { buscarMemorias, olvidarMemoria } from '../../src/services/memoryService.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { guardarMemoria, buscarMemorias, olvidarMemoria } from '../../src/services/memoryService.js';
 
 describe('Sector 2 - Task 20: High-Entropy Cryptographic Generator', () => {
   let mockBrain;
@@ -292,13 +295,15 @@ describe('Sector 2 - Task 20: High-Entropy Cryptographic Generator', () => {
       const testKeyName = 'Test Credential Unit ' + Date.now();
       const testSecret = generateToken(16, 'hex');
 
-      const res = await saveCredentialToMemory(testKeyName, testSecret, 'Prueba de integracion');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'davis-crypto-private-'));
+      const rutaArchivo = path.join(dir, 'brain_memory.json');
+      const res = await saveCredentialToMemory(testKeyName, testSecret, 'Prueba de integracion', { memoryService: { guardarMemoria: (p) => guardarMemoria({ ...p, rutaArchivo }) } });
       assert.strictEqual(res.ok, true);
       assert.strictEqual(res.category, 'clave');
       assertNoEmojis(res);
 
       // Verify searchable via buscarMemorias
-      const searchResults = buscarMemorias(testKeyName);
+      const searchResults = buscarMemorias(testKeyName, { rutaArchivo });
       assert.ok(searchResults.length > 0);
       const found = searchResults.find(m => m.sujeto === testKeyName);
       assert.ok(found, 'Saved credential should be found in memory search');
@@ -306,7 +311,8 @@ describe('Sector 2 - Task 20: High-Entropy Cryptographic Generator', () => {
       assert.strictEqual(found.categoria, 'clave');
 
       // Cleanup
-      olvidarMemoria(testKeyName);
+      olvidarMemoria(testKeyName, { rutaArchivo });
+      fs.rmSync(dir, { recursive: true, force: true });
       delete process.env.MEMORY_ENCRYPTION_KEY;
     });
   });

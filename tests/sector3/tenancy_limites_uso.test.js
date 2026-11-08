@@ -203,3 +203,60 @@ test('E2E agente + controlador SQLite + libro real: usage del modelo agota cuota
     assert.equal(llamadas, antes);
   } finally { registrarStoreUsoPorDefecto(null); db.close(); }
 });
+
+test('cuota por llamada: primera ronda/toolcall agota cuota; no hay segunda llamada, ni en servicios secundarios; owner exento', async () => {
+  const { consultarJarvisEnAmbito } = await import('../../src/core/jarvisAgent.js');
+  const { registrarStoreUsoPorDefecto } = await import('../../src/services/usageLedgerService.js');
+  const { db, uso, lim } = montar();
+  lim.configurar('sint-a', { tokensDia: 10, peticionesMinuto: 1 });
+  registrarStoreUsoPorDefecto(uso);
+  let llamadas = 0;
+  const chatCompletion = async () => {
+    llamadas++;
+    return { model: 'modelo-efectivo', usage: { prompt_tokens: 9, completion_tokens: 1 }, message: {
+      role: 'assistant', content: '', tool_calls: [{ id: 'ronda-1', function: { name: 'buscar_recuerdo_semantico', arguments: { consulta: 'tesoro azul zeta' } } }]
+    } };
+  };
+  try {
+    await consultarJarvisEnAmbito('busca en mis recuerdos el tesoro azul zeta', [], {
+      tenantId: 'sint-a', chatId: 'cuota-rondas', rolDeTenant: () => 'usuario',
+      permitidasUsuario: ['buscar_recuerdo_semantico'], controlUso: lim, chatCompletion
+    });
+    assert.equal(llamadas, 1, 'la segunda ronda no llega al proveedor');
+    const filas = db.prepare("SELECT modelo,entrada,salida FROM uso_tokens WHERE tenant_id='sint-a'").all();
+    assert.deepEqual(filas, [{ modelo: 'modelo-efectivo', entrada: 9, salida: 1 }]);
+    assert.equal(db.prepare("SELECT SUM(n) n FROM tenant_peticiones WHERE tenant_id='sint-a'").get().n, 1, 'ritmo por consulta, no por ronda');
+    let ownerLlamadas = 0;
+    await consultarJarvisEnAmbito('hola', [], { chatId: 'owner-exento', controlUso: { autorizar: () => { throw new Error('owner no debe consultarlo'); } }, chatCompletion: async () => { ownerLlamadas++; return { model: 'o', message: { role: 'assistant', content: 'ok' } }; } });
+    assert.ok(ownerLlamadas >= 1);
+  } finally { registrarStoreUsoPorDefecto(null); db.close(); }
+});
+
+test('llamadas concurrentes: uso persistente efectivo se relee; inflight puede rebasar sin reserva, llamadas posteriores quedan denegadas', async () => {
+  const { consultarJarvisEnAmbito } = await import('../../src/core/jarvisAgent.js');
+  const { registrarStoreUsoPorDefecto } = await import('../../src/services/usageLedgerService.js');
+  const { db, uso, lim } = montar();
+  lim.configurar('sint-a', { tokensDia: 10 });
+  registrarStoreUsoPorDefecto(uso);
+  let llamadas = 0; let soltar;
+  const barrera = new Promise((r) => { soltar = r; });
+  const chatCompletion = async () => {
+    llamadas++;
+    if (llamadas === 2) soltar();
+    await barrera;
+    return { model: 'efectivo-concurrente', usage: { prompt_tokens: 9, completion_tokens: 1 }, message: { role: 'assistant', content: 'ok' } };
+  };
+  try {
+    const opts = { tenantId: 'sint-a', controlUso: lim, chatCompletion };
+    await Promise.all([
+      consultarJarvisEnAmbito('busca el contacto Ana', [], { ...opts, chatId: 'concurrente-1' }),
+      consultarJarvisEnAmbito('busca el contacto Ana', [], { ...opts, chatId: 'concurrente-2' })
+    ]);
+    assert.equal(llamadas, 2, 'ambas estaban en vuelo antes de medirse');
+    const filas = db.prepare("SELECT SUM(entrada+salida) t FROM uso_tokens WHERE tenant_id='sint-a'").get();
+    assert.equal(filas.t, 20, 'postuso no promete hard cap de 10');
+    const r = await consultarJarvisEnAmbito('busca el contacto Ana', [], { ...opts, chatId: 'concurrente-3' });
+    assert.match(String(r), /Limite de uso/);
+    assert.equal(llamadas, 2, 'nuevo intento bloqueado');
+  } finally { registrarStoreUsoPorDefecto(null); db.close(); }
+});

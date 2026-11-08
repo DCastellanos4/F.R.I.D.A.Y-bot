@@ -38,7 +38,7 @@ export function crearSqliteLimitesStore(db) {
   `);
   const limpiarVentanas = db.prepare('DELETE FROM tenant_peticiones WHERE tenant_id = ? AND ventana < ?');
 
-  const decidir = db.transaction((tenantId, ahora) => {
+  const decidir = db.transaction((tenantId, ahora, consumirPeticion) => {
     const fila = leerFila.get(tenantId);
     if (!fila || (fila.tokens_dia === null && fila.tokens_mes === null && fila.peticiones_minuto === null)) {
       return { permitido: true, motivo: 'sin_limites' };
@@ -53,7 +53,7 @@ export function crearSqliteLimitesStore(db) {
       const usado = tokensRango.get(tenantId, `${mes}-01`, `${mes}-31`).t;
       if (usado >= fila.tokens_mes) return { permitido: false, motivo: 'cuota_mensual', usado, limite: fila.tokens_mes };
     }
-    if (fila.peticiones_minuto !== null) {
+    if (consumirPeticion && fila.peticiones_minuto !== null) {
       const ventana = Math.floor(ahora.getTime() / VENTANA_MS);
       limpiarVentanas.run(tenantId, ventana);
       const n = (leerVentana.get(tenantId, ventana) || { n: 0 }).n;
@@ -84,10 +84,10 @@ export function crearSqliteLimitesStore(db) {
       return f ? { tokensDia: f.tokens_dia, tokensMes: f.tokens_mes, peticionesMinuto: f.peticiones_minuto } : null;
     },
     /** Decide y, si procede, consume una peticion de la ventana. Propietario: siempre permitido. */
-    autorizar({ tenantId = TENANT_PROPIETARIO, ahora = new Date() } = {}) {
+    autorizar({ tenantId = TENANT_PROPIETARIO, ahora = new Date(), consumirPeticion = true } = {}) {
       afirmarTenantId(tenantId);
       if (tenantId === TENANT_PROPIETARIO) return { permitido: true, motivo: 'propietario' };
-      return decidir.immediate(tenantId, ahora);
+      return decidir.immediate(tenantId, ahora, consumirPeticion);
     }
   });
 }

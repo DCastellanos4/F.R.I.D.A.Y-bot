@@ -13,6 +13,7 @@ import path from 'path';
 import os from 'os';
 
 const dirEntorno = fs.mkdtempSync(path.join(os.tmpdir(), 'davis-cerebro-'));
+process.env.DAVIS_DATA_DIR = path.join(dirEntorno, 'data');
 process.env.DAVIS_HISTORY_DIR = path.join(dirEntorno, 'history');
 process.env.NODE_ENV = 'test';
 
@@ -79,7 +80,9 @@ test('Entrada real: registrar contacto lo persiste y lo busca', async () => {
 test('Busqueda semantica: el modelo elige por significado y se declara el modo', async () => {
   const chatFalso = async ({ messages }) => {
     assert.match(messages[1].content, /handshake/);
-    return { message: { content: '2' } }; // la nota de redes queda segunda (memoria vacia + 2 notas: orden puede variar)
+    const linea = messages[1].content.split('\n').find((l) => /handshake/.test(l));
+    const numero = linea.match(/^(\d+)\./)[1];
+    return { message: { content: numero } }; // seleccion por contenido, nunca por el orden accidental
   };
   const r = await buscarSemantico('como se establece una conexion fiable en redes', { carpetaNotas, chatCompletion: chatFalso });
   assert.equal(r.ok, true);

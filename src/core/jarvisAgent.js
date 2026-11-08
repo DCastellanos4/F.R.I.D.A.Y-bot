@@ -1965,6 +1965,18 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
   // de failover de llmService) para declararlo honestamente en la respuesta.
   let failoverDetectado = null;
   const chatImpl = async (peticion) => {
+    // Cuota postuso: releer uso persistente antes de CADA llamada, incluidas
+    // rondas y servicios secundarios. El ritmo cuenta consultas, no toolcalls.
+    const tidUso = opciones.tenantId;
+    if (tidUso && tidUso !== 'propietario' && opciones.controlUso) {
+      let permiso;
+      try { permiso = opciones.controlUso.autorizar({ tenantId: tidUso, consumirPeticion: false }); } catch { permiso = null; }
+      if (permiso?.permitido !== true) {
+        const e = new Error('Limite de uso alcanzado para este usuario.');
+        e.name = 'LimiteUso';
+        throw e;
+      }
+    }
     // Observabilidad: span + metricas por llamada LLM (latencia P95/P99 y
     // tokens por sesion). Atributos: solo modelo; NUNCA mensajes.
     const inicioLlm = Date.now();
@@ -2006,6 +2018,9 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
       throw errLlm;
     }
   };
+  // Servicios que reciben chatCompletion usan el mismo control y medicion.
+  opciones = { ...opciones, chatCompletion: chatImpl };
+
 
   // Memoria episodica: recupera fragmentos antiguos verbatim de ESTE chat
   // que la ventana y la condensacion ya no cubren, si aportan al mensaje.
