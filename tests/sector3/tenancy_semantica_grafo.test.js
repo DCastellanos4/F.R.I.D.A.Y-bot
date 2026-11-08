@@ -101,16 +101,43 @@ test('aislarOpcionesTenant: TODAS las rutas personales del agente quedan bajo te
   assert.deepEqual(sinCubrir, [], 'toda ruta personal nueva debe mapearse o excluirse explicitamente');
 });
 
-test('herramientas de host/propietario: denegadas a un tenant aunque esten en la lista blanca', async () => {
-  const { HERRAMIENTAS_SOLO_PROPIETARIO, puedeEjecutarHerramienta: pe } = await import('../../src/services/rbacService.js');
-  assert.ok(HERRAMIENTAS_SOLO_PROPIETARIO.length >= 20);
-  for (const h of HERRAMIENTAS_SOLO_PROPIETARIO) {
-    assert.ok(NOMBRES_HERRAMIENTAS_JARVIS.has(h), `existe en el catalogo real: ${h}`);
-    const r = pe({ tenantId: 'sint-a', herramienta: h, catalogo: NOMBRES_HERRAMIENTAS_JARVIS, permitidasUsuario: [h], rolDe: () => 'usuario' });
-    assert.equal(r.permitido, false, h);
-    assert.equal(r.motivo, 'solo_propietario');
-    assert.equal(pe({ tenantId: undefined, herramienta: h, catalogo: NOMBRES_HERRAMIENTAS_JARVIS }).permitido, true, `propietario: ${h}`);
+test('clasificacion por impacto: TODO el catalogo real clasificado, sin duplicados ni nombres obsoletos', async () => {
+  const R = await import('../../src/services/rbacService.js');
+  const todos = Object.values(R.CLASIFICACION_HERRAMIENTAS).flat();
+  assert.equal(new Set(todos).size, todos.length, 'una herramienta, una clase');
+  const sinClase = [...NOMBRES_HERRAMIENTAS_JARVIS].filter((h) => !R.claseDeHerramienta(h));
+  assert.deepEqual(sinClase, [], 'toda herramienta del catalogo debe clasificarse (una nueva sin clase falla aqui y se deniega en runtime)');
+  const obsoletas = todos.filter((h) => !NOMBRES_HERRAMIENTAS_JARVIS.has(h) && h !== 'confirm_bash_otp');
+  assert.deepEqual(obsoletas, []);
+  assert.deepEqual([...R.CLASES_APTAS_TENANT].sort(), ['datos_tenant', 'sin_estado']);
+});
+
+test('lista blanca con TODO el catalogo: un tenant solo ejecuta clases aptas; host/credenciales/identidad/terceros/sistema/datos sin aislar, NUNCA', async () => {
+  const R = await import('../../src/services/rbacService.js');
+  const todos = [...NOMBRES_HERRAMIENTAS_JARVIS];
+  const nunca = {
+    host: ['execute_bash_command', 'manage_tunnel', 'trigger_encrypted_backup', 'get_infrastructure_status', 'encender_pc', 'controlar_domotica', 'crear_backup_sesion', 'capturar_pagina', 'descargar_multimedia', 'resumir_enlace'],
+    credenciales: ['generate_crypto_credential', 'revisar_pr', 'actividad_repos', 'configurar_alertas_repos'],
+    identidad: ['activar_modo_vip', 'agregar_contacto_vip', 'estado_modo_vip', 'ejecutar_skill', 'proponer_skill'],
+    terceros: ['programar_mensaje_whatsapp', 'enviar_contacto_vcard', 'crear_encuesta_whatsapp', 'resumir_grupo', 'buscar_en_historial'],
+    global_sistema: ['configurar_radar_ofertas', 'vigilar_producto', 'crear_recordatorio', 'programar_snooze', 'vigilar_ruta', 'configurar_modo_nocturno'],
+    datos_propietario: ['registrar_gasto', 'guardar_nota_personal', 'leer_diario', 'preguntar_documentos', 'registrar_candidatura']
+  };
+  for (const [clase, lista] of Object.entries(nunca)) {
+    for (const h of lista) {
+      assert.equal(R.claseDeHerramienta(h), clase, `${h} es ${clase}`);
+      const r = R.puedeEjecutarHerramienta({ tenantId: 'sint-a', herramienta: h, catalogo: NOMBRES_HERRAMIENTAS_JARVIS, permitidasUsuario: todos, rolDe: () => 'usuario' });
+      assert.equal(r.permitido, false, `${h} denegada aunque este en la lista blanca`);
+    }
   }
-  // control: una herramienta comun SI se permite si esta en la lista blanca
-  assert.equal(pe({ tenantId: 'sint-a', herramienta: 'crear_recordatorio', catalogo: NOMBRES_HERRAMIENTAS_JARVIS, permitidasUsuario: ['crear_recordatorio'], rolDe: () => 'usuario' }).permitido, true);
+  const permitidas = todos.filter((h) => R.puedeEjecutarHerramienta({ tenantId: 'sint-a', herramienta: h, catalogo: NOMBRES_HERRAMIENTAS_JARVIS, permitidasUsuario: todos, rolDe: () => 'usuario' }).permitido);
+  assert.deepEqual(permitidas.sort(), todos.filter((h) => R.CLASES_APTAS_TENANT.includes(R.claseDeHerramienta(h))).sort());
+  assert.ok(permitidas.length > 0 && permitidas.length < todos.length / 2);
+  // desconocida/nueva sin clasificar: denegada incluso si el catalogo la contuviera
+  const nueva = new Set([...NOMBRES_HERRAMIENTAS_JARVIS, 'herramienta_nueva_x']);
+  assert.equal(R.puedeEjecutarHerramienta({ tenantId: 'sint-a', herramienta: 'herramienta_nueva_x', catalogo: nueva, permitidasUsuario: ['herramienta_nueva_x'], rolDe: () => 'usuario' }).motivo, 'sin_clasificar');
+  // propietario intacto: todas
+  for (const h of todos) assert.equal(R.puedeEjecutarHerramienta({ tenantId: undefined, herramienta: h, catalogo: NOMBRES_HERRAMIENTAS_JARVIS }).permitido, true);
+  // sin lista blanca (defecto vacio): nada
+  assert.equal(todos.filter((h) => R.puedeEjecutarHerramienta({ tenantId: 'sint-a', herramienta: h, catalogo: NOMBRES_HERRAMIENTAS_JARVIS, rolDe: () => 'usuario' }).permitido).length, 0);
 });
