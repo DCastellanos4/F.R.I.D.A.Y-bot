@@ -15,7 +15,7 @@ import { afirmarLLMProvider } from '../ports/outbound/LLMProviderPort.js';
 import { afirmarMemoryRepository } from '../ports/outbound/MemoryRepositoryPort.js';
 import { conSpan, hashSesion } from '../observability/telemetry.js';
 
-export function crearMessageProcessor({ llmProvider, memoryRepository, metricasClasificador, crearStoreMetricas, rutaArchivoIdempotenciaDefecto, accesoTenants = null, enrutadorInferencia = null } = {}) {
+export function crearMessageProcessor({ llmProvider, memoryRepository, metricasClasificador, crearStoreMetricas, rutaArchivoIdempotenciaDefecto, accesoTenants = null, enrutadorInferencia = null, buscadorHibrido = null } = {}) {
   if (llmProvider !== undefined) afirmarLLMProvider(llmProvider);
   if (memoryRepository !== undefined) afirmarMemoryRepository(memoryRepository);
 
@@ -44,6 +44,12 @@ export function crearMessageProcessor({ llmProvider, memoryRepository, metricasC
       // (null salvo DAVIS_SLM_MODEL); una opcion explicita del llamador gana.
       if (enrutadorInferencia && !opcionesConPuertos.enrutadorInferencia) {
         opcionesConPuertos.enrutadorInferencia = enrutadorInferencia;
+      }
+      // RF-03: buscador hibrido inyectado por la raiz de composicion
+      // (null sin QDRANT_URL); una opcion explicita del llamador gana y
+      // sin el la busqueda sigue el camino historico.
+      if (buscadorHibrido && !opcionesConPuertos.buscadorHibrido) {
+        opcionesConPuertos.buscadorHibrido = buscadorHibrido;
       }
       // Metricas del clasificador: puerto inyectado; una ruta historica
       // suelta se traduce a store aqui (la raiz conoce adaptadores, el

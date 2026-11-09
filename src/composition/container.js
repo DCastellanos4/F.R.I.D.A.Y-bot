@@ -30,6 +30,12 @@ import { crearOllamaSlmAdapter } from '../adapters/outbound/llm/ollamaSlmAdapter
 import { crearLocalSlmInferenceService } from '../services/localSlmInferenceService.js';
 import { crearEnrutadorInferencia } from '../core/inferenceRouter.js';
 import { registrarDecisionInferencia } from '../observability/telemetry.js';
+import { crearHybridRetrievalService } from '../core/rag/hybridRetrievalService.js';
+import { crearOllamaEmbeddingAdapter } from '../adapters/outbound/embeddings/ollamaEmbeddingAdapter.js';
+import { crearQdrantVectorStoreAdapter } from '../adapters/outbound/vectorstores/qdrantVectorStoreAdapter.js';
+import { crearSqliteFts5SparseAdapter } from '../adapters/outbound/retrieval/sqliteFts5SparseAdapter.js';
+import { crearHttpCrossEncoderReranker } from '../adapters/outbound/rerankers/httpCrossEncoderRerankerAdapter.js';
+import { esDocumentoSensibleRag } from '../services/semanticMemoryService.js';
 
 /**
  * Persistencia activa: DAVIS_PERSISTENCE=json (por defecto, comportamiento
@@ -71,6 +77,27 @@ function crearPersistenciaActiva(overrides) {
   return { modo, memoryRepository, persistencia };
 }
 
+/**
+ * RF-03: buscador hibrido industrial. INERTE por defecto: sin QDRANT_URL
+ * no se construye nada y la busqueda sigue el camino historico (TF-IDF),
+ * rollback intacto. El reranker solo entra con DAVIS_RERANKER_URL; sin el
+ * el pipeline queda declarado como NO certificado (nunca cuenta RF-03).
+ * Los documentos sensibles quedan fuera via esIndexable, como en el RAG
+ * historico.
+ */
+function crearBuscadorHibridoDesdeEntorno() {
+  const url = (process.env.QDRANT_URL || '').trim();
+  if (!url) return null;
+  const dimensiones = Number.parseInt(process.env.DAVIS_EMBEDDING_DIMS || '', 10) || 1024;
+  return crearHybridRetrievalService({
+    embeddings: crearOllamaEmbeddingAdapter(),
+    vectorStore: crearQdrantVectorStoreAdapter({ url, dimensiones }),
+    sparseIndex: crearSqliteFts5SparseAdapter(),
+    reranker: crearHttpCrossEncoderReranker(),
+    esIndexable: (doc) => !esDocumentoSensibleRag(doc)
+  });
+}
+
 export function crearContenedor(overrides = {}) {
   const llmProvider = overrides.llmProvider ?? crearLLMServiceProviderAdapter();
   // RF-02: enrutador de inferencia especulativa. INERTE por defecto: sin
@@ -101,6 +128,9 @@ export function crearContenedor(overrides = {}) {
       'idempotency_cache.json'
     );
   }
+  const buscadorHibrido = overrides.buscadorHibrido !== undefined
+    ? overrides.buscadorHibrido
+    : crearBuscadorHibridoDesdeEntorno();
   const processor = crearMessageProcessor({
     llmProvider,
     memoryRepository,
@@ -108,6 +138,7 @@ export function crearContenedor(overrides = {}) {
     crearStoreMetricas: crearJsonlClassifierMetricsStore,
     accesoTenants: overrides.accesoTenants || null,
     enrutadorInferencia,
+    buscadorHibrido,
     rutaArchivoIdempotenciaDefecto: overrides.rutaArchivoIdempotenciaDefecto ?? rutaIdempTest
   });
   const procesarBase = processor.procesarMensajeEntrante;
@@ -117,6 +148,7 @@ export function crearContenedor(overrides = {}) {
     memoryRepository,
     metricasClasificador,
     enrutadorInferencia,
+    buscadorHibrido,
     persistencia: persistenciaActiva.persistencia || null,
     async procesarMensajeEntrante(inbound, ctx) {
       const respuesta = await procesarBase(inbound, ctx);

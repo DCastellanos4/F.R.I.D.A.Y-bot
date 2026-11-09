@@ -81,3 +81,14 @@ test('auditoria: el hash de args con PII no es reversible por diccionario', () =
   assert.equal(audit.verificarCadena().ok, true);
   db.close();
 });
+
+test('contenedor por defecto: sin QDRANT_URL no hay buscador hibrido (inerte)', () => {
+  const anterior = process.env.QDRANT_URL;
+  delete process.env.QDRANT_URL;
+  try {
+    const c = crearContenedor({ memoryRepository: null });
+    assert.equal(c.buscadorHibrido, null, 'sin Qdrant la busqueda sigue el camino historico');
+  } finally {
+    if (anterior !== undefined) process.env.QDRANT_URL = anterior;
+  }
+});

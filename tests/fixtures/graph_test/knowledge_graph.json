@@ -5,25 +5,25 @@
       "nombre": "Mama",
       "tipo": "persona",
       "metadata": {},
-      "actualizadoEn": "2026-11-09T17:29:50.195Z"
+      "actualizadoEn": "2026-11-09T17:35:02.251Z"
     },
     "regalo_30_eur": {
       "id": "regalo_30_eur",
       "nombre": "Regalo 30 EUR",
       "tipo": "gasto",
       "metadata": {},
-      "actualizadoEn": "2026-11-09T17:29:50.195Z"
+      "actualizadoEn": "2026-11-09T17:35:02.251Z"
     }
   },
   "aristas": [
     {
-      "id": "c27a8c54f94f",
+      "id": "17f4017192ff",
       "origen": "mama",
       "destino": "regalo_30_eur",
       "relacion": "destinataria_de",
       "peso": 1,
       "metadata": {},
-      "actualizadoEn": "2026-11-09T17:29:50.195Z"
+      "actualizadoEn": "2026-11-09T17:35:02.251Z"
     }
   ]
 }
