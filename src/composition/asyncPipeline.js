@@ -15,12 +15,12 @@ import { crearSqliteOutboxQueue } from '../adapters/outbound/queue/sqliteOutboxQ
 import { crearWorkerAgente } from '../workers/agentWorker.js';
 import { crearEntregadorRespuestas } from '../workers/responseDeliverer.js';
 
-export function crearPipelineAsincrono({ db, procesar, canales = {}, cola = null, intervaloColaMs = 200, intervaloEntregaMs = 500 } = {}) {
+export function crearPipelineAsincrono({ db, procesar, canales = {}, cola = null, auditoria = null, intervaloColaMs = 200, intervaloEntregaMs = 500 } = {}) {
   if (!db) throw new TypeError('crearPipelineAsincrono requiere db.');
   if (typeof procesar !== 'function') throw new TypeError('crearPipelineAsincrono requiere procesar.');
   const outboxStore = crearSqliteOutboxStore(db);
   const colaActiva = cola || crearSqliteOutboxQueue({ outboxStore, intervaloMs: intervaloColaMs });
-  const worker = crearWorkerAgente({ cola: colaActiva, procesar, outboxStore });
+  const worker = crearWorkerAgente({ cola: colaActiva, procesar, outboxStore, auditoria });
   const entregador = crearEntregadorRespuestas({ outboxStore, canales, intervaloMs: intervaloEntregaMs });
 
   return Object.freeze({
@@ -49,6 +49,10 @@ export function crearPipelineAsincrono({ db, procesar, canales = {}, cola = null
     iniciar() {
       worker.iniciar();
       entregador.iniciar();
+    },
+    /** Alta en caliente del adaptador de canal (cuando abre sesion). */
+    registrarCanal(nombre, adaptador) {
+      entregador.registrarCanal(nombre, adaptador);
     },
     async cerrar() {
       await worker.cerrar();

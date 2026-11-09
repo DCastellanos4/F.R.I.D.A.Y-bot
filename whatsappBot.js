@@ -541,6 +541,23 @@ export async function iniciarWhatsApp() {
     browser: ['DAVIS Linux', 'Chrome', '124.0.0']
   });
 
+  // RF-01 (B1): con el pipeline asincrono activo (DAVIS_ASYNC_PIPELINE=1,
+  // carril coordinado), el socket se registra como canal de entrega para
+  // que el entregador del pool pueda enviar las respuestas finales. Sin
+  // el env no cambia nada (camino sincrono historico).
+  if (process.env.DAVIS_ASYNC_PIPELINE === '1') {
+    try {
+      const { contenedorCompartido } = await import('./src/composition/container.js');
+      const { crearWhatsAppChannelAdapter } = await import('./src/adapters/outbound/channels/whatsappChannelAdapter.js');
+      if (contenedorCompartido && typeof contenedorCompartido.registrarCanalEntrega === 'function') {
+        contenedorCompartido.registrarCanalEntrega('whatsapp', crearWhatsAppChannelAdapter(sock));
+        console.log('[Pipeline] Canal de entrega WhatsApp registrado en el pool asincrono.');
+      }
+    } catch (errCanal) {
+      console.error('[Pipeline] No se pudo registrar el canal de entrega:', errCanal.message);
+    }
+  }
+
   if (pairingNumber && !sock.authState.creds.registered) {
     setTimeout(async () => {
       try {

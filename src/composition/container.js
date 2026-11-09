@@ -35,7 +35,9 @@ import { crearOllamaEmbeddingAdapter } from '../adapters/outbound/embeddings/oll
 import { crearQdrantVectorStoreAdapter } from '../adapters/outbound/vectorstores/qdrantVectorStoreAdapter.js';
 import { crearSqliteFts5SparseAdapter } from '../adapters/outbound/retrieval/sqliteFts5SparseAdapter.js';
 import { crearHttpCrossEncoderReranker } from '../adapters/outbound/rerankers/httpCrossEncoderRerankerAdapter.js';
-import { esDocumentoSensibleRag } from '../services/semanticMemoryService.js';
+import { esDocumentoSensibleRag, registrarBuscadorHibridoPorDefecto } from '../services/semanticMemoryService.js';
+import { crearPipelineAsincrono } from './asyncPipeline.js';
+import { crearAuditLogService } from '../security/auditLogService.js';
 
 /**
  * Persistencia activa: DAVIS_PERSISTENCE=json (por defecto, comportamiento
@@ -98,6 +100,33 @@ function crearBuscadorHibridoDesdeEntorno() {
   });
 }
 
+/**
+ * RF-01/B1: pipeline asincrono (outbox + worker + entregador). INERTE por
+ * defecto: solo con DAVIS_ASYNC_PIPELINE=1 (o overrides.pipelineAsincrono
+ * en pruebas) se instancia y arranca el pool. La sustitucion del camino
+ * sincrono de produccion es carril coordinado; aqui queda el wiring local
+ * completo: recepcion con ACK inmediato, worker con checkpoints y
+ * auditoria RNF-04, y alta en caliente del canal de entrega.
+ */
+const ACK_PIPELINE = 'Recibido, lo estoy procesando.';
+
+function crearPipelineDesdeEntorno({ procesar, overrides }) {
+  if (overrides.pipelineAsincrono !== undefined) return overrides.pipelineAsincrono;
+  if (process.env.DAVIS_ASYNC_PIPELINE !== '1') return null;
+  const rutaDb = process.env.DAVIS_ERS_PIPELINE_DB
+    || process.env.DAVIS_SQLITE_PATH
+    || path.join(DATA_DIR, 'ers_pipeline.db');
+  const db = abrirBaseDatos(rutaDb);
+  ejecutarMigraciones(db);
+  const pipeline = crearPipelineAsincrono({
+    db,
+    procesar,
+    auditoria: crearAuditLogService(db)
+  });
+  pipeline.iniciar();
+  return pipeline;
+}
+
 export function crearContenedor(overrides = {}) {
   const llmProvider = overrides.llmProvider ?? crearLLMServiceProviderAdapter();
   // RF-02: enrutador de inferencia especulativa. INERTE por defecto: sin
@@ -131,6 +160,13 @@ export function crearContenedor(overrides = {}) {
   const buscadorHibrido = overrides.buscadorHibrido !== undefined
     ? overrides.buscadorHibrido
     : crearBuscadorHibridoDesdeEntorno();
+  // RF-03 consumo: el buscador hibrido queda registrado como fuente de
+  // busqueda semantica por defecto (solo existe con QDRANT_URL; sin el,
+  // null y el camino historico TF-IDF no se toca). La costura de consumo
+  // vive en semanticMemoryService.buscarMemoriaSemantica.
+  if (buscadorHibrido && overrides.registrarBuscadorPorDefecto !== false) {
+    registrarBuscadorHibridoPorDefecto(buscadorHibrido);
+  }
   const processor = crearMessageProcessor({
     llmProvider,
     memoryRepository,
@@ -143,14 +179,27 @@ export function crearContenedor(overrides = {}) {
   });
   const procesarBase = processor.procesarMensajeEntrante;
   const userRepository = persistenciaActiva.persistencia?.userRepository || overrides.userRepository || null;
+  const pipeline = crearPipelineDesdeEntorno({ procesar: procesarBase, overrides });
   return Object.freeze({
     llmProvider,
     memoryRepository,
     metricasClasificador,
     enrutadorInferencia,
     buscadorHibrido,
+    pipelineAsincrono: pipeline,
     persistencia: persistenciaActiva.persistencia || null,
+    /** Alta en caliente del adaptador de entrega (canal con sesion abierta). */
+    registrarCanalEntrega(nombre, adaptador) {
+      if (!pipeline) throw new Error('Pipeline asincrono inactivo: DAVIS_ASYNC_PIPELINE!=1.');
+      pipeline.registrarCanal(nombre, adaptador);
+    },
     async procesarMensajeEntrante(inbound, ctx) {
+      // B1: con pipeline activo la recepcion es ACK inmediato (escritura
+      // outbox atomica); la respuesta real la entrega el pool por el canal.
+      if (pipeline) {
+        pipeline.recibir(inbound);
+        return ACK_PIPELINE;
+      }
       const respuesta = await procesarBase(inbound, ctx);
       // Registro de contacto YA autenticado (la lista blanca decide el
       // acceso antes de llegar aqui; el repositorio nunca autoriza).
@@ -167,6 +216,9 @@ export function crearContenedor(overrides = {}) {
 }
 
 const contenedorPorDefecto = crearContenedor();
+
+/** Instancia compartida (puertos, pipeline y alta de canales de entrega). */
+export const contenedorCompartido = contenedorPorDefecto;
 
 /** Punto de entrada listo para los canales en produccion. */
 export const procesarMensajeEntrante = contenedorPorDefecto.procesarMensajeEntrante;

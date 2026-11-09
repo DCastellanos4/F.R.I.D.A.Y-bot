@@ -22,10 +22,24 @@
 import { crearInboundMessage } from '../ports/inbound/InboundMessage.js';
 import { afirmarJobQueue } from '../ports/outbound/JobQueuePort.js';
 
-export function crearWorkerAgente({ cola, procesar, outboxStore } = {}) {
+export function crearWorkerAgente({ cola, procesar, outboxStore, auditoria = null } = {}) {
   afirmarJobQueue(cola);
   if (typeof procesar !== 'function') throw new TypeError('crearWorkerAgente requiere procesar.');
   if (!outboxStore) throw new TypeError('crearWorkerAgente requiere outboxStore.');
+
+  // RNF-04: una clave de accion es `nombre:JSON.stringify(args)` con args
+  // tal y como llegan del LLM (a veces cadena JSON sin parsear). Se
+  // interpreta a la defensiva; lo que no se entiende se audita como texto.
+  function interpretarClaveAccion(clave) {
+    const texto = String(clave || '');
+    const corte = texto.indexOf(':');
+    const nombre = (corte >= 0 ? texto.slice(0, corte) : texto).trim() || 'desconocida';
+    let args = corte >= 0 ? texto.slice(corte + 1) : '';
+    for (let i = 0; i < 2 && typeof args === 'string'; i++) {
+      try { args = JSON.parse(args); } catch { break; }
+    }
+    return { nombre, args: (args && typeof args === 'object') ? args : { crudo: args } };
+  }
 
   async function manejar(trabajo) {
     if (trabajo.tipo !== 'mensaje_entrante') {
@@ -46,6 +60,11 @@ export function crearWorkerAgente({ cola, procesar, outboxStore } = {}) {
     // (nunca se rompe la respuesta al usuario) pero el trabajo se entrega
     // declarando la degradacion, no simulando durabilidad.
     const fallosCheckpoint = [];
+    // RNF-04: cada accion con efectos se audita UNA vez por trabajo, en el
+    // momento de su marca durable (antes de ejecutarse). La respuesta de
+    // la herramienta no es visible en esta costura: queda declarado como
+    // limite (args solamente) en docs/ers-integracion-estado.md.
+    const accionesAuditadas = new Set();
     const opciones = {
       ...(p.opciones && typeof p.opciones === 'object' ? p.opciones : {}),
       checkpointInicial: ultimo ? ultimo.estado : null,
@@ -55,6 +74,20 @@ export function crearWorkerAgente({ cola, procesar, outboxStore } = {}) {
         } catch (err) {
           fallosCheckpoint.push(String((err && err.message) || err).slice(0, 200));
           throw err; // el agente bloquea el efecto si no hay marca durable
+        }
+        if (auditoria && Array.isArray(estado?.accionesPlanificadas)) {
+          for (const clave of estado.accionesPlanificadas) {
+            const claveTxt = String(clave);
+            if (accionesAuditadas.has(claveTxt)) continue;
+            accionesAuditadas.add(claveTxt);
+            const { nombre, args } = interpretarClaveAccion(claveTxt);
+            try {
+              auditoria.registrar({ tenantId: trabajo.tenantId || 'propietario', herramienta: nombre, args });
+            } catch (err) {
+              // La auditoria NO rompe el procesamiento; se declara.
+              fallosCheckpoint.push(`auditoria:${String((err && err.message) || err).slice(0, 160)}`);
+            }
+          }
         }
       }
     };

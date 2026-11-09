@@ -62,7 +62,7 @@ const PATRONES = [
   { tipo: 'IBAN', re: /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7} ?[A-Z0-9]{0,3}\b/g, valida: ibanValido },
   { tipo: 'TARJETA', re: /\b(?:\d[ -]?){13,19}\b/g, valida: (t) => luhnValido(t.replace(/[ -]/g, '')) },
   { tipo: 'DNI', re: /\b(?:\d{8}|[XYZ]\d{7})[A-Z]\b/g, valida: dniValido },
-  { tipo: 'TELEFONO', re: /(?:\+34[ -]?)?\b[6789]\d{2}[ -]?\d{2}[ -]?\d{2}[ -]?\d{2}\b/g, valida: null },
+  { tipo: 'TELEFONO', re: /(?<![\d+])(?:\+34[ -]?)?[6789]\d{2}[ -]?\d{2}[ -]?\d{2}[ -]?\d{2}(?![ -]?\d)/g, valida: null },
   { tipo: 'EMAIL', re: /\b[\w.+-]+@[\w-]+\.[\w.-]+\b/g, valida: null }
 ];
 

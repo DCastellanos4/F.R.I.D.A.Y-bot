@@ -136,7 +136,39 @@ export function crearEnrutadorInferencia({
     return { exito: false, via: 'cloud', motivo: local.motivo, violaciones: local.violaciones };
   }
 
-  return Object.freeze({ clasificarIntencion, extraerArgumentos });
+  /**
+   * Respuesta conversacional con escalada. La via nube NO duplica al
+   * agente: si el nivel local no responde con suficiente confianza se
+   * declara exito:false y el llamador sigue su camino historico (agente
+   * completo). El router nunca inventa una respuesta nube aqui.
+   */
+  async function responderConversacion(mensaje, instruccionSistema, ctx = {}) {
+    const tenant = ctx.tenantId || 'propietario';
+
+    if (!slm || !accesoLocalPermitido(ctx)) {
+      const motivo = !slm ? 'slm_deshabilitado' : 'tenant_sin_acceso_local';
+      registrar({ via: 'cloud', motivo, tarea: 'conversacion', tenant });
+      return { exito: false, via: 'cloud', motivo };
+    }
+
+    const local = await slm.responderConversacion(mensaje, instruccionSistema);
+    if (local.exito) {
+      registrar({
+        via: 'local_slm', motivo: 'ok', tarea: 'conversacion', tenant,
+        confianza: local.confianza, latenciaLocalMs: local.latenciaMs,
+        tokensAhorradosEstimados: estimar([{ role: 'user', content: mensaje }])
+      });
+      return local;
+    }
+
+    registrar({
+      via: 'cloud', motivo: local.motivo, tarea: 'conversacion', tenant,
+      confianza: local.confianza, latenciaLocalMs: local.latenciaMs
+    });
+    return { exito: false, via: 'cloud', motivo: local.motivo };
+  }
+
+  return Object.freeze({ clasificarIntencion, extraerArgumentos, responderConversacion });
 }
 
 function peticionClasificacionNube(mensaje, etiquetas) {

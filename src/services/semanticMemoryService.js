@@ -2,6 +2,7 @@ import fs from '../security/tenantFileSystem.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { TENANT_PROPIETARIO } from '../core/tenancy.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -83,6 +84,18 @@ let fuenteMemoriasPorDefecto = null;
 
 export function registrarFuenteMemoriasPorDefecto(fuente) {
   fuenteMemoriasPorDefecto = fuente || null;
+}
+
+// RF-03 consumo: buscador hibrido por defecto (solo existe con QDRANT_URL;
+// la raiz de composicion lo registra). La frescura se controla por firma
+// de la fuente, como el indice TF-IDF historico: una escritura de memoria
+// cambia la firma y la siguiente busqueda reindexa ANTES de responder.
+let buscadorHibridoPorDefecto = null;
+const firmaHibridoPorFuente = new Map();
+
+export function registrarBuscadorHibridoPorDefecto(buscador) {
+  buscadorHibridoPorDefecto = buscador || null;
+  firmaHibridoPorFuente.clear();
 }
 
 function fuenteDe(options, storePath) {
@@ -613,6 +626,9 @@ export function invalidarIndiceSemantico() {
   cachedStorePath = null;
   cachedVectorCache = null;
   cachedVectorCachePath = null;
+  // RF-03: la escritura de memoria tambien invalida la frescura del
+  // indice hibrido; la siguiente busqueda reindexa antes de responder.
+  firmaHibridoPorFuente.clear();
 }
 
 /**
@@ -730,6 +746,21 @@ export async function buscarMemoriaSemantica(query, options = {}) {
   }
 
   const categoriaFilter = options.categoria ? options.categoria.toLowerCase() : null;
+
+  // RF-03 consumo: con buscador hibrido disponible (opcion explicita o el
+  // registrado por la raiz con QDRANT_URL) la recuperacion pasa por el
+  // motor industrial. NUNCA en ambito soloArchivo de tenant sin tenantId
+  // explicito (no se mezcla con el indice del propietario). Cualquier
+  // fallo del motor se declara y se cae al camino TF-IDF historico: la
+  // busqueda nunca desaparece por culpa del motor nuevo.
+  const buscadorHibrido = options.buscadorHibrido || (options.soloArchivo && !options.tenantId ? null : buscadorHibridoPorDefecto);
+  if (buscadorHibrido) {
+    try {
+      return await buscarConMotorHibrido(buscadorHibrido, query, options, storePath, topK, minScore, categoriaFilter);
+    } catch (errHibrido) {
+      console.warn('[RAG hibrido] Fallo del motor; via TF-IDF historica:', errHibrido && errHibrido.message);
+    }
+  }
 
   let vectorCache = null;
 
@@ -850,6 +881,51 @@ export async function buscarMemoriaSemantica(query, options = {}) {
 
   results.sort((a, b) => b.score - a.score);
   return results.slice(0, topK);
+}
+
+/**
+ * RF-03: busqueda via motor hibrido (denso + disperso + reranker).
+ * Reindexa si la firma de la fuente cambio (invalidacion de memoria
+ * cerrada: guardar/actualizar/olvidar fuerzan reindexacion aqui, igual
+ * que el TF-IDF reconstruye su indice). Devuelve la misma forma de
+ * resultado que el camino historico para que los consumidores no noten
+ * el cambio de motor.
+ */
+async function buscarConMotorHibrido(buscador, query, options, storePath, topK, minScore, categoriaFilter) {
+  const tenant = options.tenantId || TENANT_PROPIETARIO;
+  const fuente = fuenteDe(options, storePath);
+  const firmaActual = fuente.firma();
+  const claveCache = `${tenant}:${storePath}`;
+  const cache = firmaHibridoPorFuente.get(claveCache);
+  if (!cache || cache.firma !== firmaActual) {
+    const memorias = fuente.leerMemorias();
+    await buscador.indexar(tenant, Array.isArray(memorias) ? memorias : []);
+    firmaHibridoPorFuente.set(claveCache, { firma: firmaActual });
+  }
+  const resultados = await buscador.buscar(tenant, query, { topK });
+  const salida = [];
+  for (const r of (Array.isArray(resultados) ? resultados : [])) {
+    const doc = (r && r.item && typeof r.item === 'object') ? r.item : {};
+    // Defensa en profundidad, igual que el camino historico.
+    if (esDocumentoSensibleRag(doc)) continue;
+    if (categoriaFilter && doc.categoria && String(doc.categoria).toLowerCase() !== categoriaFilter) continue;
+    const score = Number(r && r.score);
+    if (!isFinite(score) || score < minScore) continue;
+    const redondeado = Math.round(score * 10000) / 10000;
+    salida.push({
+      id: r.id || doc.id || '',
+      sujeto: doc.sujeto || '',
+      dato: doc.dato || r.texto || '',
+      categoria: doc.categoria || 'general',
+      tags: Array.isArray(doc.tags) ? doc.tags : [],
+      score: redondeado,
+      similitud: redondeado,
+      calibrado: r.calibrado === true,
+      canales: Array.isArray(r.canales) ? r.canales : [],
+      item: doc
+    });
+  }
+  return salida.slice(0, topK);
 }
 
 /**

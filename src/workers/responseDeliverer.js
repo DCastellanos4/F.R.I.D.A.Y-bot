@@ -71,6 +71,11 @@ export function crearEntregadorRespuestas({ outboxStore, canales = {}, intervalo
 
   return Object.freeze({
     iniciar() { programar(); },
+    // Alta de canal en caliente: el canal (p. ej. el socket de Baileys) se
+    // registra cuando abre sesion, despues de construir el entregador.
+    registrarCanal(nombre, canal) {
+      adaptadores.set(String(nombre).toLowerCase(), afirmarMessageChannel(canal));
+    },
     async cerrar() {
       cerrado = true;
       if (temporizador) clearTimeout(temporizador);

@@ -14,6 +14,7 @@ import { consultarJarvis, consultarJarvisEnAmbito } from './jarvisAgent.js';
 import { afirmarLLMProvider } from '../ports/outbound/LLMProviderPort.js';
 import { afirmarMemoryRepository } from '../ports/outbound/MemoryRepositoryPort.js';
 import { conSpan, hashSesion } from '../observability/telemetry.js';
+import { clasificarIntencionConModelo } from './intentRouterService.js';
 
 export function crearMessageProcessor({ llmProvider, memoryRepository, metricasClasificador, crearStoreMetricas, rutaArchivoIdempotenciaDefecto, accesoTenants = null, enrutadorInferencia = null, buscadorHibrido = null } = {}) {
   if (llmProvider !== undefined) afirmarLLMProvider(llmProvider);
@@ -68,6 +69,26 @@ export function crearMessageProcessor({ llmProvider, memoryRepository, metricasC
       // por defecto (tmp por proceso bajo NODE_ENV=test); el core no toca fs.
       if (!opcionesConPuertos.rutaArchivoIdempotencia && rutaArchivoIdempotenciaDefecto) {
         opcionesConPuertos.rutaArchivoIdempotencia = rutaArchivoIdempotenciaDefecto;
+      }
+
+      // RF-02 consumo (conversacion): con enrutador especulativo activo,
+      // un mensaje clasificado como charla pura con respuesta local de
+      // confianza suficiente se responde en el nivel 1 sin invocar al
+      // agente. Cualquier otro desenlace sigue el camino historico
+      // EXACTO. La clasificacion se cachea por mensaje normalizado, asi
+      // que cuando el agente clasifica despues reutiliza la misma.
+      if (enrutadorInferencia && typeof enrutadorInferencia.responderConversacion === 'function') {
+        try {
+          const clas = await clasificarIntencionConModelo(inbound.text, opcionesConPuertos);
+          if (clas && clas.intencion === 'conversacion' && clas.confianza >= 0.6) {
+            const local = await enrutadorInferencia.responderConversacion(inbound.text, undefined, { tenantId: opcionesConPuertos.tenantId });
+            if (local && local.exito === true && typeof local.respuesta === 'string' && local.respuesta.trim()) {
+              return local.respuesta;
+            }
+          }
+        } catch (errConv) {
+          console.warn('[RF-02] Conversacion nivel 1 no disponible; camino historico:', errConv && errConv.message);
+        }
       }
 
       // Span raiz de la peticion: el TraceId de este mensaje atraviesa
