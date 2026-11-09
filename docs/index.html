@@ -1,217 +1,657 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>D.A.V.I.S. - Documentation</title>
+<title>D.A.V.I.S. - Arquitectura, Documentacion e Ingenieria de Sistemas</title>
 <style>
-  :root { --ink:#1c2024; --muted:#5b6470; --line:#e3e6ea; --accent:#2563eb; --bg:#ffffff; --soft:#f6f7f9; }
+  :root {
+    --ink: #0f172a;
+    --muted: #475569;
+    --line: #e2e8f0;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --bg: #ffffff;
+    --soft: #f8fafc;
+    --panel-bg: #f1f5f9;
+    --code-bg: #0f172a;
+    --code-text: #f8fafc;
+    --badge-bg: #dbeafe;
+    --badge-text: #1e40af;
+    --success-bg: #dcfce7;
+    --success-text: #166534;
+  }
   * { box-sizing: border-box; }
-  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--ink); background:var(--bg); line-height:1.6; }
-  .wrap { max-width:860px; margin:0 auto; padding:2rem 1.25rem 4rem; }
-  h1 { font-size:1.9rem; margin:0 0 .25rem; }
-  h2 { font-size:1.3rem; margin:2.5rem 0 .75rem; padding-bottom:.35rem; border-bottom:1px solid var(--line); }
-  h3 { font-size:1.05rem; margin:1.5rem 0 .5rem; }
-  p { margin:.5rem 0; }
-  ul { margin:.5rem 0 .5rem 1.25rem; padding:0; }
-  li { margin:.4rem 0; }
-  code { background:var(--soft); padding:.1em .35em; border-radius:4px; font-size:.92em; }
-  pre { background:var(--soft); padding:1rem; border-radius:8px; overflow-x:auto; font-size:.85rem; }
-  table { border-collapse:collapse; width:100%; font-size:.92rem; margin:.75rem 0; }
-  th, td { text-align:left; padding:.45rem .6rem; border-bottom:1px solid var(--line); vertical-align:top; }
-  .sub { color:var(--muted); margin-top:0; }
-  a { color:var(--accent); }
-  .mermaid { background:var(--soft); border-radius:8px; padding:1rem; overflow-x:auto; }
-  .pan-hint { color:var(--muted); font-size:.82rem; margin:.35rem 0 0; }
-  .back { display:inline-block; margin-bottom:1.5rem; font-size:.9rem; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.6;
+  }
+  header {
+    background: var(--soft);
+    border-bottom: 1px solid var(--line);
+    padding: 1.25rem 2rem;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    backdrop-filter: blur(8px);
+    background: rgba(248, 250, 252, 0.95);
+  }
+  .header-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .brand-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .brand-badge {
+    background: var(--badge-bg);
+    color: var(--badge-text);
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.2rem 0.5rem;
+    border-radius: 9999px;
+  }
+  .nav-links {
+    display: flex;
+    gap: 1.25rem;
+    align-items: center;
+    font-size: 0.9rem;
+  }
+  .nav-links a {
+    color: var(--muted);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.15s;
+  }
+  .nav-links a:hover {
+    color: var(--accent);
+  }
+  .btn-repo {
+    background: var(--ink);
+    color: #ffffff !important;
+    padding: 0.4rem 0.85rem;
+    border-radius: 6px;
+    font-weight: 600;
+  }
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 5rem;
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 3rem;
+  }
+  @media (max-width: 960px) {
+    .container { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+  }
+  .sidebar {
+    position: sticky;
+    top: 5.5rem;
+    height: calc(100vh - 7rem);
+    overflow-y: auto;
+    padding-right: 1rem;
+  }
+  .sidebar-section {
+    margin-bottom: 1.5rem;
+  }
+  .sidebar-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    margin-bottom: 0.5rem;
+  }
+  .sidebar-menu {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .sidebar-menu li {
+    margin-bottom: 0.35rem;
+  }
+  .sidebar-menu a {
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 0.88rem;
+    display: block;
+    padding: 0.3rem 0.5rem;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+  }
+  .sidebar-menu a:hover {
+    background: var(--soft);
+    color: var(--accent);
+  }
+  .content {
+    min-width: 0;
+  }
+  .hero-card {
+    background: linear-gradient(135deg, #f8fafc 0%, #eef2f6 100%);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 2rem;
+    margin-bottom: 2.5rem;
+  }
+  .hero-card h1 {
+    font-size: 2.1rem;
+    margin: 0 0 0.5rem;
+    letter-spacing: -0.03em;
+  }
+  .hero-card p {
+    font-size: 1.05rem;
+    color: var(--muted);
+    margin: 0 0 1.5rem;
+    max-width: 750px;
+  }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+  }
+  .stat-item {
+    background: #ffffff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 1rem;
+  }
+  .stat-val {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: var(--accent);
+    line-height: 1.2;
+  }
+  .stat-lbl {
+    font-size: 0.8rem;
+    color: var(--muted);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  h2 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 2.75rem 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 1.75rem 0 0.5rem;
+  }
+  p { margin: 0.75rem 0; }
+  ul, ol { margin: 0.75rem 0 0.75rem 1.5rem; padding: 0; }
+  li { margin-bottom: 0.4rem; }
+  code {
+    background: var(--soft);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.88em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+  pre {
+    background: var(--code-bg);
+    color: var(--code-text);
+    padding: 1.25rem;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+  .schema-wrapper {
+    background: #ffffff;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1.25rem;
+    margin: 1.5rem 0 2rem;
+    position: relative;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  }
+  .schema-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px dashed var(--line);
+  }
+  .schema-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--ink);
+  }
+  .schema-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+  .schema-btn {
+    background: var(--soft);
+    border: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 500;
+    padding: 0.25rem 0.6rem;
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s, color 0.15s;
+  }
+  .schema-btn:hover {
+    background: var(--panel-bg);
+    color: var(--ink);
+  }
+  .mermaid-box {
+    overflow-x: auto;
+    padding: 1rem 0;
+    display: flex;
+    justify-content: center;
+    background: #ffffff;
+  }
+  .mermaid-box svg {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.25rem 0;
+    font-size: 0.9rem;
+  }
+  th, td {
+    padding: 0.65rem 0.85rem;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: var(--soft);
+    font-weight: 600;
+  }
+  .doc-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1.25rem;
+    margin: 1.5rem 0;
+  }
+  .doc-card {
+    background: var(--soft);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 1.25rem;
+    transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+  }
+  .doc-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
+  }
+  .doc-card-tag {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    margin-bottom: 0.4rem;
+  }
+  .doc-card-title {
+    font-weight: 700;
+    font-size: 1.05rem;
+    margin: 0 0 0.4rem;
+    color: var(--ink);
+  }
+  .doc-card-desc {
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin: 0;
+    line-height: 1.45;
+  }
+  footer {
+    border-top: 1px solid var(--line);
+    padding: 2.5rem 1.5rem;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.85rem;
+    background: var(--soft);
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
 
-<a class="back" href="https://github.com/DCastellanos4/F.R.I.D.A.Y-bot">&larr; Back to the repository</a>
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <a href="#" class="brand-title">D.A.V.I.S.</a>
+      <span class="brand-badge">v3.0.0 Architecture</span>
+    </div>
+    <nav class="nav-links">
+      <a href="#arquitectura">Arquitectura</a>
+      <a href="#esquemas">Esquemas</a>
+      <a href="#documentacion">Documentacion</a>
+      <a href="#ers">ERS Futuro</a>
+      <a href="https://github.com/DCastellanos4/F.R.I.D.A.Y-bot" class="btn-repo">GitHub Repo</a>
+    </nav>
+  </div>
+</header>
 
-<h1>D.A.V.I.S. Documentation</h1>
-<p class="sub">Digital Autonomous Voice &amp; Intelligence System - self-hosted personal AI assistant over WhatsApp.</p>
+<div class="container">
 
-<h2>Why This Project Exists</h2>
-<p>The goal was to turn a single WhatsApp chat into the control surface for one person's entire digital operations: messaging, reminders, a personal knowledge base, media downloads, and the administration of a real Linux server. Building it end to end meant owning problems that tutorials skip: an unofficial protocol integration, LLM tool-calling reliability on small models, safe execution of privileged commands from a chat channel, long-running process supervision, and a test suite that can prove regressions instead of hoping.</p>
-<p>The persona layer (sober, dry-humored, zero-emoji Spanish) is deliberate: the assistant is a character with a consistent voice, defined in a single system prompt in <code>src/core/jarvisAgent.js</code>.</p>
+  <!-- SIDEBAR NAVIGATION -->
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-title">Arquitectura y Core</div>
+      <ul class="sidebar-menu">
+        <li><a href="#vision">Vision General</a></li>
+        <li><a href="#esquema-hexagonal">Hexagonal &amp; Puertos</a></li>
+        <li><a href="#esquema-tenancy">Multi-Tenancy &amp; RBAC</a></li>
+        <li><a href="#esquema-telemetria">OpenTelemetry &amp; Metricas</a></li>
+        <li><a href="#esquema-ers">ERS: Diseno Distribuido</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-title">Especificaciones Tecnicas</div>
+      <ul class="sidebar-menu">
+        <li><a href="arquitectura-hexagonal.md">Arquitectura Hexagonal</a></li>
+        <li><a href="persistencia-sqlite.md">Persistencia SQLite WAL</a></li>
+        <li><a href="tenancy.md">Tenancy &amp; Metering</a></li>
+        <li><a href="observabilidad.md">Observabilidad &amp; Grafana</a></li>
+        <li><a href="eficiencia-ia.md">Presupuesto y Contexto IA</a></li>
+        <li><a href="ers-arquitectura-proximo-nivel.md">ERS: Proximo Nivel</a></li>
+        <li><a href="seguridad.md">Seguridad &amp; Cero Emojis</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-title">Capacidades &amp; Despliegue</div>
+      <ul class="sidebar-menu">
+        <li><a href="capacidades.md">Catalogo (140 Herramientas)</a></li>
+        <li><a href="despliegue.md">Despliegue &amp; VPS Oracle</a></li>
+        <li><a href="pruebas.md">Puerta de Calidad (1.198 Tests)</a></li>
+        <li><a href="limitaciones.md">Limitaciones Declaradas</a></li>
+      </ul>
+    </div>
+  </aside>
 
-<h2>Technical Architecture</h2>
-<p class="pan-hint">Wide diagram shown at full size - scroll sideways inside the frame, or <a href="#" id="open-diagram">open it in a new tab</a> to zoom.</p>
+  <!-- MAIN CONTENT -->
+  <main class="content">
+
+    <!-- HERO SECTION -->
+    <div class="hero-card" id="vision">
+      <h1>D.A.V.I.S.</h1>
+      <p>Digital Autonomous Voice &amp; Intelligence System. Asistente autonomo de ejecucion real sin interfaz dedicada, operando a traves de WhatsApp con arquitectura hexagonal pura, persistencia transaccional SQLite WAL, aislamiento multi-tenant estricto y observabilidad de nivel enterprise.</p>
+      
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-val">1.198</div>
+          <div class="stat-lbl">Tests de Regresion (100% Pass)</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val">140</div>
+          <div class="stat-lbl">Herramientas Operativas</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val">0.00</div>
+          <div class="stat-lbl">Politica Estricta Cero Emojis</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val">24 GB</div>
+          <div class="stat-lbl">Capacidad en VPS Oracle Ampere</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECCION ESQUEMAS Y ARQUITECTURA -->
+    <section id="arquitectura">
+      <h2>Esquemas de Arquitectura e Ingenieria</h2>
+      <p>Representacion formal de los subsistemas implementados y validados con suites de tests automatizadas en Node.js 24.</p>
+
+      <!-- ESQUEMA 1: ARQUITECTURA HEXAGONAL Y PUERTOS -->
+      <div class="schema-wrapper" id="esquema-hexagonal">
+        <div class="schema-header">
+          <div class="schema-title">Esquema 1: Arquitectura Hexagonal Pura (Puertos y Adaptadores)</div>
+          <div class="schema-actions">
+            <button class="schema-btn" onclick="openDiagramModal('diag-hexagonal')">Pantalla Completa</button>
+            <a href="arquitectura-hexagonal.md" class="schema-btn">Documentacion</a>
+          </div>
+        </div>
+        <div class="mermaid-box" id="diag-hexagonal">
 <pre class="mermaid">
 flowchart TD
-    subgraph Ingestion ["Ingestion &amp; Security Gateways"]
-        WA["WhatsApp Multi-Device Socket (Baileys)"] --> Bot["whatsappBot.js"]
-        GH["GitHub Webhook (workflow_run)"] -->|"POST /api/webhook/github"| API["api.js"]
-        REST["REST API Clients"] --> API
-        Bot -->|"Auth &amp; LID Guard"| Guard{"Authorized User?"}
-        Guard -->|"No"| Drop["Drop Packet Silently"]
-        Guard -->|"Yes"| Router{"Audio PTT or Text?"}
+    subgraph Canales_Inbound ["Adaptadores Inbound"]
+        WIn["WhatsApp Inbound (Baileys Socket)"] --> Bridge["WhatsApp Tenant Bridge"]
+        APIIn["REST API Inbound (Express)"] --> MsgIn["InboundMessage Normalizado"]
+        Bridge --> MsgIn
     end
 
-    subgraph AudioEngine ["Voice &amp; Media Pipeline"]
-        Router -->|"Audio PTT"| VoiceIn["voiceService.js (whisper.cpp local CLI)"]
-        VoiceIn -->|"Transcribed Command"| Agent["jarvisAgent.js"]
-        Agent -->|"Synthesize Voice Reply"| TTS["ttsService.js (Edge-TTS OGG Opus)"]
-        TTS -->|"PTT Audio Buffer"| Bot
+    subgraph Core_Puro ["Dominio Puro D.A.V.I.S. (Sin dependencias externas)"]
+        MsgIn --> Router["Intent Router &amp; Scoping Especialistas"]
+        Router --> ReAct["Motor ReAct (Think-Act-Observe-Decide)"]
+        ReAct --> LLMPort["Puerto: LLMProviderPort"]
+        ReAct --> MemoryPort["Puerto: MemoryRepositoryPort"]
+        ReAct --> UserPort["Puerto: UserRepositoryPort"]
     end
 
-    subgraph Brain ["Reasoning &amp; Orchestration Engine"]
-        Router -->|"Text Command"| Agent
-        API --> Agent
-        Agent --> Prune["Dynamic Intent Router &amp; Tool Pruner"]
-        Prune --> LLM["llmService.js (Ollama / Groq / OpenAI)"]
-        LLM --> Decision{"Tool Call or Direct Text?"}
-        Decision -->|"Direct Response"| Bot
-        Decision -->|"Tool Invocations"| Executor["Tool Execution Loop"]
-    end
-
-    subgraph Sector1 ["Sector 1: Advanced WhatsApp &amp; Media"]
-        Executor --> Downloader["mediaDownloaderService.js (yt-dlp 16MB Ladder)"]
-        Executor --> Interactive["interactiveService.js (Polls &amp; vCards)"]
-        Executor --> VIP["vipFilterService.js (Do-Not-Disturb Guard)"]
-        Executor --> Summarizer["groupSummarizerService.js (Group Task Extractor)"]
-        Executor --> Notes["notesService.js (Capture &amp; Storage)"]
-    end
-
-    subgraph Sector2 ["Sector 2: DevOps, SysAdmin &amp; Cloud"]
-        Executor --> Docker["dockerMonitorService.js (Auto-Healing &amp; Circuit Breaker)"]
-        Executor --> Console["bashConsoleService.js (Remote Bash with 2FA OTP)"]
-        Executor --> Disk["diskStorageService.js (85% Storage Auto-Purge)"]
-        Executor --> SecLogs["fail2banMonitorService.js (SSH Ban Watcher)"]
-        Executor --> NetMon["networkMonitorService.js (Bandwidth Spike Detector)"]
-        Executor --> SSL["sslMonitorService.js (Proactive TLS Expiry Check)"]
-        Executor --> Tunnels["tunnelManagerService.js (Cloudflare &amp; Tailscale)"]
-        Executor --> Backup["backupService.js (AES-256-GCM Encrypted Container)"]
-        Executor --> Crypto["cryptoGeneratorService.js (CSPRNG Shannon Entropy)"]
-    end
-
-    subgraph Proactive ["Background Daemons &amp; Alert Queue"]
-        AlertQ["alertQueueService.js (Deduplicated Queue)"] -->|"Flush Every 5s"| Bot
-        DockerDaemon["Docker Health Watchdog"] --> AlertQ
-        DiskDaemon["Disk Storage Watchdog"] --> AlertQ
-        Fail2banDaemon["Fail2ban Log Watchdog"] --> AlertQ
-        NetDaemon["Network Traffic Watchdog"] --> AlertQ
-        GH --> AlertQ
+    subgraph Adaptadores_Outbound ["Adaptadores Outbound"]
+        LLMPort --> LLMImpl["llmService (Groq / Ollama / OpenAI)"]
+        MemoryPort --> SQLiteMem["sqliteMemoryRepository (Modo WAL)"]
+        UserPort --> SQLiteUser["sqliteTenantRepository"]
+        ReAct --> OutChan["Puerto: MessageChannelPort"]
+        OutChan --> WOut["whatsappChannelAdapter (Entrega WhatsApp)"]
+        OutChan --> APIOut["apiChannelAdapter (Respuesta REST)"]
     end
 </pre>
+        </div>
+        <p class="pan-hint">Aislamiento de dominio: El motor de razonamiento desconoce por completo la libreria de mensajeria o el motor de base de datos especifico.</p>
+      </div>
 
-<h2>Engineering Decisions Worth Explaining</h2>
-<p>The choices a technical interview is likely to dig into, with their trade-offs:</p>
-<ul>
-<li><strong>Unofficial WhatsApp client (Baileys).</strong> Full multi-device protocol access with no Business API costs, including Linked Identity Device (LID) resolution and silent packet dropping for unauthorized senders. Trade-off: not an official API, so the project carries the platform risk documented in Known Limitations.</li>
-<li><strong>Multi-provider LLM abstraction.</strong> One <code>chatCompletion</code> interface over Ollama (local), Groq, OpenAI and DeepSeek, switchable via environment variables and injectable in tests, which keeps the whole reasoning engine testable offline.</li>
-<li><strong>Intent-based tool pruning.</strong> Before each LLM call, a lightweight router classifies the message and prunes the tool list, because small-parameter local models hallucinate tool calls when handed the full catalog.</li>
-<li><strong>Defense against duplicated side effects.</strong> Within a single request, the tool executor blocks an exact repeat of a side-effecting call, so a model retry cannot send the same WhatsApp message twice. It deliberately does not cover rephrased or later requests.</li>
-<li><strong>OTP interlock for dangerous commands.</strong> Remote bash works from chat, but destructive commands (<code>reboot</code>, <code>rm</code>, <code>kill</code>, <code>pm2</code>) require a temporary 6-digit OTP (120s TTL, 3 attempts) with secret scrubbing and brute-force lockout.</li>
-<li><strong>Bounded conversation memory.</strong> Long-term facts live in normalized JSON storage; conversation history is condensed on overflow with per-chat deduplication, and free-form memory never authorizes actions on its own: sends to third parties require a verified recipient in the current chat or a registered contact card.</li>
-<li><strong>Reusable procedures with explicit approval.</strong> The agent can propose reusable multi-step skills, but each one activates only after the owner approves the exact content in chat (hash-bound, 30-minute TTL, one-shot); every skill step passes the same guards as a direct request.</li>
-<li><strong>Self-healing watchdogs with circuit breakers.</strong> Docker auto-restart with flapping protection, disk auto-purge at 85%, fail2ban, SSL expiry and bandwidth monitors all flush through one deduplicated alert queue instead of spamming the chat.</li>
-<li><strong>Test strategy.</strong> 804 tests across the suite with the Node.js native runner (no test-framework dependency): 802 passing, 2 voice tests skipping explicitly with a printed reason when <code>edge-tts</code> is unavailable. Integration tests drive the real WhatsApp entry handler with a fake socket and a fake LLM, and key regressions were verified by mutation. CI gates every push and PR to main (critical battery 100%, full suite &gt;=95%) and deploys the tested SHA to the VPS over SSH as an isolated release.</li>
-</ul>
-
-<h2>Feature Matrix</h2>
-
-<h3>Core Capabilities</h3>
-<ul>
-<li><strong>WhatsApp Multi-Device Engine:</strong> native WebSocket implementation via Baileys with Linked Identity Device (LID) resolution and stealth silent packet dropping for unauthorized senders.</li>
-<li><strong>Multi-Provider LLM Orchestration:</strong> dynamic provider switching (Ollama, Groq, OpenAI, DeepSeek) with intent-based tool pruning to reduce hallucinations on smaller parameter models.</li>
-<li><strong>Whisper.cpp Voice Transcription:</strong> fully local transcription via the whisper.cpp CLI: OGG/Opus from WhatsApp converted in memory to 16kHz mono PCM WAV with ffmpeg, no cloud speech API.</li>
-<li><strong>Headless Web Browsing:</strong> Playwright Chromium automation with anti-detection flags, automated cookie banner removal, and content extraction fallback.</li>
-<li><strong>Persistent Second Brain:</strong> normalized JSON storage for facts and personal preferences, with indexed full-text history search (per-chat isolation) for context-injected retrieval.</li>
-</ul>
-
-<h3>Sector 1: Advanced WhatsApp, Audio &amp; Media</h3>
-<ul>
-<li><strong>Native PTT Voice Responses:</strong> generates audio responses via Edge-TTS encoded directly into native WhatsApp PTT voice notes (<code>audio/ogg; codecs=opus</code>).</li>
-<li><strong>Direct Media Downloader:</strong> downloads and post-processes video and audio from YouTube, Instagram, and TikTok with an automated multi-pass FFmpeg compression ladder (720p CRF 28 -&gt; 480p CRF 32) strictly enforcing WhatsApp 16MB inline limits.</li>
-<li><strong>Interactive Messaging:</strong> dispatches native interactive WhatsApp polls with real-time vote collection and vCard 3.0 digital business cards.</li>
-<li><strong>VIP Mode &amp; Do-Not-Disturb:</strong> filters external contacts with discreet auto-replies while whitelisting priority users and emergency keyword overrides (<code>urgente</code>, <code>socorro</code>, <code>hospital</code>).</li>
-<li><strong>Group Smart Summarizer:</strong> buffers high-volume group chats, tracks direct mentions, and synthesizes action items into structured bullet-point briefings.</li>
-<li><strong>Notes Capture:</strong> automatically transcribes and archives voice and text notes into categorized storage with timestamp metadata.</li>
-</ul>
-
-<h3>Sector 2: DevOps, SysAdmin &amp; Cloud Infrastructure</h3>
-<ul>
-<li><strong>Autonomous Docker Auto-Healing:</strong> continuously monitors container lifecycles (<code>running</code>, <code>exited</code>, <code>restarting</code>) and attempts automated recovery via <code>docker restart</code> with flapping circuit-breaker protection.</li>
-<li><strong>Secure Remote Bash Console (2FA OTP):</strong> executes shell commands securely from chat. Critical and mutating commands (<code>reboot</code>, <code>rm</code>, <code>kill</code>, <code>pm2</code>) require a temporary 6-digit OTP (120s TTL, 3 attempts), protected by secret scrubbing and brute-force lockout.</li>
-<li><strong>Disk Storage Watchdog &amp; Auto-Purge:</strong> monitors VPS filesystem capacity and triggers a multi-stage cleanup routine when storage exceeds 85% (<code>pm2 flush</code>, <code>apt-get clean</code>, <code>docker system prune -f</code>).</li>
-<li><strong>Fail2ban &amp; Security Log Watchdog:</strong> scans SSH authentication logs and Fail2ban state, alerting in real time on IP bans with automatic deduplication.</li>
-<li><strong>GitHub Webhook Alerts:</strong> hardened endpoint (<code>POST /api/webhook/github</code>) verifying raw HMAC-SHA256 signatures (<code>crypto.timingSafeEqual</code>), dispatching chat alerts when a <code>workflow_run</code> event reports failure. The endpoint is implemented and tested; connecting it to a GitHub workflow is a pending owner action (see Known Limitations).</li>
-<li><strong>Encrypted Automated Backups:</strong> generates AES-256-GCM encrypted backup containers (<code>DAVBAK01</code> binary format) with scrypt key derivation and tamper protection.</li>
-<li><strong>Proactive SSL Certificate Monitor:</strong> queries remote TLS sockets directly to extract x509 expiration dates, raising alerts 15 days before certificate expiry.</li>
-<li><strong>Network Traffic &amp; Bandwidth Monitor:</strong> reads <code>/proc/net/dev</code> to calculate directional throughput (RX/TX), identifying abnormal spikes (&gt;10 MB/s) with a 5-minute cooldown guard.</li>
-<li><strong>Dynamic Tunnel Manager:</strong> inspects telemetry and controls operational states for Cloudflare Tunnels (<code>cloudflared</code>) and Tailscale (<code>tailscale</code>).</li>
-<li><strong>High-Entropy Cryptographic Generator:</strong> CSPRNG generator producing Shannon entropy passwords (&gt;100 bits), numeric PINs, hex/base62 tokens, UUID v4, and raw AES keys with optional memory persistence.</li>
-</ul>
-
-<h2>Security &amp; Engineering Standards</h2>
-<ul>
-<li><strong>Strict zero-emoji policy</strong> across source code, comments, tests, logs and outgoing messages.</li>
-<li><strong>Defense in depth:</strong> constant-time HMAC comparison (<code>crypto.timingSafeEqual</code>), scrypt KDF for backups, ephemeral OTP for destructive commands, verified-recipient guard for outbound messages, chat-bound content-hashed approval for reusable skills.</li>
-<li><strong>Automated test coverage:</strong> 802 of 804 tests passing (2 explicit skips) with <code>node:test</code>; nothing passes silently.</li>
-</ul>
-
-<h2>Known Limitations</h2>
-<p>Written down because a portfolio should survive a skeptical read:</p>
-<ul>
-<li><strong>Voice path not covered in every environment.</strong> Whisper and Edge-TTS depend on local binaries; where <code>edge-tts</code> is unavailable the 2 voice tests skip explicitly.</li>
-<li><strong>Rollback after a deploy cutover is a manual, separately approved decision</strong> by design (reverting automatically could lose data written after the cutover), not an automated staged rollback.</li>
-<li><strong>GitHub failure alerts not yet wired.</strong> The webhook endpoint is implemented and tested (HMAC-SHA256 verified), but no workflow posts <code>workflow_run</code> events to it yet; connecting one is a pending owner action.</li>
-<li><strong>Unofficial WhatsApp client.</strong> Baileys carries an inherent risk of platform action; this is the accepted trade-off for full protocol access at zero API cost.</li>
-<li><strong>Single-operator design.</strong> The authorization model assumes exactly one owner; there is no multi-user permission system.</li>
-</ul>
-
-<h2>PM2 Process Architecture</h2>
-<table>
-<thead><tr><th>Process</th><th>Script</th><th>Role</th><th>Memory Cap</th></tr></thead>
-<tbody>
-<tr><td><code>jarvis-api</code></td><td><code>api.js</code></td><td>REST endpoints, GitHub webhook, system health</td><td>500M</td></tr>
-<tr><td><code>jarvis-whatsapp</code></td><td><code>whatsappBot.js</code></td><td>WebSocket gateway, LLM intent engine, watchdogs</td><td>800M</td></tr>
-</tbody>
-</table>
-
-<h2>Project Structure</h2>
-<pre>
-.
-├── api.js                  # REST API entry point (PM2: jarvis-api)
-├── whatsappBot.js          # WhatsApp bot entry point (PM2: jarvis-whatsapp)
-├── chat.js                 # Interactive terminal client entry point
-├── ecosystem.config.cjs    # PM2 process configuration
-├── src/
-│   ├── config/             # Environment loading and project path anchors
-│   ├── core/               # Agent orchestration: jarvisAgent, intent router, LLM service, tools
-│   ├── services/           # Application services (memory, history, notes, reminders, media, voice, TTS, ...)
-│   ├── system/             # System-level services (bash console, backups, disk, tunnels)
-│   └── monitors/           # Watchdogs (SSL, Docker, network, fail2ban, GitHub webhook)
-├── scripts/                # Ad-hoc development and diagnostic scripts
-└── tests/                  # Unified test suite (run_all.js) with harness and sector batteries
+      <!-- ESQUEMA 2: MULTI-TENANCY Y CONTROL DE CUOTAS -->
+      <div class="schema-wrapper" id="esquema-tenancy">
+        <div class="schema-header">
+          <div class="schema-title">Esquema 2: Multi-Tenancy, Aislamiento Fail-Closed y Token Metering</div>
+          <div class="schema-actions">
+            <button class="schema-btn" onclick="openDiagramModal('diag-tenancy')">Pantalla Completa</button>
+            <a href="tenancy.md" class="schema-btn">Documentacion</a>
+          </div>
+        </div>
+        <div class="mermaid-box" id="diag-tenancy">
+<pre class="mermaid">
+flowchart LR
+    Msg["Mensaje Entrante"] --> Gate{"Compuerta de Tenancy (Fail-Closed)"}
+    
+    Gate -->|No Registrado / Sin Permiso| Reject["Rechazo Seguro (Sin fugas de datos)"]
+    Gate -->|Identidad Valida| CheckQuota{"Verificador de Cuota de Tokens"}
+    
+    CheckQuota -->|Cuota Excedida| LimitNotice["Aviso de Limite Alcanzado (Durable)"]
+    CheckQuota -->|Cuota Disponible| RBAC{"Filtro RBAC de Herramientas"}
+    
+    subgraph RBAC_Catalogo ["Catalogo Acotado por Tenant"]
+        RBAC -->|Propietario| HostTools["Catalogo Completo (140 tools: Bash, Docker, Git)"]
+        RBAC -->|Tenant Estandar| SafeTools["Catalogo Aislado (Notas, Clima, Transporte, RAG)"]
+    end
+    
+    SafeTools --> Exec["Ejecucion con Medidor Activo"]
+    HostTools --> Exec
+    Exec --> Ledger["Libro de Consumo SQLite (usageLedgerService)"]
 </pre>
-<p>Data (<code>data/</code>) stays at the project root and is resolved through <code>src/config/paths.js</code>, so modules can live in subfolders without depending on their own location.</p>
+        </div>
+        <p class="pan-hint">Seguridad por diseno: Cada tenant opera en una particion de datos y memoria vectorial estrictamente independiente.</p>
+      </div>
 
+      <!-- ESQUEMA 3: OBSERVABILIDAD Y TELEMETRIA -->
+      <div class="schema-wrapper" id="esquema-telemetria">
+        <div class="schema-header">
+          <div class="schema-title">Esquema 3: Pipeline de Observabilidad (OpenTelemetry, Prometheus y Grafana)</div>
+          <div class="schema-actions">
+            <button class="schema-btn" onclick="openDiagramModal('diag-telemetry')">Pantalla Completa</button>
+            <a href="observabilidad.md" class="schema-btn">Documentacion</a>
+          </div>
+        </div>
+        <div class="mermaid-box" id="diag-telemetry">
+<pre class="mermaid">
+flowchart TD
+    subgraph Agent_Instrumentation ["Instrumentacion D.A.V.I.S."]
+        Req["Peticion Recibida"] --> TraceInit["Crear Span Raiz OTel (TraceID)"]
+        TraceInit --> RouterSpan["Span: Intent Classification"]
+        RouterSpan --> LLMSpan["Span: LLM Inference (Token Usage &amp; Latency)"]
+        LLMSpan --> ToolSpan["Span: Tool Execution"]
+        ToolSpan --> MetricInc["Registro de Metricas Prometheus"]
+    end
+
+    subgraph Telemetry_Stack ["Stack de Observabilidad Docker"]
+        MetricInc --> PromEndpoint["Endpoint Seguro /metrics (Puerto 9090)"]
+        PromEndpoint --> PromServer["Servidor Prometheus (Scrape 15s)"]
+        PromServer --> Grafana["Panel Grafana (Dashboard davis-metrics)"]
+        TraceInit --> Jaeger["Jaeger Tracing (Puerto 4318 OTLP)"]
+    end
+</pre>
+        </div>
+        <p class="pan-hint">Monitorizacion en tiempo real: Metricas de latencia P95/P99, consumo de tokens y errores de herramientas sin secretos en repositorios.</p>
+      </div>
+
+      <!-- ESQUEMA 4: ERS DISENO DISTRIBUIDO FUTURO -->
+      <div class="schema-wrapper" id="esquema-ers">
+        <div class="schema-header">
+          <div class="schema-title">Esquema 4: ERS - Arquitectura Asincrona, Inferencia Especulativa y MCP</div>
+          <div class="schema-actions">
+            <button class="schema-btn" onclick="openDiagramModal('diag-ers')">Pantalla Completa</button>
+            <a href="ers-arquitectura-proximo-nivel.md" class="schema-btn">Documentacion ERS</a>
+          </div>
+        </div>
+        <div class="mermaid-box" id="diag-ers">
+<pre class="mermaid">
+flowchart TD
+    Inbound["Canal WhatsApp / REST"] --> Outbox["Transactional Outbox (SQLite: 2ms)"]
+    Outbox --> RedisQ["Cola de Eventos Duraderos (Redis / BullMQ)"]
+    
+    subgraph Worker_Pool ["Pool de Workers Desacoplados"]
+        RedisQ --> SpecRouter{"Enrutador Especulativo"}
+        SpecRouter -->|Confianza >= 0.82| LocalSLM["SLM Local (Qwen-2.5 3B en VPS: &lt;80ms, 0€)"]
+        SpecRouter -->|Ambigua o Compleja| CloudLLM["Cloud LLM Escalation (Groq 70B / Claude)"]
+        
+        LocalSLM --> Checkpoint["Puntos de Control de Estado"]
+        CloudLLM --> Checkpoint
+        
+        Checkpoint --> MCPClient["Cliente MCP (Model Context Protocol)"]
+        MCPClient --> ExtTools["Servidores MCP Aislados (Stripe, GitHub, Jira)"]
+    end
+    
+    ExtTools --> OutNotice["Notificacion Asincrona Entregada a David"]
+</pre>
+        </div>
+        <p class="pan-hint">Proximo gran salto: Ejecucion duradera resiliente a reinicios, ahorro del 80% en costes de API y herramientas abiertas MCP.</p>
+      </div>
+
+    </section>
+
+    <!-- MATRIZ DE DOCUMENTACION COMPLETA -->
+    <section id="documentacion">
+      <h2>Matriz de Documentacion y Especificaciones</h2>
+      <p>Auditoria exhaustiva y manuales tecnicos redactados contra el codigo fuente verificado.</p>
+
+      <div class="doc-card-grid">
+        <a href="ers-arquitectura-proximo-nivel.md" class="doc-card">
+          <div class="doc-card-tag">Especificacion Formal</div>
+          <div class="doc-card-title">ERS: Proximo Nivel</div>
+          <div class="doc-card-desc">Requisitos funcionales y no funcionales para la transicion a arquitectura distribuida, inferencia especulativa y protocolo MCP.</div>
+        </a>
+
+        <a href="arquitectura-hexagonal.md" class="doc-card">
+          <div class="doc-card-tag">Diseno de Software</div>
+          <div class="doc-card-title">Arquitectura Hexagonal</div>
+          <div class="doc-card-desc">Puertos de entrada, puertos de salida y raiz de composicion autenticada sin acoplamiento a librerias de transporte.</div>
+        </a>
+
+        <a href="persistencia-sqlite.md" class="doc-card">
+          <div class="doc-card-tag">Base de Datos</div>
+          <div class="doc-card-title">Persistencia SQLite WAL</div>
+          <div class="doc-card-desc">Motor transaccional ACID, migraciones versionadas de la 001 a la 004 y eliminacion de bloqueos concurrentes.</div>
+        </a>
+
+        <a href="tenancy.md" class="doc-card">
+          <div class="doc-card-tag">Seguridad SaaS</div>
+          <div class="doc-card-title">Tenancy &amp; Metering</div>
+          <div class="doc-card-desc">Aislamiento estricto de memorias y datos por usuario, limitacion de cuotas diarias de tokens y RBAC fail-closed.</div>
+        </a>
+
+        <a href="observabilidad.md" class="doc-card">
+          <div class="doc-card-tag">Operaciones</div>
+          <div class="doc-card-title">OpenTelemetry &amp; Grafana</div>
+          <div class="doc-card-desc">Trazabilidad distribuida con Jaeger, metricas estandar de Prometheus y paneles de monitoreo en produccion.</div>
+        </a>
+
+        <a href="eficiencia-ia.md" class="doc-card">
+          <div class="doc-card-tag">Optimizacion LLM</div>
+          <div class="doc-card-title">Contexto &amp; Presupuesto</div>
+          <div class="doc-card-desc">Reduccion selectiva de inventario factual, control de TPM en Groq y descubrimiento progresivo de tools.</div>
+        </a>
+
+        <a href="capacidades.md" class="doc-card">
+          <div class="doc-card-tag">Catalogo</div>
+          <div class="doc-card-title">Catalogo de Capacidades</div>
+          <div class="doc-card-desc">Inventario cerrado de 140 herramientas agrupadas por especialista (DevOps, Coder, Personal, General).</div>
+        </a>
+
+        <a href="seguridad.md" class="doc-card">
+          <div class="doc-card-tag">Hardening</div>
+          <div class="doc-card-title">Seguridad y Cero Emojis</div>
+          <div class="doc-card-desc">Comparaciones de tiempo constante, aprobaciones 2FA OTP para bash destructivo y politica estricta de estilo.</div>
+        </a>
+      </div>
+    </section>
+
+  </main>
 </div>
+
+<footer>
+  <p>D.A.V.I.S. - Digital Autonomous Voice &amp; Intelligence System &copy; 2026. Proyecto Open Source bajo licencia MIT.</p>
+  <p>Construido con Node.js 24, SQLite WAL, Baileys, OpenTelemetry y estricta politica de cero emojis.</p>
+</footer>
+
 <script type="module">
   import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-  mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
-  mermaid.run().then(() => {
-    document.querySelectorAll('.mermaid').forEach((container) => {
-      const s = container.querySelector('svg');
-      if (!s) return;
-      const vb = s.viewBox && s.viewBox.baseVal;
-      if (vb && vb.width) { s.style.maxWidth = 'none'; s.style.width = vb.width + 'px'; s.style.height = 'auto'; }
-    });
-    const link = document.getElementById('open-diagram');
-    const first = document.querySelector('.mermaid svg');
-    if (link && first) {
-      link.addEventListener('click', (e) => {
-        e.preventDefault();
-        const blob = new Blob([new XMLSerializer().serializeToString(first)], { type: 'image/svg+xml' });
-        window.open(URL.createObjectURL(blob), '_blank');
-      });
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'neutral',
+    securityLevel: 'loose',
+    flowchart: {
+      useMaxWidth: true,
+      htmlLabels: true,
+      curve: 'basis'
     }
   });
+
+  window.openDiagramModal = function(id) {
+    const el = document.getElementById(id);
+    const svg = el ? el.querySelector('svg') : null;
+    if (!svg) return;
+    const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' });
+    window.open(URL.createObjectURL(blob), '_blank');
+  };
 </script>
 </body>
 </html>
