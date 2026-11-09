@@ -64,10 +64,32 @@ function resolverDestinoOllama(peticion) {
     || 'http://127.0.0.1:11434';
 }
 
+// Regla de confianza local (revisor): provider ollama/local O destino
+// resuelto loopback. Un provider explicitamente nube (groq, openai,
+// openrouter, deepseek) NUNCA es local aunque el baseUrl sea loopback;
+// un provider ollama/local con destino resuelto remoto TAMPOCO (esa
+// combinacion es nube real). En la practica: passthrough intacto solo si
+// el destino resuelto es loopback Y el provider no es explicitamente de
+// nube. ticketVision local (qwen2.5vl con provider ollama o baseUrl
+// loopback) queda preservado.
+const PROVIDERS_NUBE = new Set(['groq', 'openai', 'openrouter', 'deepseek', 'anthropic', 'azure']);
+
 function esDestinoLocalProbado(peticion) {
   const prov = String(peticion?.provider || '').toLowerCase();
-  if (prov !== 'ollama' && prov !== 'local') return false;
-  return esHostLoopback(resolverDestinoOllama(peticion));
+  if (PROVIDERS_NUBE.has(prov)) return false;
+  // Destino EXPLICITO en la peticion: loopback prueba local (ticketVision
+  // con baseUrl local, con o sin etiqueta de provider).
+  const explicito = peticion?.baseUrl || peticion?.host;
+  if (explicito) return esHostLoopback(explicito);
+  // Etiqueta ollama/local SIN destino explicito: el destino real lo
+  // resuelve el cliente (OLLAMA_HOST, config, defecto); solo loopback
+  // prueba local. Un OLLAMA_HOST remoto es nube.
+  if (prov === 'ollama' || prov === 'local') {
+    return esHostLoopback(resolverDestinoOllama(peticion));
+  }
+  // Sin etiqueta ni destino explicito: NUBE por defecto (fail-closed en
+  // la duda; el anonimizado es la opcion segura).
+  return false;
 }
 
 export function crearAnonimizadorPreLlm({ inner, anonimizador = null, permitir = [] } = {}) {

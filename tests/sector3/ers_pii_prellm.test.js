@@ -231,3 +231,17 @@ test('pre-LLM: OLLAMA_HOST loopback sin baseUrl explicito sigue siendo local pro
     if (prev === undefined) delete process.env.OLLAMA_HOST; else process.env.OLLAMA_HOST = prev;
   }
 });
+
+test('pre-LLM local probado: sin provider pero baseUrl loopback pasa intacto (ticketVision con baseUrl local)', async () => {
+  const inner = innerGrabador({ message: { role: 'assistant', content: 'ok' } });
+  const llm = crearAnonimizadorPreLlm({ inner });
+  await llm.chatCompletion({ baseUrl: 'http://127.0.0.1:11434', messages: [{ role: 'user', content: 'mi telefono es +34611222333' }] });
+  assert.match(inner.recibidas[0].messages[0].content, /\+34611222333/, 'destino loopback resuelto: local aunque falte la etiqueta');
+});
+
+test('pre-LLM: provider explicitamente nube con baseUrl loopback NUNCA es local', async () => {
+  const inner = innerGrabador({ message: { role: 'assistant', content: 'ok' } });
+  const llm = crearAnonimizadorPreLlm({ inner });
+  await llm.chatCompletion({ provider: 'groq', baseUrl: 'http://127.0.0.1:11434', messages: [{ role: 'user', content: 'mi telefono es +34611222333' }] });
+  assert.ok(!inner.recibidas[0].messages[0].content.includes('+34611222333'), 'provider nube: anonimiza aunque el baseUrl sea loopback');
+});

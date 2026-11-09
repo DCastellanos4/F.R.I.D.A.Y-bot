@@ -57,8 +57,16 @@ del documento, no del codigo.
   (fail-closed); destino local solo se respeta con destino RESUELTO
   loopback (peticion, OLLAMA_HOST, config o defecto 127.0.0.1:11434):
   un OLLAMA_HOST remoto se trata como nube y se anonimiza, nunca PII en
-  claro por config implicita. ticketVision local (Ollama qwen2.5vl en
-  loopback) conserva transporte y proveedor. Limites: sin ese env el
+  claro por config implicita. Local probado = destino loopback explicito
+  en la peticion, o provider ollama/local cuyo destino resuelto
+  (OLLAMA_HOST/config/defecto) es loopback; sin etiqueta ni destino
+  explicito se trata como nube (fail-closed en la duda). ticketVision
+  local (Ollama qwen2.5vl en loopback) conserva transporte y proveedor.
+- Modos auxiliares (traductor/entrevista): la reparacion de su inyeccion
+  es OPT-IN con `DAVIS_AUX_CHAT_COMPLETION=1`; sin ese env reciben
+  undefined exactamente como antes de este corte (nada nuevo se activa
+  al desplegar). La condensacion del historial y el agente usan el
+  despachador central como antes (ya estaban activos). Limites: sin ese env el
   camino historico NO anonimiza; la activacion en produccion es decision
   del canal; el bypass conversacional aplica las mismas guardias de
   salida (zero-emoji, caida al agente si finge accion ejecutada o

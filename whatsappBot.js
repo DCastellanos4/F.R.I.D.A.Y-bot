@@ -626,6 +626,19 @@ export async function iniciarWhatsApp() {
 }
 
 /**
+ * Reparacion de los modos auxiliares (traductor/entrevista), OPT-IN con
+ * DAVIS_AUX_CHAT_COMPLETION=1. Comportamiento por defecto INTACTO: sin el
+ * env y sin deps.chatCompletion reciben undefined exactamente como antes
+ * de este corte (el modo responde su error historico, nada nuevo se
+ * activa al desplegar). Con el env, se inyecta el despachador central
+ * (con PII pre-LLM si DAVIS_PII_PRELLM=1).
+ */
+export function resolverChatCompletionAux(deps = {}) {
+  if (typeof deps.chatCompletion === 'function') return deps.chatCompletion;
+  return process.env.DAVIS_AUX_CHAT_COMPLETION === '1' ? chatCompletionPorDefecto : undefined;
+}
+
+/**
  * Procesamiento de mensajes entrantes. Extraido de iniciarWhatsApp como
  * funcion exportada para probar el flujo completo de entrada con socket y
  * LLM simulados, sin conexion real. deps.chatCompletion permite inyectar el
@@ -636,8 +649,9 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
 
     // Proveedor LLM efectivo: la prueba inyecta; en produccion se usa el
     // configurado (despachador central: con DAVIS_PII_PRELLM=1 incluye la
-    // anonimizacion pre-LLM tambien en condensacion, traductor y entrevista).
+    // anonimizacion pre-LLM tambien en condensacion y en el agente).
     const chatCompletionEfectivo = typeof deps.chatCompletion === 'function' ? deps.chatCompletion : chatCompletionPorDefecto;
+    const chatCompletionAux = resolverChatCompletionAux(deps);
 
     for (const msg of messages) {
       if (!msg.message || msg.key.fromMe) continue;
@@ -838,7 +852,7 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         continue;
       }
       if (estadoTrad) {
-        const rTrad = await traducir(texto, estadoTrad.idioma, { chatCompletion: chatCompletionEfectivo });
+        const rTrad = await traducir(texto, estadoTrad.idioma, { chatCompletion: chatCompletionAux });
         await sock.sendMessage(remoteJid, {
           text: rTrad.ok ? rTrad.traduccion : `No he podido traducirlo, David: ${rTrad.error}`
         }, { quoted: msg });
@@ -854,7 +868,7 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         continue;
       }
       if (sesionEntrevista) {
-        const rEnt = await responderEntrevista(texto, { rutaArchivo: deps.rutaArchivoEntrevistas, chatId: remoteJid, chatCompletion: chatCompletionEfectivo });
+        const rEnt = await responderEntrevista(texto, { rutaArchivo: deps.rutaArchivoEntrevistas, chatId: remoteJid, chatCompletion: chatCompletionAux });
         await sock.sendMessage(remoteJid, {
           text: rEnt.ok
             ? (rEnt.fin ? `${rEnt.evaluacion}\n\nSimulacro terminado: ${rEnt.resultado.aciertos}/${rEnt.resultado.total} respuestas acertadas.` : rEnt.evaluacion)

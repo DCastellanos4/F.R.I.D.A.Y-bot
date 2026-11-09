@@ -315,3 +315,18 @@ test('RF-02 guardias de salida: promesa futura del nivel 1 (te aviso / queda pro
   assert.equal(respuesta, 'respuesta del agente');
   assert.ok(llamadasLlm.length >= 1);
 });
+
+test('gate auxiliar: sin env el traductor/entrevista reciben undefined (comportamiento previo intacto); con opt-in se inyecta el despachador central', async () => {
+  const { resolverChatCompletionAux } = await import('../../whatsappBot.js');
+  const prev = process.env.DAVIS_AUX_CHAT_COMPLETION;
+  try {
+    delete process.env.DAVIS_AUX_CHAT_COMPLETION;
+    assert.equal(resolverChatCompletionAux({}), undefined, 'por defecto nada cambia al desplegar');
+    const inyectado = async () => ({ message: { content: 'x' } });
+    assert.equal(resolverChatCompletionAux({ chatCompletion: inyectado }), inyectado, 'la prueba inyectada siempre gana');
+    process.env.DAVIS_AUX_CHAT_COMPLETION = '1';
+    assert.equal(typeof resolverChatCompletionAux({}), 'function', 'opt-in explicito activa la reparacion');
+  } finally {
+    if (prev === undefined) delete process.env.DAVIS_AUX_CHAT_COMPLETION; else process.env.DAVIS_AUX_CHAT_COMPLETION = prev;
+  }
+});
