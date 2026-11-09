@@ -3,11 +3,11 @@
  * pendientes al adaptador del canal (MessageChannelPort) y las marca
  * entregadas SOLO si el envio resolvio.
  *
- * Entrega al-menos-una-vez declarada: si el envio sale pero el proceso
- * muere antes de marcar, la respuesta se reenvia al volver. La
- * deduplicacion fina depende del canal (WhatsApp no ofrece ids de
- * idempotencia de envio): la ventana es estrecha y queda declarada, no
- * oculta.
+ * Entrega con estado incierto durable: la respuesta se marca 'enviando'
+ * ANTES de llamar al canal; si el proceso muere con el envio resuelto y
+ * sin marcar, la respuesta queda 'incierta' para reconciliacion y NUNCA
+ * se reenvia automaticamente (misma politica que los envios programados
+ * inciertos). Un fallo de envio confirmado si reintenta.
  *
  * Strict Policy: Zero Emojis.
  */
@@ -25,16 +25,27 @@ export function crearEntregadorRespuestas({ outboxStore, canales = {}, intervalo
   let cerrado = false;
 
   async function ciclo() {
+    // Cierre de inciertos ANTES de nuevos envios: un 'enviando' expirado
+    // pudo haber llegado al destinatario; se declara, no se reenvia.
+    outboxStore.recuperarEnviosIncertos({});
     const pendientes = outboxStore.respuestasPendientes({ limite: limitePorCiclo });
     for (const resp of pendientes) {
       if (cerrado) return;
       const canal = adaptadores.get(resp.canal);
       if (!canal) continue; // canal sin adaptador en este proceso: no se toca
+      if (!outboxStore.marcarRespuestaEnviando(resp.id)) continue; // la tomo otro
       try {
         await canal.enviarTexto(resp.destinatario, resp.payload?.texto ?? '');
+      } catch {
+        // El canal NO confirmo el envio: vuelve a pendiente y reintenta.
+        outboxStore.volverRespuestaAPendiente(resp.id);
+        continue;
+      }
+      try {
         outboxStore.marcarRespuestaEntregada(resp.id);
       } catch {
-        // Queda pendiente para el siguiente ciclo (al-menos-una-vez).
+        // Muerte parcial: el envio pudo resolverse. Queda 'enviando'; el
+        // cierre de inciertos la saca de circulacion (nunca reenvio ciego).
       }
     }
   }

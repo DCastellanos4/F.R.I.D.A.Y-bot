@@ -91,7 +91,7 @@ test('durabilidad degradada visible: fallo al guardar checkpoint queda declarado
   const { crearSqliteOutboxQueue } = await import('../../src/adapters/outbound/queue/sqliteOutboxQueueAdapter.js');
   const cola = crearSqliteOutboxQueue({ outboxStore: storeRoto, intervaloMs: 20 });
   const procesar = async (inbound, { opciones }) => {
-    opciones.onCheckpointRonda(0, { accionesConEfectos: [] });
+    try { opciones.onCheckpointRonda(0, { accionesConEfectos: [] }); } catch { /* el agente real lo gestiona; aqui solo nos importa la declaracion */ }
     return 'ok';
   };
   const worker = crearWorkerAgente({ cola, procesar, outboxStore: storeRoto });
@@ -143,5 +143,81 @@ test('fixture de presupuesto: 1000 escrituras outbox con media < 3 ms (senal loc
   }
   const mediaMs = Number(process.hrtime.bigint() - t0) / 1e6 / 1000;
   assert.ok(mediaMs < 3, `media ${mediaMs.toFixed(4)} ms por escritura (fixture local; la medicion del ERS es con el canal vivo)`);
+  db.close();
+});
+
+test('efecto sin marca durable NO se ejecuta (bloqueo declarado, no degradacion tras el hecho)', async () => {
+  let ejecuciones = 0;
+  const respuesta = await consultarJarvis('ejecuta la accion de prueba', [], {
+    chatId: 'chat-nomark@test',
+    rutaArchivoIdempotencia: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'davis-idemp-nomark-')), 'i.json'),
+    ejecutores: { [TOOL_EFECTO]: async () => { ejecuciones += 1; return 'hecho'; } },
+    chatCompletion: chatPorRondas([
+      { toolCalls: [llamadaEfecto('c1', 'A')] },
+      { content: 'final' }
+    ]),
+    onCheckpointRonda: () => { throw new Error('sqlite llena'); }
+  });
+  assert.equal(ejecuciones, 0, 'sin marca durable el efecto externo NO se ejecuta');
+  assert.equal(typeof respuesta, 'string', 'el bucle sigue y responde declarando el bloqueo');
+});
+
+test('entrega: muerte con envio resuelto sin marcar cierra a incierto y NUNCA reenvia', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'davis-deliver-'));
+  const db = abrirBaseDatos(path.join(dir, 'j.db'));
+  ejecutarMigraciones(db);
+  const store = crearSqliteOutboxStore(db);
+  const { crearEntregadorRespuestas } = await import('../../src/workers/responseDeliverer.js');
+
+  // Simula la muerte: envio resuelto, marca de entrega falla (proceso muerto).
+  let envios = 0;
+  const storeMuerte = Object.freeze({
+    ...store,
+    marcarRespuestaEntregada: () => { throw new Error('proceso muerto'); }
+  });
+  const idJob = store.publicar({ canal: 'whatsapp', tipo: 'mensaje_entrante', payload: { userId: 'u', text: 'x' } });
+  store.encolarRespuesta({ jobId: idJob, canal: 'whatsapp', destinatario: 'u', payload: { texto: 'resp' } });
+  const d1 = crearEntregadorRespuestas({
+    outboxStore: storeMuerte, intervaloMs: 20,
+    canales: { whatsapp: { canal: 'whatsapp', enviarTexto: async () => { envios += 1; } } }
+  });
+  d1.iniciar();
+  await new Promise((r) => setTimeout(r, 120));
+  await d1.cerrar();
+  assert.equal(envios, 1, 'un solo envio resuelto');
+
+  // Recuperacion: el 'enviando' expirado pasa a incierto y no se reenvia.
+  db.prepare("UPDATE channel_responses SET enviando_en = ? WHERE estado = 'enviando'")
+    .run(new Date(Date.now() - 300000).toISOString());
+  const d2 = crearEntregadorRespuestas({
+    outboxStore: store, intervaloMs: 20,
+    canales: { whatsapp: { canal: 'whatsapp', enviarTexto: async () => { envios += 1; } } }
+  });
+  d2.iniciar();
+  await new Promise((r) => setTimeout(r, 120));
+  await d2.cerrar();
+  assert.equal(envios, 1, 'la respuesta incierta NO se reenvia a ciegas');
+  assert.equal(store.respuestasIncertas().length, 1, 'queda visible para reconciliacion');
+  db.close();
+});
+
+test('entrega: fallo de envio confirmado vuelve a pendiente y reintenta', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'davis-deliver-retry-'));
+  const db = abrirBaseDatos(path.join(dir, 'j.db'));
+  ejecutarMigraciones(db);
+  const store = crearSqliteOutboxStore(db);
+  const { crearEntregadorRespuestas } = await import('../../src/workers/responseDeliverer.js');
+  let intentos = 0;
+  const idJob = store.publicar({ canal: 'whatsapp', tipo: 'mensaje_entrante', payload: { userId: 'u', text: 'x' } });
+  store.encolarRespuesta({ jobId: idJob, canal: 'whatsapp', destinatario: 'u', payload: { texto: 'resp' } });
+  const d = crearEntregadorRespuestas({
+    outboxStore: store, intervaloMs: 20,
+    canales: { whatsapp: { canal: 'whatsapp', enviarTexto: async () => { intentos += 1; if (intentos === 1) throw new Error('canal caido'); } } }
+  });
+  d.iniciar();
+  for (let i = 0; i < 100 && intentos < 2; i++) await new Promise((r) => setTimeout(r, 20));
+  await d.cerrar();
+  assert.equal(intentos, 2, 'fallo confirmado: reintento y exito');
+  assert.equal(store.respuestasPendientes({ canal: 'whatsapp' }).length, 0);
   db.close();
 });

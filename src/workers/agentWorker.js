@@ -54,6 +54,7 @@ export function crearWorkerAgente({ cola, procesar, outboxStore } = {}) {
           outboxStore.guardarCheckpoint(trabajo.id, ronda, estado);
         } catch (err) {
           fallosCheckpoint.push(String((err && err.message) || err).slice(0, 200));
+          throw err; // el agente bloquea el efecto si no hay marca durable
         }
       }
     };

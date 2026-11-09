@@ -92,6 +92,21 @@ export function crearSqliteOutboxStore(db) {
   const updRespuestaEntregada = db.prepare(`
     UPDATE channel_responses SET estado = 'entregada', entregado_en = @ahora WHERE id = @id
   `);
+  const updRespuestaEnviando = db.prepare(`
+    UPDATE channel_responses SET estado = 'enviando', enviando_en = @ahora
+    WHERE id = @id AND estado = 'pendiente'
+  `);
+  const updRespuestaVolverPendiente = db.prepare(`
+    UPDATE channel_responses SET estado = 'pendiente', enviando_en = NULL
+    WHERE id = @id AND estado = 'enviando'
+  `);
+  const updEnviosIncertos = db.prepare(`
+    UPDATE channel_responses SET estado = 'incierto'
+    WHERE estado = 'enviando' AND enviando_en < @corte
+  `);
+  const selRespuestasIncertas = db.prepare(`
+    SELECT * FROM channel_responses WHERE estado = 'incierto' ORDER BY creado_en, id LIMIT @limite
+  `);
   const selContadores = db.prepare('SELECT estado, COUNT(*) n FROM outbox_events GROUP BY estado');
 
   function aTrabajo(fila) {
@@ -270,6 +285,36 @@ export function crearSqliteOutboxStore(db) {
 
     marcarRespuestaEntregada(id, { ahora = null } = {}) {
       updRespuestaEntregada.run({ id, ahora: aIso(ahora) });
+    },
+
+    /**
+     * Marca 'enviando' ANTES de llamar al canal (compare-and-set desde
+     * 'pendiente'). Devuelve true si este proceso tomo la respuesta; si
+     * otro la tomo o ya no esta pendiente, false y no se toca.
+     */
+    marcarRespuestaEnviando(id, { ahora = null } = {}) {
+      return updRespuestaEnviando.run({ id, ahora: aIso(ahora) }).changes === 1;
+    },
+
+    /** El envio FALLO (el canal no lo confirmo): vuelve a pendiente y se reintenta. */
+    volverRespuestaAPendiente(id) {
+      updRespuestaVolverPendiente.run({ id });
+    },
+
+    /**
+     * Una respuesta en 'enviando' mas alla de la expiracion es INCIERTA:
+     * el envio pudo resolverse antes de la caida. Se cierra a 'incierto'
+     * (visible para reconciliacion) y NUNCA se reenvia automaticamente.
+     */
+    recuperarEnviosIncertos({ ahora = null, expiracionMs = 120000 } = {}) {
+      const corte = new Date(new Date(aIso(ahora)).getTime() - expiracionMs).toISOString();
+      return updEnviosIncertos.run({ corte }).changes;
+    },
+
+    respuestasIncertas({ limite = 50 } = {}) {
+      return selRespuestasIncertas.all({ limite: Math.max(1, Math.trunc(limite)) }).map((f) => Object.freeze({
+        id: f.id, jobId: f.job_id, canal: f.canal, destinatario: f.destinatario, creadoEn: f.creado_en
+      }));
     },
 
     contadores() {

@@ -269,6 +269,17 @@ export const MIGRACIONES = [
       );
       CREATE INDEX idx_audit_tenant ON audit_herramientas(tenant_id, id);
     `
+  },
+  {
+    // RF-01: estado 'enviando' con marca temporal en channel_responses.
+    // ADITIVA. Una respuesta en 'enviando' mas alla de la expiracion es
+    // INCIERTA (el envio pudo resolverse antes de la caida): pasa a
+    // 'incierto' para reconciliacion y NUNCA se reenvia automaticamente.
+    version: 8,
+    nombre: '008_outbox_enviando',
+    sql: `
+      ALTER TABLE channel_responses ADD COLUMN enviando_en TEXT;
+    `
   }
 ];
 
