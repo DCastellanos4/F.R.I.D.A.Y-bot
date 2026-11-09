@@ -54,8 +54,12 @@ describe('Tier 3: Cross-Feature Combinations', () => {
     assert.equal(clasificacion.especialista, 'coder');
 
     const config = obtenerConfiguracionEspecialista(clasificacion.especialista);
-    assert.ok(config.herramientasPermitidas.includes('crear_rama_trabajo'));
-    assert.ok(config.herramientasPermitidas.includes('crear_commit'));
+    // La lista permitida solo puede contener herramientas del catalogo real
+    // (crear_rama_trabajo/crear_commit no existen en src/core/tools.js).
+    assert.ok(config.herramientasPermitidas.includes('revisar_pr'));
+    assert.ok(config.herramientasPermitidas.includes('generar_changelog'));
+    assert.ok(!config.herramientasPermitidas.includes('crear_rama_trabajo'));
+    assert.ok(!config.herramientasPermitidas.includes('crear_commit'));
 
     // 2. ReAct loop receives scoped tools and executes sequential actions
     const mockChat = crearChatMock([
@@ -67,7 +71,7 @@ describe('Tier 3: Cross-Feature Combinations', () => {
             {
               id: 'call_branch_1',
               type: 'function',
-              function: { name: 'crear_rama_trabajo', arguments: { nombreRama: 'feat-react-loop' } }
+              function: { name: 'revisar_pr', arguments: { numero: 17 } }
             }
           ]
         }
@@ -80,7 +84,7 @@ describe('Tier 3: Cross-Feature Combinations', () => {
             {
               id: 'call_commit_1',
               type: 'function',
-              function: { name: 'crear_commit', arguments: { mensaje: 'feat: implement react cycle' } }
+              function: { name: 'generar_changelog', arguments: { desde: 'v1.2.0' } }
             }
           ]
         }
@@ -88,15 +92,15 @@ describe('Tier 3: Cross-Feature Combinations', () => {
       {
         message: {
           role: 'assistant',
-          content: 'Rama feat-react-loop creada y commit registrado con exito.'
+          content: 'PR 17 revisada y entrada de changelog redactada desde v1.2.0.'
         },
         finishReason: 'stop'
       }
     ]);
 
     const { ejecutores, llamadas } = crearEjecutoresMock({
-      crear_rama_trabajo: async (args) => ({ texto: `Rama ${args.nombreRama} creada en HEAD` }),
-      crear_commit: async (args) => ({ texto: `Commit creado SHA: a1b2c3d4 - ${args.mensaje}` })
+      revisar_pr: async (args) => ({ texto: `PR ${args.numero} revisada: sin problemas de seguridad` }),
+      generar_changelog: async (args) => ({ texto: `Changelog propuesto desde ${args.desde}` })
     });
 
     const respuesta = await consultarJarvis('Que tiempo hace hoy?', [], {
@@ -106,9 +110,9 @@ describe('Tier 3: Cross-Feature Combinations', () => {
     });
 
     assert.equal(llamadas.length, 2, 'Debe ejecutar ambas herramientas de Coder en secuencia');
-    assert.equal(llamadas[0].name, 'crear_rama_trabajo');
-    assert.equal(llamadas[1].name, 'crear_commit');
-    assert.match(respuesta, /feat-react-loop/);
+    assert.equal(llamadas[0].name, 'revisar_pr');
+    assert.equal(llamadas[1].name, 'generar_changelog');
+    assert.match(respuesta, /changelog/);
     assertNoEmojis(respuesta);
   });
 

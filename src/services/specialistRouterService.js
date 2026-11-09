@@ -14,12 +14,13 @@ export const LIMITE_HERRAMIENTAS_ESPECIALISTA = 128;
 
 export const ESPECIALISTAS = Object.freeze(['coder', 'ops', 'personal', 'general']);
 
+// Solo herramientas presentes en el catalogo real (src/core/tools.js): los
+// nombres ausentes se descartan en silencio al acotar y el modelo nunca las
+// ve, pero prometerlos en listas, prompts o ejemplos induce llamadas
+// imposibles. crear_rama_trabajo/crear_commit/abrir_pull_request/
+// empujar_rama/ejecutar_tarea_programacion (githubAgentService) se retiraron
+// de aqui por no existir en el catalogo; cablearlas es decision de producto.
 export const HERRAMIENTAS_CODER = Object.freeze([
-  'crear_rama_trabajo',
-  'crear_commit',
-  'abrir_pull_request',
-  'empujar_rama',
-  'ejecutar_tarea_programacion',
   'revisar_pr',
   'generar_changelog',
   'guiar_depuracion',
@@ -36,11 +37,11 @@ export const HERRAMIENTAS_CODER = Object.freeze([
   'explicar_recorrido'
 ]);
 
+// Misma regla: sin alias ausentes del catalogo (docker_status,
+// docker_restart, bash_console y disk_status no existen como herramientas;
+// la consola y el estado llegan por execute_bash_command,
+// consultar_estado_servidor y get_infrastructure_status).
 export const HERRAMIENTAS_OPS = Object.freeze([
-  'docker_status',
-  'docker_restart',
-  'bash_console',
-  'disk_status',
   'execute_bash_command',
   'get_infrastructure_status',
   'consultar_estado_servidor',
@@ -67,11 +68,9 @@ export const HERRAMIENTAS_OPS = Object.freeze([
   'explicar_recorrido'
 ]);
 
+// Sin marcadores genericos ausentes del catalogo (calendar, expenses,
+// habits, notes); la cobertura real son las herramientas granulares de abajo.
 export const HERRAMIENTAS_PERSONAL = Object.freeze([
-  'calendar',
-  'expenses',
-  'habits',
-  'notes',
   'crear_recordatorio',
   'listar_recordatorios',
   'cancelar_recordatorio',
@@ -184,7 +183,7 @@ export const CONFIGURACIONES_ESPECIALISTAS = Object.freeze({
   coder: {
     nombre: 'Especialista Coder',
     herramientasPermitidas: HERRAMIENTAS_CODER,
-    systemPromptMod: '[MODO ESPECIALISTA: CODER]\nActuas como el especialista en desarrollo, programacion y control de versiones de D.A.V.I.S. Tu foco es el analisis riguroso de codigo, gestion limpia de ramas git, generacion de commits atomicos, revision y apertura de Pull Requests con githubAgentService, y depuracion paso a paso. Responde con precision tecnica, sintaxis exacta, explicaciones estructuradas y estrictamente sin emojis.'
+    systemPromptMod: '[MODO ESPECIALISTA: CODER]\nActuas como el especialista en desarrollo, programacion y control de versiones de D.A.V.I.S. Tu foco es el analisis riguroso de codigo, la revision de Pull Requests (la resena llega aqui, nunca se publica en GitHub), la redaccion de entradas de changelog desde el historial git, la auditoria de dependencias y la depuracion guiada paso a paso. No puedes crear ramas, commits ni Pull Requests: si David pide una de esas acciones, dilo claramente y ofrece la alternativa disponible. Responde con precision tecnica, sintaxis exacta, explicaciones estructuradas y estrictamente sin emojis.'
   },
   ops: {
     nombre: 'Especialista Ops',
@@ -534,10 +533,13 @@ export function obtenerEjemplosFewShot(especialista, query = '') {
   const q = String(typeof query === 'string' ? query : (query?.texto || query?.mensaje || '')).toLowerCase();
   const ejemplos = [];
 
+  // Los ejemplos deben usar herramientas que existen en el catalogo real:
+  // un ejemplo con una herramienta ausente ensenia al modelo a llamarla y
+  // la llamada siempre falla.
   if (especialista === 'coder' || q.includes('pr') || q.includes('git') || q.includes('commit') || q.includes('rama')) {
     ejemplos.push(
-      '- Usuario: "Abre una PR de la rama fix-auth para tokens" -> abrir_pull_request({ titulo: "fix: tokens", rama: "fix-auth" })',
-      '- Usuario: "Crea una rama llamada chore-deps" -> crear_rama_trabajo({ nombreRama: "chore-deps" })'
+      '- Usuario: "Revisa la PR 42" -> revisar_pr({ numero: 42 })',
+      '- Usuario: "Redacta el changelog desde v1.2.0" -> generar_changelog({ desde: "v1.2.0" })'
     );
   }
   if (especialista === 'personal' || q.includes('gasto') || q.includes('compra') || q.includes('habito')) {

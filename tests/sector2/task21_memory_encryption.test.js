@@ -13,9 +13,22 @@ import { assertNoEmojis } from './helpers/s2Validators.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-// El archivo real que usa el servicio: DAVIS_DATA_DIR (setup_aislamiento) o,
-// a falta de override, el data/ del repo. Asi la prueba nunca toca produccion.
-const ARCHIVO_MEMORIA = path.join(process.env.DAVIS_DATA_DIR || path.resolve(__dirname, '..', '..', 'data'), 'brain_memory.json');
+// Archivo de memorias PROPIO de esta prueba, fuera del DAVIS_DATA_DIR
+// compartido de la suite. Causa raiz del fallo intermitente historico: en la
+// corrida completa todos los archivos de tests heredan el mismo
+// DAVIS_DATA_DIR (tests/run_all.js), asi que todos comparten el mismo
+// brain_memory.json. Cada archivo corre en su propio proceso en paralelo
+// (node --test), y las escrituras son leer-modificar-escribir del fichero
+// entero sin bloqueo entre procesos: rag_y_guardarrales_fixes.test.js pisa el
+// fichero con '[]' o con su respaldo, y cualquier escritor concurrente puede
+// perder la escritura ajena. Entre guardarMemoria y buscarMemorias la memoria
+// de esta prueba desaparecia y `encontradas[0].dato` explotaba con
+// "Cannot read properties of undefined (reading 'dato')".
+// La costura rutaArchivo existe justamente para este aislamiento: una ruta
+// JSON explicita gana al store por defecto y cada prueba escribe solo en su
+// propio archivo. La resolucion de la ruta por defecto la cubre
+// deploy_aislamiento.test.js, asi que no se pierde cobertura.
+const ARCHIVO_MEMORIA = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'davis-task21-')), 'brain_memory.json');
 
 const KEY_ENV_VARS = ['MEMORY_ENCRYPTION_KEY', 'BACKUP_PASSPHRASE', 'DAVIS_BACKUP_KEY'];
 
@@ -41,7 +54,7 @@ describe('MemoryService - Cifrado en reposo de credenciales (categoria clave)', 
   });
 
   it('rechaza guardar una credencial si no hay clave de cifrado configurada (fail closed)', () => {
-    const res = guardarMemoria({ sujeto: 'Test Credencial FailClosed', dato: 'valor_secreto_test_123', categoria: 'clave' });
+    const res = guardarMemoria({ sujeto: 'Test Credencial FailClosed', dato: 'valor_secreto_test_123', categoria: 'clave', rutaArchivo: ARCHIVO_MEMORIA });
     assert.strictEqual(res.ok, false);
     assert.ok(res.error.includes('MEMORY_ENCRYPTION_KEY'));
     assertNoEmojis(res);
@@ -53,7 +66,7 @@ describe('MemoryService - Cifrado en reposo de credenciales (categoria clave)', 
   it('cifra el dato en disco y lo devuelve en claro al leerlo', () => {
     process.env.MEMORY_ENCRYPTION_KEY = 'test_memory_key_fixture';
 
-    const res = guardarMemoria({ sujeto: 'Test Credencial Cifrada', dato: 'valor_secreto_test_123', categoria: 'clave' });
+    const res = guardarMemoria({ sujeto: 'Test Credencial Cifrada', dato: 'valor_secreto_test_123', categoria: 'clave', rutaArchivo: ARCHIVO_MEMORIA });
     assert.strictEqual(res.ok, true);
     assert.strictEqual(res.memoria.dato, 'valor_secreto_test_123');
     assertNoEmojis(res);
@@ -67,12 +80,12 @@ describe('MemoryService - Cifrado en reposo de credenciales (categoria clave)', 
     assert.ok(almacenada.salt && almacenada.iv && almacenada.tag);
 
     // Las lecturas lo devuelven descifrado
-    const encontradas = buscarMemorias('Test Credencial Cifrada');
+    const encontradas = buscarMemorias('Test Credencial Cifrada', { rutaArchivo: ARCHIVO_MEMORIA });
     assert.strictEqual(encontradas[0].dato, 'valor_secreto_test_123');
-    const listado = listarMemorias('clave');
+    const listado = listarMemorias('clave', { rutaArchivo: ARCHIVO_MEMORIA });
     assert.strictEqual(listado.find(m => m.sujeto === 'Test Credencial Cifrada').dato, 'valor_secreto_test_123');
 
-    const del = olvidarMemoria('Test Credencial Cifrada');
+    const del = olvidarMemoria('Test Credencial Cifrada', { rutaArchivo: ARCHIVO_MEMORIA });
     assert.strictEqual(del.ok, true);
   });
 
@@ -91,12 +104,12 @@ describe('MemoryService - Cifrado en reposo de credenciales (categoria clave)', 
     });
     fs.writeFileSync(ARCHIVO_MEMORIA, JSON.stringify(lista, null, 2), 'utf-8');
 
-    const listado = listarMemorias('clave');
+    const listado = listarMemorias('clave', { rutaArchivo: ARCHIVO_MEMORIA });
     const legacy = listado.find(m => m.sujeto === 'Test Legacy Plana');
     assert.ok(legacy);
     assert.strictEqual(legacy.dato, 'valor_legacy_en_plano');
 
-    olvidarMemoria('Test Legacy Plana');
+    olvidarMemoria('Test Legacy Plana', { rutaArchivo: ARCHIVO_MEMORIA });
   });
 
   it('el script de migracion cifra credenciales legacy sin perder datos ni memorias', () => {
@@ -176,12 +189,12 @@ describe('MemoryService - Cifrado en reposo de credenciales (categoria clave)', 
   it('las memorias que no son de categoria clave se guardan sin cifrar', () => {
     process.env.MEMORY_ENCRYPTION_KEY = 'test_memory_key_fixture';
 
-    const res = guardarMemoria({ sujeto: 'Test Dato General', dato: 'le gusta el cafe solo', categoria: 'general' });
+    const res = guardarMemoria({ sujeto: 'Test Dato General', dato: 'le gusta el cafe solo', categoria: 'general', rutaArchivo: ARCHIVO_MEMORIA });
     assert.strictEqual(res.ok, true);
 
     const raw = fs.readFileSync(ARCHIVO_MEMORIA, 'utf-8');
     assert.ok(raw.includes('le gusta el cafe solo'));
 
-    olvidarMemoria('Test Dato General');
+    olvidarMemoria('Test Dato General', { rutaArchivo: ARCHIVO_MEMORIA });
   });
 });

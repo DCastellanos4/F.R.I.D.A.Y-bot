@@ -38,11 +38,13 @@ export function crearAuditLogService(db, { anonimizador = null } = {}) {
   if (!db || typeof db.prepare !== 'function') {
     throw new TypeError('crearAuditLogService requiere una base better-sqlite3 abierta.');
   }
-  // Los hashes se calculan sobre el contenido ANONIMIZADO: un SHA256 sin
-  // clave sobre un telefono o IBAN real seria reversible por diccionario.
-  // Limite residual declarado: argumentos no-PII de baja entropia (p. ej.
-  // un importe) siguen siendo adivinables por diccionario; endurecerlo
-  // requeriria HMAC con clave fuera de la DB.
+  // Los hashes se calculan sobre el contenido ANONIMIZADO: el valor PII
+  // en claro nunca se almacena. LIMITE DECLARADO: la anonimizacion es
+  // determinista, asi que el hash sigue permitiendo VERIFICAR una
+  // sospecha (ataque de diccionario sobre el espacio pequenyo de
+  // telefonos/DNI); esto NO esta cerrado sin HMAC con clave fuera de la
+  // DB. Los args no-PII de baja entropia (p. ej. importes) tambien son
+  // adivinables.
   const pii = anonimizador || crearPiiAnonymizer();
   const enmascarar = (v) => pii.anonimizar(canonizar(v)).texto;
   const selUltimo = db.prepare('SELECT hash FROM audit_herramientas ORDER BY id DESC LIMIT 1');

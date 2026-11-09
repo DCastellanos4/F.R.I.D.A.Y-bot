@@ -42,10 +42,20 @@ export function crearWorkerAgente({ cola, procesar, outboxStore } = {}) {
     });
 
     const ultimo = outboxStore.ultimoCheckpoint(trabajo.id);
+    // Durabilidad visible: si guardar un checkpoint falla, el bucle sigue
+    // (nunca se rompe la respuesta al usuario) pero el trabajo se entrega
+    // declarando la degradacion, no simulando durabilidad.
+    const fallosCheckpoint = [];
     const opciones = {
       ...(p.opciones && typeof p.opciones === 'object' ? p.opciones : {}),
       checkpointInicial: ultimo ? ultimo.estado : null,
-      onCheckpointRonda: (ronda, estado) => outboxStore.guardarCheckpoint(trabajo.id, ronda, estado)
+      onCheckpointRonda: (ronda, estado) => {
+        try {
+          outboxStore.guardarCheckpoint(trabajo.id, ronda, estado);
+        } catch (err) {
+          fallosCheckpoint.push(String((err && err.message) || err).slice(0, 200));
+        }
+      }
     };
 
     const respuesta = await procesar(inbound, { historial: p.historial || [], opciones });
@@ -53,7 +63,12 @@ export function crearWorkerAgente({ cola, procesar, outboxStore } = {}) {
       jobId: trabajo.id,
       canal: trabajo.canal,
       destinatario: inbound.userId,
-      payload: { texto: typeof respuesta === 'string' ? respuesta : String(respuesta ?? '') }
+      payload: {
+        texto: typeof respuesta === 'string' ? respuesta : String(respuesta ?? ''),
+        ...(fallosCheckpoint.length > 0
+          ? { durabilidadCheckpoints: 'degradada', fallosCheckpoint: fallosCheckpoint.length }
+          : {})
+      }
     });
   }
 

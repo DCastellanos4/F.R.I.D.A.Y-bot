@@ -67,7 +67,7 @@ describe('Tier 4: Real-World End-to-End Scenarios', () => {
             {
               id: 'call_git_branch',
               type: 'function',
-              function: { name: 'crear_rama_trabajo', arguments: { nombreRama: 'fix-auth', base: 'main' } }
+              function: { name: 'guiar_depuracion', arguments: { fallo: 'el token de sesion expira antes de tiempo' } }
             }
           ]
         }
@@ -80,7 +80,7 @@ describe('Tier 4: Real-World End-to-End Scenarios', () => {
             {
               id: 'call_git_commit',
               type: 'function',
-              function: { name: 'crear_commit', arguments: { mensaje: 'fix: resolve session token expiry issue' } }
+              function: { name: 'revisar_pr', arguments: { numero: 42 } }
             }
           ]
         }
@@ -94,8 +94,8 @@ describe('Tier 4: Real-World End-to-End Scenarios', () => {
               id: 'call_git_pr',
               type: 'function',
               function: {
-                name: 'abrir_pull_request',
-                arguments: { titulo: 'fix: resolve session token expiry issue', rama: 'fix-auth', base: 'main' }
+                name: 'generar_changelog',
+                arguments: { desde: 'v1.2.0' }
               }
             }
           ]
@@ -104,16 +104,16 @@ describe('Tier 4: Real-World End-to-End Scenarios', () => {
       {
         message: {
           role: 'assistant',
-          content: 'Pull request #42 abierto con exito para la rama fix-auth hacia main.'
+          content: 'Depuracion guiada, PR 42 revisada y changelog propuesto desde v1.2.0.'
         },
         finishReason: 'stop'
       }
     ]);
 
     const { ejecutores, llamadas } = crearEjecutoresMock({
-      crear_rama_trabajo: async (args) => ({ texto: `Rama ${args.nombreRama} creada desde ${args.base}` }),
-      crear_commit: async (args) => ({ texto: `Commit 7f8a9b0 registrado: ${args.mensaje}` }),
-      abrir_pull_request: async (args) => ({ texto: `PR #42 abierto en GitHub: ${args.titulo}` })
+      guiar_depuracion: async (args) => ({ texto: `Hipotesis 1 para: ${args.fallo}` }),
+      revisar_pr: async (args) => ({ texto: `PR ${args.numero} revisada sin hallazgos` }),
+      generar_changelog: async (args) => ({ texto: `Changelog propuesto desde ${args.desde}` })
     });
 
     const respuesta = await consultarJarvis('Que tiempo hace hoy?', [], {
@@ -123,10 +123,10 @@ describe('Tier 4: Real-World End-to-End Scenarios', () => {
     });
 
     assert.equal(llamadas.length, 3, 'Debe ejecutar las 3 fases del ciclo de desarrollo');
-    assert.equal(llamadas[0].name, 'crear_rama_trabajo');
-    assert.equal(llamadas[1].name, 'crear_commit');
-    assert.equal(llamadas[2].name, 'abrir_pull_request');
-    assert.match(respuesta, /Pull request #42 abierto/i);
+    assert.equal(llamadas[0].name, 'guiar_depuracion');
+    assert.equal(llamadas[1].name, 'revisar_pr');
+    assert.equal(llamadas[2].name, 'generar_changelog');
+    assert.match(respuesta, /changelog/i);
 
     // Step 3: Guardrail verification of final output
     const traza = { llamadas: llamadas.map((l) => ({ nombre: l.name, resultado: 'ok', ok: true })) };
@@ -336,10 +336,11 @@ describe('Tier 4: Real-World End-to-End Scenarios', () => {
     assert.ok(clasificacion.confianza >= 0.7);
     assert.ok(typeof clasificacion.razon === 'string');
 
-    // Filter tools for the selected domain
+    // Filter tools for the selected domain. Solo herramientas del catalogo
+    // real: abrir_pull_request y disk_status no existen en src/core/tools.js.
     const herramientasDisponibles = [
-      { type: 'function', function: { name: 'abrir_pull_request' } },
-      { type: 'function', function: { name: 'disk_status' } },
+      { type: 'function', function: { name: 'revisar_pr' } },
+      { type: 'function', function: { name: 'execute_bash_command' } },
       { type: 'function', function: { name: 'consultar_agenda' } }
     ];
 

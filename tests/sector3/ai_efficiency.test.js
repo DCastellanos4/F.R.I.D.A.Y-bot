@@ -231,6 +231,9 @@ test('regresion real: parafrasis sin discovery conserva evidencia minima y bloqu
   } });
   assert.equal(principal, true);
   assert.equal(r.traza.guardiaInventario, 'resumen_factual_determinista');
+  // Aqui disparan AMBAS capas (patron inventado + resumen determinista):
+  // el detalle completo queda en guardiaInventarioCapas, sin pisar la primera.
+  assert.deepEqual(r.traza.guardiaInventarioCapas, ['modulo_no_implementado', 'resumen_factual_determinista']);
   assert.doesNotMatch(r.respuesta, /Dentro llevo|Modulo de busqueda web|Procesador de datos estructurados/);
   assert.match(r.respuesta, /No tengo buscador web general/);
 });

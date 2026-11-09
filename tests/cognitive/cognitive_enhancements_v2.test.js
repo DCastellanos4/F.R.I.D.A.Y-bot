@@ -10,9 +10,12 @@ import {
 
 describe('Cognitive Enhancements V2: Few-Shot, Determinism & Renfe Contrast', () => {
   it('debe generar ejemplos few-shot para consultas de desarrollo/git', () => {
-    const fewShot = obtenerEjemplosFewShot('coder', 'abre una PR de fix-auth');
-    assert.ok(fewShot.includes('abrir_pull_request'));
-    assert.ok(fewShot.includes('fix-auth'));
+    // Los ejemplos solo pueden mencionar herramientas del catalogo real:
+    // abrir_pull_request/crear_rama_trabajo no existen en src/core/tools.js.
+    const fewShot = obtenerEjemplosFewShot('coder', 'revisa la PR 42');
+    assert.ok(fewShot.includes('revisar_pr'));
+    assert.ok(!fewShot.includes('abrir_pull_request'));
+    assert.ok(!fewShot.includes('crear_rama_trabajo'));
   });
 
   it('debe generar ejemplos few-shot para consultas de gastos/personal', () => {

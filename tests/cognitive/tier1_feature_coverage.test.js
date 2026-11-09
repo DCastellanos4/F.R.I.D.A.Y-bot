@@ -482,16 +482,18 @@ describe('Tier 1: Feature Contract Coverage', () => {
     });
 
     it('3.6 should combine routing and tool filtering in enrutarYFiltrarHerramientas', () => {
+      // Solo herramientas del catalogo real: crear_commit y docker_status
+      // no existen en src/core/tools.js.
       const herramientas = [
-        { type: 'function', function: { name: 'crear_commit' } },
-        { type: 'function', function: { name: 'docker_status' } },
+        { type: 'function', function: { name: 'revisar_pr' } },
+        { type: 'function', function: { name: 'execute_bash_command' } },
         { type: 'function', function: { name: 'consultar_agenda' } }
       ];
 
-      const resCoder = enrutarYFiltrarHerramientas('haz commit de los cambios git', herramientas);
+      const resCoder = enrutarYFiltrarHerramientas('revisa la PR de los cambios git', herramientas);
       assert.equal(resCoder.especialista, 'coder');
       const nombresFiltrados = resCoder.herramientasFiltradas.map((h) => h.function.name);
-      assert.ok(nombresFiltrados.includes('crear_commit'));
+      assert.ok(nombresFiltrados.includes('revisar_pr'));
       assert.ok(!nombresFiltrados.includes('consultar_agenda'), 'No debe incluir herramientas personales en coder');
       assertNoEmojis(resCoder);
     });
