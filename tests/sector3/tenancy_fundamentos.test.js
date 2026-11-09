@@ -55,7 +55,7 @@ test('migracion 002: conserva TODAS las filas del propietario (incluida la recon
     conf: db.prepare('SELECT clave, valor FROM finanzas_config ORDER BY rowid').all()
   };
   const r = ejecutarMigraciones(db);
-  assert.deepEqual(r.aplicadasAhora, [2, 3, 4, 5]);
+  assert.deepEqual(r.aplicadasAhora, [2, 3, 4, 5, 6, 7]);
   assert.deepEqual(db.prepare('SELECT id, dato FROM memorias ORDER BY rowid').all(), antes.mem);
   assert.deepEqual(db.prepare('SELECT categoria, limite FROM finanzas_presupuestos ORDER BY rowid').all(), antes.pres);
   assert.deepEqual(db.prepare('SELECT clave, valor FROM finanzas_config ORDER BY rowid').all(), antes.conf);

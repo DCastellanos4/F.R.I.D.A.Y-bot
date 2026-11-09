@@ -197,6 +197,78 @@ export const MIGRACIONES = [
         PRIMARY KEY (tenant_id,herramienta)
       );
     `
+  },
+  {
+    // RF-01 (ERS proximo nivel): desacoplamiento asincrono. ADITIVA.
+    // outbox_events: cada mensaje aceptado por un canal se persiste AQUI en
+    // la misma transaccion que su registro, antes de cualquier procesamiento;
+    // una caida del proceso nunca pierde un mensaje aceptado.
+    // job_checkpoints: progreso por ronda de herramientas de cada trabajo,
+    // para reanudar sin repetir herramientas con efectos ya ejecutados.
+    // channel_responses: respuestas pendientes de entregar al canal; el id
+    // determinista por trabajo hace la entrega idempotente ante reintentos.
+    version: 6,
+    nombre: '006_outbox_jobs',
+    sql: `
+      CREATE TABLE outbox_events (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        canal TEXT NOT NULL,
+        tipo TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        estado TEXT NOT NULL DEFAULT 'pendiente',
+        intentos INTEGER NOT NULL DEFAULT 0,
+        creado_en TEXT NOT NULL,
+        disponible_en TEXT NOT NULL,
+        reclamado_en TEXT,
+        procesado_en TEXT,
+        ultimo_error TEXT
+      );
+      CREATE INDEX idx_outbox_estado ON outbox_events(estado, disponible_en);
+
+      CREATE TABLE job_checkpoints (
+        job_id TEXT NOT NULL REFERENCES outbox_events(id),
+        ronda INTEGER NOT NULL,
+        estado TEXT NOT NULL,
+        creado_en TEXT NOT NULL,
+        PRIMARY KEY (job_id, ronda)
+      );
+
+      CREATE TABLE channel_responses (
+        id TEXT PRIMARY KEY,
+        job_id TEXT NOT NULL REFERENCES outbox_events(id),
+        canal TEXT NOT NULL,
+        destinatario TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        estado TEXT NOT NULL DEFAULT 'pendiente',
+        creado_en TEXT NOT NULL,
+        entregado_en TEXT
+      );
+      CREATE INDEX idx_respuestas_pendientes ON channel_responses(estado, canal);
+    `
+  },
+  {
+    // RNF-04 (ERS proximo nivel): auditoria de herramientas con cadena de
+    // hashes SHA256. ADITIVA. Solo se guardan HASHES de argumentos y
+    // respuestas (nunca el contenido: privacidad y secretos). La cadena
+    // hace evidente la manipulacion de filas pasadas; NO es firma
+    // criptografica ni inmutabilidad (quien escribe la DB puede rehacer la
+    // cadena entera): brecha declarada frente al RNF.
+    version: 7,
+    nombre: '007_auditoria_herramientas',
+    sql: `
+      CREATE TABLE audit_herramientas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        herramienta TEXT NOT NULL,
+        args_sha256 TEXT NOT NULL,
+        respuesta_sha256 TEXT,
+        prev_hash TEXT NOT NULL,
+        hash TEXT NOT NULL,
+        creado_en TEXT NOT NULL
+      );
+      CREATE INDEX idx_audit_tenant ON audit_herramientas(tenant_id, id);
+    `
   }
 ];
 
