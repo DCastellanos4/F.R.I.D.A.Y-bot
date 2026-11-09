@@ -34,3 +34,19 @@ export function instruccionesParaHerramientas(herramientas) {
   const nombres = herramientas.map(h => h.function.name);
   return INSTRUCCIONES_DOMINIO.filter(linea => nombres.some(n => new RegExp('(^|[^a-zA-Z0-9_])' + n + '([^a-zA-Z0-9_]|$)').test(linea))).join('\n');
 }
+
+// Evidencia factual minima SIEMPRE presente, no depende de detectar la
+// pregunta ni de que el modelo decida recuperar un inventario mayor.
+export const CAPACIDADES_MINIMAS = `CAPACIDADES VERIFICADAS (lista de funciones, no prueba de conexion):
+Clima; recordatorios y mensajes WhatsApp programados; memoria/notas/contactos; noticias y resumen de enlaces; busqueda de productos/ofertas sin pago; consulta del servidor y consola con OTP; transporte Madrid; estudio/carrera; registro de gastos/habitos/diario. Son funciones implementadas, algunas requieren configuracion. No hay buscador web general ni motor autonomo de procesamiento JSON/CSV/XML. No describas modulos o accesos adicionales por inferencia. Para mas detalle recupera contexto capacidades; para altas/conexiones recupera contexto configuracion. Ninguna lista prueba que una cuenta este conectada ni autoriza acciones.`;
+
+export function corregirInventarioInventado(texto) {
+  // Guardia estrecha para el fallo REAL observado. El resumen factual
+  // siempre presente es la defensa general; esto no pretende validar toda
+  // respuesta ni bloquear explicaciones tecnicas sobre otros sistemas.
+  const t = String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const autoDescripcion = /(?:dentro llevo|dispongo de|cuento con|tengo un|mis (?:modulos|capacidades))/.test(t);
+  const moduloInventado = /modulo de busqueda web|procesador de datos estructurados/.test(t);
+  if (!autoDescripcion || !moduloInventado) return texto;
+  return 'Puedo consultar el clima, gestionar recordatorios y mensajes WhatsApp programados, guardar y buscar memoria/notas/contactos, consultar noticias y resumir enlaces, buscar productos sin comprar, consultar el servidor y transporte de Madrid, y ayudarte con estudio, carrera y registros personales. Algunas funciones requieren configuracion; eso no significa que esten conectadas. No tengo un buscador web general ni un motor autonomo de procesamiento JSON, CSV o XML.';
+}

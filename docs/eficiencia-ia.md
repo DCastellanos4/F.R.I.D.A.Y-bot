@@ -27,3 +27,9 @@ Comparación aislada contra `1a43c01` con el mismo mensaje, sin historial ni dat
 Las pruebas cubren concurrencia, cabeceras reales del SDK simuladas, reserva de salida, fallo ambiguo, rechazo previo al envío, carga progresiva en ReAct y conservación de historial/resultados. Flujos completos sinteticos, incluyendo una herramienta ejecutada exactamente una vez: clima reduce 76,5 % de bytes con las mismas 2 llamadas; fallo del clasificador y herramienta oculta reduce 71,7 % de bytes aun necesitando 4 llamadas frente a 3. Estas pruebas demuestran conservacion de los datos guionizados, no calidad semantica del modelo real.
 
 La suite existente mantiene los controles de destinatarios, OTP, RBAC, aislamiento y resultados parciales del failover.
+
+## Correccion tras muestra real
+
+Una muestra real selecciono clima correctamente, pero la parafrasis "hazme un recorrido por lo que llevas dentro" invento un buscador web general y un procesador autonomo JSON/CSV/XML sin recuperar el inventario. La instruccion de descubrir herramientas NO basto. Se añade siempre un resumen factual breve de funciones implementadas, con limite explicito y sin esquemas, cuentas ni estado de conexion. El inventario detallado y la configuracion siguen bajo demanda. Este coste fijo pequeno es deliberado: el ahorro no justifica perder fundamento factual.
+
+Una guardia estrecha sustituye el patron de autodescripcion con esos modulos inventados por el resumen factual. No es una certificacion general de respuestas: la defensa general es la evidencia minima siempre disponible, y deben observarse nuevas respuestas reales. Los tenants conservan su propio prompt sin inventario del propietario. Las pruebas reproducen el texto erroneo observado incluso si el LLM ignora la evidencia y no llama a descubrimiento.

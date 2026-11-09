@@ -218,3 +218,32 @@ test('preguntas de funciones/configuracion de tenant no reciben inventario owner
     assert.ok(n > 0, 'la prueba no es vacua');
   }
 });
+
+test('regresion real: parafrasis sin discovery conserva evidencia minima y bloquea modulos inventados', async () => {
+  const malo = 'Dentro llevo un conjunto modular de capacidades que se activan bajo demanda:\n- Modulo de busqueda web: permite consultar fuentes publicas.\n- Procesador de datos estructurados: interpreta JSON, CSV, XML.';
+  let principal = false;
+  const r = await consultarJarvisAislado('hazme un recorrido por lo que llevas dentro', [], { retornarTraza: true, chatCompletion: async p => {
+    if (p.messages[0].content.includes('Clasifica la intencion')) return { message: { content: '{"intencion":"conversacion","confianza":0.99}' } };
+    principal = true;
+    assert.match(p.messages[0].content, /CAPACIDADES VERIFICADAS/);
+    assert.match(p.messages[0].content, /No hay buscador web general/);
+    return { message: { content: malo } };
+  } });
+  assert.equal(principal, true);
+  assert.equal(r.traza.guardiaInventario, 'modulo_no_implementado');
+  assert.doesNotMatch(r.respuesta, /Dentro llevo|Modulo de busqueda web|Procesador de datos estructurados/);
+  assert.match(r.respuesta, /No tengo un buscador web general/);
+});
+
+test('evidencia minima no reinyecta esquemas ni configuracion y no altera explicacion tecnica ajena', async () => {
+  const { corregirInventarioInventado } = await import('../../src/core/selectiveContext.js');
+  const texto = 'Puedes implementar un procesador de datos estructurados para tu aplicacion con JSON y CSV.';
+  assert.equal(corregirInventarioInventado(texto), texto);
+  let n = 0;
+  await consultarJarvisAislado('hola, que tal', [], { chatCompletion: async p => {
+    n++; assert.match(p.messages[0].content, /CAPACIDADES VERIFICADAS/);
+    assert.doesNotMatch(p.messages[0].content, /CONFIGURACION PENDIENTE|Home Assistant|MobilityLabs/);
+    assert.equal(p.tools, undefined); return { message: { content: 'Hola David.' } };
+  } });
+  assert.equal(n, 1);
+});
