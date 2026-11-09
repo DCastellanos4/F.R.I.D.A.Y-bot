@@ -174,7 +174,7 @@ test('parafrasis de funciones/altas recibe contexto pertinente sin inventario pe
       else assert.match(sistema, /Home Assistant|MobilityLabs/);
       return { message: { content: 'Contexto pertinente comprobado.' } };
     } });
-    assert.equal(visto, true); assert.match(r, /comprobado/);
+    assert.equal(visto, true); assert.match(r, esperado === 'CAPACIDADES REALES' ? /Funciones implementadas/ : /comprobado/);
   }
 });
 
@@ -198,7 +198,7 @@ test('parafrasis fuera de heuristica recupera inventario mediante contexto nativ
       else assert.match(datos.content, /MobilityLabs/);
       return { message: { content: 'Inventario consultado sin accion externa.' } };
     } });
-    assert.equal(n, 2); assert.match(r, /Inventario consultado/);
+    assert.equal(n, 2); assert.match(r, contexto === 'capacidades' ? /Funciones implementadas/ : /Inventario consultado/);
   }
 });
 
@@ -230,9 +230,9 @@ test('regresion real: parafrasis sin discovery conserva evidencia minima y bloqu
     return { message: { content: malo } };
   } });
   assert.equal(principal, true);
-  assert.equal(r.traza.guardiaInventario, 'modulo_no_implementado');
+  assert.equal(r.traza.guardiaInventario, 'resumen_factual_determinista');
   assert.doesNotMatch(r.respuesta, /Dentro llevo|Modulo de busqueda web|Procesador de datos estructurados/);
-  assert.match(r.respuesta, /No tengo un buscador web general/);
+  assert.match(r.respuesta, /No tengo buscador web general/);
 });
 
 test('evidencia minima no reinyecta esquemas ni configuracion y no altera explicacion tecnica ajena', async () => {
@@ -259,4 +259,21 @@ test('guardia inventario no borra negaciones ni explicaciones ajenas o referenci
     'Confio en tu modulo de busqueda web, no hablo de mis capacidades.',
     'Puedo resumir una pagina web concreta y consultar noticias con fuentes.'
   ]) assert.equal(corregirInventarioInventado(t), t);
+});
+
+
+test('autodescripcion pura no entrega elaboraciones del modelo sobre acceso ni proactividad', async () => {
+  const r = await consultarJarvisAislado('hazme un recorrido por lo que llevas dentro', [], {
+    retornarTraza: true, chatCompletion: async p => ({ message: { content: p.messages[0].content.includes('Clasifica la intencion') ? '{"intencion":"conversacion","confianza":0.99}' : 'Accedo a datos abiertos de EMT. No hay servicios externos con credenciales. Cada modulo solo actua bajo peticion explicita.' } })
+  });
+  assert.match(r.respuesta, /EMT requiere acceso de MobilityLabs/);
+  assert.match(r.respuesta, /pueden ejecutarse segun su programacion/);
+  assert.match(r.respuesta, /no demuestra que su integracion este configurada/);
+  assert.doesNotMatch(r.respuesta, /Accedo a datos abiertos de EMT|No hay servicios externos con credenciales|Cada modulo solo actua/);
+});
+
+test('inventario determinista no sustituye tareas mixtas ni preguntas de configuracion ni explicacion ajena', async () => {
+  const { esConsultaPuraCapacidades } = await import('../../src/core/selectiveContext.js');
+  assert.equal(esConsultaPuraCapacidades('cuales son tus funciones'), true);
+  for (const t of ['que puedes hacer y apunta un gasto de 20 euros', 'consulta el clima y dime tus funciones', 'que servicios siguen sin conectar', 'describe los modulos de mi aplicacion', 'confio en tus funciones']) assert.equal(esConsultaPuraCapacidades(t), false);
 });

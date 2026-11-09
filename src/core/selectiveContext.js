@@ -50,3 +50,15 @@ export function corregirInventarioInventado(texto) {
   if (!autoDescripcion || !moduloInventado) return texto;
   return 'Puedo consultar el clima, gestionar recordatorios y mensajes WhatsApp programados, guardar y buscar memoria/notas/contactos, consultar noticias y resumir enlaces, buscar productos sin comprar, consultar el servidor y transporte de Madrid, y ayudarte con estudio, carrera y registros personales. Algunas funciones requieren configuracion; eso no significa que esten conectadas. No tengo un buscador web general ni un motor autonomo de procesamiento JSON, CSV o XML.';
 }
+
+// Solo preguntas de inventario, no peticiones mixtas de accion + inventario.
+// El reconocimiento no pretende cubrir todas las parafrasis posibles.
+export function esConsultaPuraCapacidades(texto) {
+  const t = String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/[¿?!.]+/g, '').trim();
+  return /^(?:(?:dime|explicame) )?(?:cuales son tus (?:funciones|capacidades)|que (?:puedes|sabes) hacer|que funciones tienes|para que sirves|en que me puedes ayudar|hazme un recorrido por lo que llevas dentro)$/.test(t);
+}
+export const RESUMEN_CAPACIDADES_FACTUAL = `Funciones implementadas: clima; recordatorios y mensajes WhatsApp programados; memoria, notas y contactos; noticias y resumen de enlaces; busqueda de productos sin comprar; consulta del servidor y consola con controles de riesgo; transporte de Madrid; estudio y carrera; registros de gastos, habitos y diario.
+
+Que una funcion exista no demuestra que su integracion este configurada ni que tenga acceso efectivo ahora. Eso se comprueba con su herramienta. Renfe usa datos abiertos; la EMT requiere acceso de MobilityLabs. Algunas integraciones usan credenciales configuradas: no afirmo aqui cuales estan conectadas. La consola aplica confirmacion OTP cuando el comando lo requiere.
+
+Activar avisos o vigilancias requiere una peticion expresa. Una vez configurados, pueden ejecutarse segun su programacion sin una nueva peticion en cada ejecucion. No tengo buscador web general ni un motor autonomo de procesamiento JSON, CSV o XML. No he activado ni ejecutado acciones con esta descripcion.`;
