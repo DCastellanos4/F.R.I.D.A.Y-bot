@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EMOJI_REGEX } from './harness/validators.js';
+import { argumentosConcurrencia } from './harness/testConcurrency.js';
 // Aislamiento duro ANTES de lanzar ningun subproceso de tests: fija y
 // valida DAVIS_DATA_DIR/HISTORY_DIR fuera del repo (aborta si es enlace o
 // resuelve al data/ de produccion).
@@ -142,8 +143,11 @@ async function runTestSuite() {
   console.log(`- Sector 3 (mejoras agenticas + bateria dorada): ${sector3Files.length} suites`);
   console.log(`- Cognitive Enhancements (Tiers 1-5): ${cognitiveFiles.length} suites\n`);
 
+  const concurrenciaArgs = argumentosConcurrencia(process.env.DAVIS_TEST_CONCURRENCY);
+  console.log('Concurrencia de tests: ' + (concurrenciaArgs.length ? process.env.DAVIS_TEST_CONCURRENCY + ' (explicita)' : 'predeterminada de Node (sin override)'));
   const testArgs = [
     '--test',
+    ...concurrenciaArgs,
     ...allTestFiles
   ];
 
