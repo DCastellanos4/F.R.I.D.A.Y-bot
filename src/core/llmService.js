@@ -17,7 +17,10 @@ let defaultOpenAIConfig = null;
 /**
  * Resets cached client singletons. Useful for testing or hot-reloading configurations.
  */
+let defaultOllamaHost = null;
+
 export function resetClients() {
+  defaultOllamaHost = null;
   defaultOllamaInstance = null;
   defaultOpenAIInstance = null;
   defaultOpenAIConfig = null;
@@ -33,6 +36,7 @@ export function getOllamaClient(overrides = {}) {
   }
   if (!defaultOllamaInstance) {
     defaultOllamaInstance = new Ollama({ host });
+    defaultOllamaHost = host;
   }
   return defaultOllamaInstance;
 }
@@ -330,6 +334,22 @@ export async function chatCompletion(peticion) {
   return chatCompletionCrudo(peticion);
 }
 
+// Misma resolucion para transporte y proteccion PII. Los hints baseUrl/host
+// de la peticion NO se consumen en la rama Ollama. Si el singleton ya
+// existe, su host sigue siendo el capturado al crearlo aunque cambie config.
+export function resolverDestinoLlm(peticion = {}) {
+  const provider = (
+    peticion.provider || config.llm?.provider ||
+    (process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY || process.env.DEEPSEEK_API_KEY ? 'openai' : 'ollama')
+  ).toLowerCase();
+  return {
+    provider,
+    host: provider === 'ollama'
+      ? (defaultOllamaHost || config.llm?.ollamaHost || config.ollamaHost || 'http://127.0.0.1:11434')
+      : null
+  };
+}
+
 export async function chatCompletionCrudo({
   messages = [],
   tools,
@@ -339,11 +359,7 @@ export async function chatCompletionCrudo({
   apiKey: apiKeyOverride,
   baseUrl: baseUrlOverride
 }) {
-  const activeProvider = (
-    providerOverride ||
-    config.llm?.provider ||
-    (process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY || process.env.DEEPSEEK_API_KEY ? 'openai' : 'ollama')
-  ).toLowerCase();
+  const activeProvider = resolverDestinoLlm({ provider: providerOverride }).provider;
 
   const isOllama = activeProvider === 'ollama';
 

@@ -1,59 +1,60 @@
-# ERS - Plan de infraestructura, rollback y validacion escalonada
+# ERS - Preparacion de infraestructura y rollback
 
-Documento de PREPARACION. Nada de lo aqui descrito esta instalado ni
-activado. La infraestructura se coordina por el canal y cada paso exige
-luz verde explicita. Strict Policy: Zero Emojis.
+Propuesta pendiente de aprobacion. Este documento no autoriza cambios,
+instalaciones, descargas de modelos, inferencias reales ni activaciones.
+Las versiones de imagen, recursos disponibles y politica de persistencia
+requieren una comprobacion del entorno antes de proponer comandos finales.
 
-## Servicios y variables (todo inerte por defecto)
+## Wiring real del corte
 
-| Pieza | Servicio | Variable de activacion | Sin la variable |
-| --- | --- | --- | --- |
-| B1 pipeline asincrono | Redis (BullMQ) | `DAVIS_ASYNC_PIPELINE=1` + Redis accesible | camino sincrono historico |
-| RF-03 busqueda hibrida | Qdrant + TEI (bge-m3) | `QDRANT_URL` (+ TEI segun adaptador) | TF-IDF historico |
-| RF-02 SLM local | Ollama (modelo SLM) | `DAVIS_SLM_MODEL` | clasificacion cloud historica |
-| RNF-04 PII pre-LLM | ninguno (en proceso) | `DAVIS_PII_PRELLM=1` (+`DAVIS_PII_PERMITIR` csv acotado) | sin anonimizacion |
-| Modos auxiliares (traductor/entrevista) | ninguno (repara inyeccion) | `DAVIS_AUX_CHAT_COMPLETION=1` | comportamiento previo intacto |
-| ticketVision local | Ollama qwen2.5vl:7b loopback | `DAVIS_TICKET_VISION_MODEL` (+provider/baseUrl) | inactivo |
+| Pieza | Activacion | Dependencia efectiva |
+| --- | --- | --- |
+| Pipeline asincrono | DAVIS_ASYNC_PIPELINE=1 | SQLite: DAVIS_ERS_PIPELINE_DB, DAVIS_SQLITE_PATH o DATA_DIR/ers_pipeline.db |
+| Busqueda hibrida | QDRANT_URL | Qdrant + embeddings Ollama, FTS5 SQLite y reranker opcional |
+| Embeddings | con busqueda hibrida | DAVIS_EMBEDDING_MODEL=bge-m3, DAVIS_EMBEDDING_DIMS=1024; host OLLAMA_HOST |
+| Reranker | DAVIS_RERANKER_URL | HTTP /rerank compatible TEI, modelo objetivo BAAI/bge-reranker-base |
+| SLM | DAVIS_SLM_MODEL | Ollama: DAVIS_SLM_HOST, defecto loopback:11434 |
+| PII central | DAVIS_PII_PRELLM=1 | En proceso; DAVIS_PII_PERMITIR lista acotada opcional |
+| Traductor/entrevista | DAVIS_AUX_CHAT_COMPLETION=1 | Reparacion opt-in del proveedor central |
 
-## Secuencia de activacion escalonada propuesta
+El adaptador BullMQ existe pero NO es la cola elegida por la bandera del
+pipeline en este corte. Su variable DAVIS_REDIS_URL no activa ese wiring.
+TEI sirve el reranker; los embeddings de este wiring se generan por Ollama.
+Ninguna tabla implica que esos servicios o modelos esten disponibles hoy.
 
-1. `DAVIS_PII_PRELLM=1` (sin infra externa): validar una conversacion de
-   prueba con telefono/email/DNI reales de laboratorio; verificar en logs
-   del proveedor que sale el token, nunca el valor; verificar que la
-   respuesta restaura; verificar que ticketVision local sigue leyendo
-   tickets (destino loopback resuelto intacto) y que un multipart hacia
-   nube se rechaza con el error declarado.
-2. `DAVIS_AUX_CHAT_COMPLETION=1`: activar traductor y entrevista con el
-   proveedor central; validar una traduccion y una entrevista de prueba;
-   sin este env el comportamiento es el historico.
-3. Redis + `DAVIS_ASYNC_PIPELINE=1`: validar ACK inmediato, entrega por
-   canal, marca durable y auditoria del worker; matar el worker a mitad
-   y verificar recuperacion sin duplicar efectos dentro de la ventana de
-   idempotencia.
-4. Qdrant + TEI + `QDRANT_URL`: validar reindexacion por firma,
-   resultados hibridos y caida a TF-IDF con Qdrant caido.
-5. `DAVIS_SLM_MODEL`: validar clasificacion y conversacion nivel 1 con
-   las guardias (confirmaciones desnudas y pendientes llegan al agente;
-   respuestas que fingen accion caen al agente).
+## Validacion escalonada propuesta, pendiente de permiso
 
-## Rollback por paso
+1. Antes de activar PII: revisar configuracion efectiva de LLM_PROVIDER y
+   OLLAMA_HOST al arranque y el destino capturado del cliente. Ollama ignora
+   baseUrl/host de cada peticion. No fijar DAVIS_TICKET_VISION_BASE_URL como
+   supuesto remedio: no cambia ese transporte. ticketVision qwen2.5vl debe
+   conservar proveedor efectivo Ollama y host real loopback. Si no, detener
+   la activacion y resolver el destino, sin cambiarlo por iniciativa propia.
+2. Ensayo PII con datos sinteticos y proveedor instrumentado: texto remoto
+   anonimizado, multipart remoto bloqueado, restauracion local; mapa ausente
+   del payload. Inferencia real de tickets solo tras permiso separado.
+3. Auxiliar opt-in: comprobar primero default intacto; traduccion y
+   entrevista de laboratorio sin ampliar audiencia ni herramientas.
+4. Pipeline SQLite en copia aislada: ACK, entrega, auditoria, reinicio y
+   reconciliacion de estados inciertos. No prometer exactly-once externo.
+5. Busqueda hibrida: medir CPU/RAM/disco disponibles antes de proponer
+   Qdrant, descarga bge-m3 y TEI. Tras permiso, validar dimensiones,
+   exclusion de documentos sensibles, reranking y comportamiento en fallo.
+6. SLM: medir recursos junto a vision/embeddings; revisar antes la deuda de
+   guardias del bypass, clasificacion y extraccion de argumentos RF-02.
 
-- Cada variable se retira de forma independiente: sin la variable, el
-  comportamiento historico queda restaurado al instante (no hay estado
-  migrado que deshacer en los pasos 1, 2 y 5).
-- Paso 3: retirar `DAVIS_ASYNC_PIPELINE=1`; los trabajos pendientes en
-  Redis NO se pierden: se drenan al reactivar o se procesan a mano;
-  el camino sincrono sigue operativo mientras tanto.
-- Paso 4: retirar `QDRANT_URL`; la busqueda vuelve a TF-IDF sin tocar el
-  indice vectorial (se puede borrar la coleccion si se abandona).
-- Revert de codigo: cada corte es un commit sobre `ers/fase1-outbox`;
-  revertir el commit del paso y reiniciar el servicio. La rama nunca se
-  ha empujado aun; el push es decision separada posterior al dictamen.
+## Rollback propuesto
 
-## Validacion previa obligatoria en el entorno real
-
-- Antes de activar `DAVIS_PII_PRELLM=1` verificar el destino real de
-  Ollama (`OLLAMA_HOST`, config) para confirmar que ticketVision resuelve
-  a loopback; si el VPS apuntara a un Ollama remoto, la vision de
-  tickets pasaria a tratarse como nube (multipart rechazado) y habria
-  que fijar `DAVIS_TICKET_VISION_BASE_URL=http://127.0.0.1:11434`.
+- Cambiar variables requiere reinicio controlado: no es instantaneo porque
+  el contenedor y algunos clientes capturan configuracion al construirse.
+- Desactivar el pipeline no vacia su outbox SQLite. Inventariar pendientes,
+  entregados e inciertos, detener productores/workers de forma controlada,
+  y reconciliar antes de pasar a sincrono. No duplicar efectos a ciegas.
+- Quitar QDRANT_URL y reiniciar devuelve el wiring historico TF-IDF;
+  conservar indice y base de datos, sin borrar colecciones por defecto.
+- Quitar flags PII, auxiliar o SLM y reiniciar restaura los caminos sin esos
+  flags. Retirar PII elimina una proteccion, por lo que necesita decision
+  explicita, no debe ser un fallback automatico ante errores.
+- Guardar revision, configuracion anterior y copia consistente de SQLite
+  antes de un cambio aprobado. Un revert de codigo no deshace efectos
+  externos ni es por si solo un rollback seguro de datos.

@@ -54,24 +54,24 @@ del documento, no del codigo.
   anonimiza contenido y arguments hacia la nube, restaura en local, mapa
   por peticion nunca enviado, estructura e ids intactos, fail-closed,
   streaming bloqueado de momento. Multipart hacia la nube: RECHAZADO
-  (fail-closed); destino local solo se respeta con destino RESUELTO
-  loopback (peticion, OLLAMA_HOST, config o defecto 127.0.0.1:11434):
-  un OLLAMA_HOST remoto se trata como nube y se anonimiza, nunca PII en
-  claro por config implicita. Local probado = destino loopback explicito
-  en la peticion, o provider ollama/local cuyo destino resuelto
-  (OLLAMA_HOST/config/defecto) es loopback; sin etiqueta ni destino
-  explicito se trata como nube (fail-closed en la duda). ticketVision
-  local (Ollama qwen2.5vl en loopback) conserva transporte y proveedor.
-- Modos auxiliares (traductor/entrevista): la reparacion de su inyeccion
-  es OPT-IN con `DAVIS_AUX_CHAT_COMPLETION=1`; sin ese env reciben
-  undefined exactamente como antes de este corte (nada nuevo se activa
-  al desplegar). La condensacion del historial y el agente usan el
-  despachador central como antes (ya estaban activos). Limites: sin ese env el
-  camino historico NO anonimiza; la activacion en produccion es decision
-  del canal; el bypass conversacional aplica las mismas guardias de
-  salida (zero-emoji, caida al agente si finge accion ejecutada o
-  promesa futura) como heuristica de defensa en profundidad, NO como
-  certificacion de seguridad.
+  (fail-closed). La excepcion local exige provider efectivo Ollama y
+  host real loopback, resueltos con la misma funcion que el crudo:
+  provider explicito o config; host del singleton si ya existe, si no
+  config.llm.ollamaHost/config.ollamaHost/defecto. OLLAMA_HOST se captura
+  en config al importar. Los hints baseUrl/host de la peticion NO cambian
+  el transporte Ollama ni prueban localidad. Ningun otro provider obtiene
+  la excepcion local. ticketVision qwen2.5vl se preserva si el proveedor
+  efectivo es Ollama y su host real es loopback.
+  Limite: sin DAVIS_PII_PRELLM=1 el camino historico NO anonimiza;
+  activar esa variable es una decision separada por el canal.
+- Modos auxiliares (traductor/entrevista): reparar su inyeccion es
+  OPT-IN con DAVIS_AUX_CHAT_COMPLETION=1; sin esa variable reciben
+  undefined exactamente como antes del corte. Condensacion y agente
+  siguen usando el despachador central (ya estaban activos).
+- El bypass conversacional elimina emojis y cae al agente ante algunas
+  afirmaciones de ejecucion o promesas futuras. Son heuristicas, no
+  guardias equivalentes a todo el pipeline historico ni certificacion
+  de seguridad. No se debe activar sin revisar esa deuda.
 - La cadena SHA256 es evidencia de integridad, NO firma criptografica ni
   inmutabilidad. Residual EXPLICITO: la anonimizacion PII es determinista,
   asi que el hash de un valor PII permite VERIFICAR una sospecha (ataque

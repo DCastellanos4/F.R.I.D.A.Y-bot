@@ -20,17 +20,16 @@
  *  - Reintentos/failover del proveedor quedan DENTRO del adaptador
  *    envuelto: una sola anonimizacion por peticion, contexto preservado.
  *
- * LIMITES DECLARADOS: solo contenido textual de mensajes (string) y
- * arguments de tool_calls (string JSON). Multipart hacia la nube:
- * fail-closed (rechazo). Destino local PROBADO (Ollama cuyo destino
- * resuelto - peticion, OLLAMA_HOST, config o defecto - es loopback,
- * p. ej. ticketVision qwen2.5vl local): pasa intacto. Un OLLAMA_HOST
- * remoto se trata como nube: nunca PII en claro por config implicita.
+ * LIMITES DECLARADOS: contenido textual y arguments string JSON.
+ * Multipart fuera de Ollama loopback: rechazo fail-closed. El destino
+ * se resuelve con la MISMA funcion del crudo: provider por peticion o
+ * config; Ollama usa su singleton/config (OLLAMA_HOST al importar),
+ * ignorando hints baseUrl/host de peticion. No se cambia el transporte.
  *
  * Strict Policy: Zero Emojis.
  */
 import { crearPiiAnonymizer } from '../../../security/piiAnonymizerService.js';
-import { config } from '../../../config/config.js';
+import { resolverDestinoLlm } from '../../../core/llmService.js';
 import { afirmarLLMProvider } from '../../../ports/outbound/LLMProviderPort.js';
 
 /**
@@ -40,12 +39,8 @@ import { afirmarLLMProvider } from '../../../ports/outbound/LLMProviderPort.js';
  * @param {string[]} [deps.permitir]    Identificadores autorizados que NO se
  *        enmascaran (lista blanca acotada; NO es un permiso general).
  */
-// Local probado: provider ollama/local Y destino loopback RESUELTO, no
-// etiquetado. Sin baseUrl explicito el destino real lo decide el cliente
-// Ollama: OLLAMA_HOST del entorno, luego config (ollamaHost), luego el
-// defecto 127.0.0.1:11434. Un OLLAMA_HOST remoto convierte la llamada en
-// NUBE aunque la peticion no diga baseUrl: se anonimiza como cualquier
-// otra salida. Cualquier otra combinacion exige anonimizacion.
+// Espejo exacto del transporte real, incluida la configuracion capturada
+// por el singleton. Los hints de peticion no cambian el destino Ollama.
 function esHostLoopback(base) {
   try {
     const host = new URL(String(base)).hostname;
@@ -55,41 +50,9 @@ function esHostLoopback(base) {
   }
 }
 
-function resolverDestinoOllama(peticion) {
-  return peticion?.baseUrl
-    || peticion?.host
-    || process.env.OLLAMA_HOST
-    || config.llm?.ollamaHost
-    || config.ollamaHost
-    || 'http://127.0.0.1:11434';
-}
-
-// Regla de confianza local (revisor): provider ollama/local O destino
-// resuelto loopback. Un provider explicitamente nube (groq, openai,
-// openrouter, deepseek) NUNCA es local aunque el baseUrl sea loopback;
-// un provider ollama/local con destino resuelto remoto TAMPOCO (esa
-// combinacion es nube real). En la practica: passthrough intacto solo si
-// el destino resuelto es loopback Y el provider no es explicitamente de
-// nube. ticketVision local (qwen2.5vl con provider ollama o baseUrl
-// loopback) queda preservado.
-const PROVIDERS_NUBE = new Set(['groq', 'openai', 'openrouter', 'deepseek', 'anthropic', 'azure']);
-
 function esDestinoLocalProbado(peticion) {
-  const prov = String(peticion?.provider || '').toLowerCase();
-  if (PROVIDERS_NUBE.has(prov)) return false;
-  // Destino EXPLICITO en la peticion: loopback prueba local (ticketVision
-  // con baseUrl local, con o sin etiqueta de provider).
-  const explicito = peticion?.baseUrl || peticion?.host;
-  if (explicito) return esHostLoopback(explicito);
-  // Etiqueta ollama/local SIN destino explicito: el destino real lo
-  // resuelve el cliente (OLLAMA_HOST, config, defecto); solo loopback
-  // prueba local. Un OLLAMA_HOST remoto es nube.
-  if (prov === 'ollama' || prov === 'local') {
-    return esHostLoopback(resolverDestinoOllama(peticion));
-  }
-  // Sin etiqueta ni destino explicito: NUBE por defecto (fail-closed en
-  // la duda; el anonimizado es la opcion segura).
-  return false;
+  const destino = resolverDestinoLlm(peticion);
+  return destino.provider === 'ollama' && esHostLoopback(destino.host);
 }
 
 export function crearAnonimizadorPreLlm({ inner, anonimizador = null, permitir = [] } = {}) {

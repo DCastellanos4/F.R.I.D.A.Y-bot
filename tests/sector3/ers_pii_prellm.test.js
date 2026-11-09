@@ -4,10 +4,27 @@
 // restauracion nunca crea datos nuevos. Guardias del bypass conversacional.
 //
 // Strict Policy: Zero Emojis.
-import { test } from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
+import { config } from '../../src/config/config.js';
+import { getOllamaClient, resetClients, resolverDestinoLlm, chatCompletionCrudo } from '../../src/core/llmService.js';
 import assert from 'node:assert/strict';
 import { crearAnonimizadorPreLlm } from '../../src/adapters/outbound/llm/piiPreLlmAdapter.js';
 import { crearMessageProcessor } from '../../src/core/messageProcessor.js';
+
+// Config real del transporte capturada al importar; no basta cambiar env
+// despues del import. Cada caso aisla config y singleton, sin red/modelos.
+let configPrevia;
+beforeEach(() => {
+  configPrevia = { provider: config.llm.provider, host: config.llm.ollamaHost };
+  config.llm.provider = 'groq';
+  config.llm.ollamaHost = 'http://127.0.0.1:11434';
+  resetClients();
+});
+afterEach(() => {
+  config.llm.provider = configPrevia.provider;
+  config.llm.ollamaHost = configPrevia.host;
+  resetClients();
+});
 
 function innerGrabador(respuesta) {
   const recibidas = [];
@@ -174,17 +191,6 @@ test('pre-LLM local probado: baseUrl loopback explicito tambien pasa intacto', a
   assert.match(inner.recibidas[0].messages[0].content, /\+34611222333/, 'destino local: sin anonimizar');
 });
 
-test('pre-LLM: etiqueta ollama con baseUrl REMOTA no es local probado; multipart se rechaza y texto se anonimiza', async () => {
-  const inner = innerGrabador({ message: { role: 'assistant', content: 'ok' } });
-  const llm = crearAnonimizadorPreLlm({ inner });
-  await assert.rejects(
-    llm.chatCompletion({ provider: 'ollama', baseUrl: 'https://ollama.remoto.example', messages: [{ role: 'user', content: [{ type: 'text', text: 'x' }] }] }),
-    /multipart/i
-  );
-  assert.equal(inner.recibidas.length, 0);
-  await llm.chatCompletion({ provider: 'ollama', baseUrl: 'https://ollama.remoto.example', messages: [{ role: 'user', content: 'mi telefono es +34611222333' }] });
-  assert.ok(!inner.recibidas[0].messages[0].content.includes('+34611222333'), 'baseUrl remota no probada local: se anonimiza');
-});
 
 test('proteccion central: el despachador de llmService enruta por la envolvente registrada y limpiar la retira', async () => {
   const { chatCompletion, registrarEnvolventeChatCompletion, limpiarEnvolventeChatCompletion } = await import('../../src/core/llmService.js');
@@ -202,46 +208,67 @@ test('proteccion central: el despachador de llmService enruta por la envolvente 
   }
 });
 
-test('pre-LLM: OLLAMA_HOST remoto sin baseUrl explicito NO es local probado (nunca PII en claro por config implicita)', async () => {
-  const prev = process.env.OLLAMA_HOST;
-  process.env.OLLAMA_HOST = 'https://ollama.remoto.example:11434';
-  try {
-    const inner = innerGrabador({ message: { role: 'assistant', content: 'ok' } });
-    const llm = crearAnonimizadorPreLlm({ inner });
-    await llm.chatCompletion({ provider: 'ollama', messages: [{ role: 'user', content: 'mi telefono es +34611222333' }] });
-    assert.ok(!inner.recibidas[0].messages[0].content.includes('+34611222333'), 'OLLAMA_HOST remoto: anonimizado');
-    await assert.rejects(
-      llm.chatCompletion({ provider: 'ollama', messages: [{ role: 'user', content: [{ type: 'text', text: 'x' }] }] }),
-      /multipart/i
-    );
-  } finally {
-    if (prev === undefined) delete process.env.OLLAMA_HOST; else process.env.OLLAMA_HOST = prev;
-  }
-});
 
-test('pre-LLM: OLLAMA_HOST loopback sin baseUrl explicito sigue siendo local probado', async () => {
-  const prev = process.env.OLLAMA_HOST;
-  process.env.OLLAMA_HOST = 'http://localhost:11434';
-  try {
-    const inner = innerGrabador({ message: { role: 'assistant', content: 'ok' } });
-    const llm = crearAnonimizadorPreLlm({ inner });
-    await llm.chatCompletion({ provider: 'ollama', messages: [{ role: 'user', content: 'mi telefono es +34611222333' }] });
-    assert.match(inner.recibidas[0].messages[0].content, /\+34611222333/);
-  } finally {
-    if (prev === undefined) delete process.env.OLLAMA_HOST; else process.env.OLLAMA_HOST = prev;
-  }
-});
 
-test('pre-LLM local probado: sin provider pero baseUrl loopback pasa intacto (ticketVision con baseUrl local)', async () => {
-  const inner = innerGrabador({ message: { role: 'assistant', content: 'ok' } });
-  const llm = crearAnonimizadorPreLlm({ inner });
-  await llm.chatCompletion({ baseUrl: 'http://127.0.0.1:11434', messages: [{ role: 'user', content: 'mi telefono es +34611222333' }] });
-  assert.match(inner.recibidas[0].messages[0].content, /\+34611222333/, 'destino loopback resuelto: local aunque falte la etiqueta');
-});
 
 test('pre-LLM: provider explicitamente nube con baseUrl loopback NUNCA es local', async () => {
   const inner = innerGrabador({ message: { role: 'assistant', content: 'ok' } });
   const llm = crearAnonimizadorPreLlm({ inner });
   await llm.chatCompletion({ provider: 'groq', baseUrl: 'http://127.0.0.1:11434', messages: [{ role: 'user', content: 'mi telefono es +34611222333' }] });
   assert.ok(!inner.recibidas[0].messages[0].content.includes('+34611222333'), 'provider nube: anonimiza aunque el baseUrl sea loopback');
+});
+
+function proveedorOllamaInstrumentado(hostReal) {
+  config.llm.provider = 'ollama';
+  config.llm.ollamaHost = hostReal;
+  resetClients();
+  const cliente = getOllamaClient();
+  const recibidas = [];
+  cliente.chat = async (payload) => {
+    recibidas.push(payload);
+    return { message: { role: 'assistant', content: 'ok' } };
+  };
+  const llm = crearAnonimizadorPreLlm({ inner: { nombre: 'crudo-instrumentado', chatCompletion: chatCompletionCrudo } });
+  return { recibidas, llm };
+}
+
+for (const provider of ['ollama', undefined]) {
+  test(`destino real remoto con hint local y provider ${provider || 'por-config'}: texto anonimizado; multipart bloqueado sin llamada`, async () => {
+    const { recibidas, llm } = proveedorOllamaInstrumentado('https://ollama.remoto.example:11434');
+    const peticion = { provider, baseUrl: 'http://127.0.0.1:11434', host: 'http://localhost:11434' };
+    assert.equal(resolverDestinoLlm(peticion).host, 'https://ollama.remoto.example:11434');
+    await llm.chatCompletion({ ...peticion, messages: [{ role: 'user', content: 'mi telefono es +34611222333' }] });
+    assert.equal(recibidas.length, 1, 'el crudo y el cliente real fueron atravesados (chat stub, sin red)');
+    assert.ok(!JSON.stringify(recibidas[0]).includes('+34611222333'));
+    assert.match(JSON.stringify(recibidas[0]), /PII_/);
+    await assert.rejects(llm.chatCompletion({ ...peticion, messages: [{ role: 'user', content: [{ type: 'text', text: 'PII' }] }] }), /multipart/i);
+    assert.equal(recibidas.length, 1, 'el multipart no alcanzo al cliente');
+  });
+  test(`destino real loopback con hint remoto y provider ${provider || 'por-config'}: el crudo ignora hints; ticket local intacto`, async () => {
+    const { recibidas, llm } = proveedorOllamaInstrumentado('http://127.0.0.1:11434');
+    const peticion = { provider, baseUrl: 'https://remoto.example', host: 'https://remoto.example' };
+    assert.equal(resolverDestinoLlm(peticion).host, 'http://127.0.0.1:11434');
+    await llm.chatCompletion({ ...peticion, messages: [{ role: 'user', content: 'mi telefono es +34611222333' }] });
+    assert.match(JSON.stringify(recibidas[0]), /\+34611222333/);
+    await llm.chatCompletion({ ...peticion, model: 'qwen2.5vl:7b', messages: [{ role: 'user', content: [{ type: 'text', text: 'ticket' }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,AA==' } }] }] });
+    assert.equal(recibidas.length, 2);
+    assert.equal(recibidas[1].model, 'qwen2.5vl:7b');
+  });
+}
+
+test('provider por config cloud con hint loopback NO desvia ni permite PII en claro', async () => {
+  config.llm.provider = 'groq';
+  const inner = innerGrabador({ message: { content: 'ok' } });
+  const llm = crearAnonimizadorPreLlm({ inner });
+  await llm.chatCompletion({ baseUrl: 'http://127.0.0.1:11434', messages: [{ role: 'user', content: '+34611222333' }] });
+  assert.ok(!JSON.stringify(inner.recibidas[0]).includes('+34611222333'));
+  assert.equal(inner.recibidas[0].provider, undefined, 'no se cambia provider para hacer segura la prueba');
+});
+
+test('singleton Ollama conserva host capturado aunque config cambie: wrapper refleja destino real remoto', async () => {
+  const { recibidas, llm } = proveedorOllamaInstrumentado('https://ollama.remoto.example:11434');
+  config.llm.ollamaHost = 'http://127.0.0.1:11434';
+  await llm.chatCompletion({ provider: 'ollama', messages: [{ role: 'user', content: '+34611222333' }] });
+  assert.ok(!JSON.stringify(recibidas[0]).includes('+34611222333'));
+  assert.equal(resolverDestinoLlm({ provider: 'ollama' }).host, 'https://ollama.remoto.example:11434');
 });
