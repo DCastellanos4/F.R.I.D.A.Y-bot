@@ -21,7 +21,8 @@
   th, td { text-align:left; padding:.45rem .6rem; border-bottom:1px solid var(--line); vertical-align:top; }
   .sub { color:var(--muted); margin-top:0; }
   a { color:var(--accent); }
-  .mermaid { background:var(--soft); border-radius:8px; padding:1rem; overflow-x:auto; }
+  .mermaid { background:var(--soft); border-radius:8px; padding:1.25rem 1rem; overflow-x:auto; text-align:center; transition: all 0.2s ease; }
+  .mermaid svg { display:block; }
   .pan-hint { color:var(--muted); font-size:.82rem; margin:.35rem 0 0; }
   .back { display:inline-block; margin-bottom:1.5rem; font-size:.9rem; }
 </style>
@@ -31,64 +32,72 @@
 
 <a class="back" href="https://github.com/DCastellanos4/F.R.I.D.A.Y-bot">&larr; Back to the repository</a>
 
-<h1>D.A.V.I.S. Documentation</h1>
-<p class="sub">Digital Autonomous Voice &amp; Intelligence System - self-hosted personal AI assistant over WhatsApp.</p>
-
+<div style="display:flex; align-items:center; gap:1.25rem; margin-bottom:1rem;">
+  <img src="assets/davis_avatar.jpg" alt="D.A.V.I.S." width="80" height="80" style="border-radius:50%; box-shadow:0 3px 10px rgba(0,0,0,0.12); flex-shrink:0;">
+  <div>
+    <h1 style="margin:0 0 .25rem;">D.A.V.I.S. Documentation</h1>
+    <p class="sub" style="margin:0;">Digital Autonomous Voice &amp; Intelligence System - self-hosted personal AI assistant over WhatsApp.</p>
+  </div>
+</div>
 <h2>Why This Project Exists</h2>
 <p>The goal was to turn a single WhatsApp chat into the control surface for one person's entire digital operations: messaging, reminders, a personal knowledge base, media downloads, and the administration of a real Linux server. Building it end to end meant owning problems that tutorials skip: an unofficial protocol integration, LLM tool-calling reliability on small models, safe execution of privileged commands from a chat channel, long-running process supervision, and a test suite that can prove regressions instead of hoping.</p>
 <p>The persona layer (sober, dry-humored, zero-emoji Spanish) is deliberate: the assistant is a character with a consistent voice, defined in a single system prompt in <code>src/core/jarvisAgent.js</code>.</p>
 
 <h2>Technical Architecture</h2>
-<p class="pan-hint">Wide diagram shown at full size - scroll sideways inside the frame, or <a href="#" id="open-diagram">open it in a new tab</a> to zoom.</p>
+<p class="pan-hint">Architecture diagram rendered below. Use the controls to fit to page, view full 1:1 vector scale, or <a href="#" id="open-diagram">open raw vector SVG in new tab</a>.</p>
+<div style="margin:0.5rem 0 1rem; display:flex; gap:0.5rem;">
+  <button id="btn-fit" style="padding:0.35rem 0.75rem; font-size:0.85rem; border-radius:6px; border:1px solid var(--line); background:#fff; cursor:pointer;">Fit to Width</button>
+  <button id="btn-full" style="padding:0.35rem 0.75rem; font-size:0.85rem; border-radius:6px; border:1px solid var(--line); background:#fff; cursor:pointer;">1:1 Full Scale</button>
+</div>
 <pre class="mermaid">
 flowchart TD
-    subgraph Ingestion ["Ingestion &amp; Security Gateways"]
+    subgraph Ingestion ["Ingestion and Security Gateways"]
         WA["WhatsApp Multi-Device Socket (Baileys)"] --> Bot["whatsappBot.js"]
         GH["GitHub Webhook (workflow_run)"] -->|"POST /api/webhook/github"| API["api.js"]
         REST["REST API Clients"] --> API
-        Bot -->|"Auth &amp; LID Guard"| Guard{"Authorized User?"}
+        Bot -->|"Auth and LID Guard"| Guard{"Authorized User?"}
         Guard -->|"No"| Drop["Drop Packet Silently"]
         Guard -->|"Yes"| Router{"Audio PTT or Text?"}
     end
 
-    subgraph AudioEngine ["Voice &amp; Media Pipeline"]
+    subgraph AudioEngine ["Voice and Media Pipeline"]
         Router -->|"Audio PTT"| VoiceIn["voiceService.js (whisper.cpp local CLI)"]
         VoiceIn -->|"Transcribed Command"| Agent["jarvisAgent.js"]
         Agent -->|"Synthesize Voice Reply"| TTS["ttsService.js (Edge-TTS OGG Opus)"]
         TTS -->|"PTT Audio Buffer"| Bot
     end
 
-    subgraph Brain ["Reasoning &amp; Orchestration Engine"]
+    subgraph Brain ["Reasoning and Orchestration Engine"]
         Router -->|"Text Command"| Agent
         API --> Agent
-        Agent --> Prune["Dynamic Intent Router &amp; Tool Pruner"]
+        Agent --> Prune["Dynamic Intent Router and Tool Pruner"]
         Prune --> LLM["llmService.js (Ollama / Groq / OpenAI)"]
         LLM --> Decision{"Tool Call or Direct Text?"}
         Decision -->|"Direct Response"| Bot
         Decision -->|"Tool Invocations"| Executor["Tool Execution Loop"]
     end
 
-    subgraph Sector1 ["Sector 1: Advanced WhatsApp &amp; Media"]
+    subgraph Sector1 ["Sector 1: Advanced WhatsApp and Media"]
         Executor --> Downloader["mediaDownloaderService.js (yt-dlp 16MB Ladder)"]
-        Executor --> Interactive["interactiveService.js (Polls &amp; vCards)"]
+        Executor --> Interactive["interactiveService.js (Polls and vCards)"]
         Executor --> VIP["vipFilterService.js (Do-Not-Disturb Guard)"]
         Executor --> Summarizer["groupSummarizerService.js (Group Task Extractor)"]
-        Executor --> Notes["notesService.js (Capture &amp; Storage)"]
+        Executor --> Notes["notesService.js (Capture and Storage)"]
     end
 
-    subgraph Sector2 ["Sector 2: DevOps, SysAdmin &amp; Cloud"]
-        Executor --> Docker["dockerMonitorService.js (Auto-Healing &amp; Circuit Breaker)"]
+    subgraph Sector2 ["Sector 2: DevOps, SysAdmin and Cloud"]
+        Executor --> Docker["dockerMonitorService.js (Auto-Healing and Circuit Breaker)"]
         Executor --> Console["bashConsoleService.js (Remote Bash with 2FA OTP)"]
         Executor --> Disk["diskStorageService.js (85% Storage Auto-Purge)"]
         Executor --> SecLogs["fail2banMonitorService.js (SSH Ban Watcher)"]
         Executor --> NetMon["networkMonitorService.js (Bandwidth Spike Detector)"]
         Executor --> SSL["sslMonitorService.js (Proactive TLS Expiry Check)"]
-        Executor --> Tunnels["tunnelManagerService.js (Cloudflare &amp; Tailscale)"]
+        Executor --> Tunnels["tunnelManagerService.js (Cloudflare and Tailscale)"]
         Executor --> Backup["backupService.js (AES-256-GCM Encrypted Container)"]
         Executor --> Crypto["cryptoGeneratorService.js (CSPRNG Shannon Entropy)"]
     end
 
-    subgraph Proactive ["Background Daemons &amp; Alert Queue"]
+    subgraph Proactive ["Background Daemons and Alert Queue"]
         AlertQ["alertQueueService.js (Deduplicated Queue)"] -->|"Flush Every 5s"| Bot
         DockerDaemon["Docker Health Watchdog"] --> AlertQ
         DiskDaemon["Disk Storage Watchdog"] --> AlertQ
@@ -192,22 +201,48 @@ flowchart TD
 <p>Data (<code>data/</code>) stays at the project root and is resolved through <code>src/config/paths.js</code>, so modules can live in subfolders without depending on their own location.</p>
 
 </div>
-<script type="module">
-  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-  mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
-  mermaid.run().then(() => {
-    document.querySelectorAll('.mermaid').forEach((container) => {
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'neutral',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+
+  window.addEventListener('DOMContentLoaded', () => {
+    const btnFit = document.getElementById('btn-fit');
+    const btnFull = document.getElementById('btn-full');
+    const link = document.getElementById('open-diagram');
+    const container = document.querySelector('.mermaid');
+
+    function applyFit() {
+      const s = container.querySelector('svg');
+      if (!s) return;
+      s.style.maxWidth = '100%';
+      s.style.width = '100%';
+      s.style.height = 'auto';
+    }
+
+    function applyFull() {
       const s = container.querySelector('svg');
       if (!s) return;
       const vb = s.viewBox && s.viewBox.baseVal;
-      if (vb && vb.width) { s.style.maxWidth = 'none'; s.style.width = vb.width + 'px'; s.style.height = 'auto'; }
-    });
-    const link = document.getElementById('open-diagram');
-    const first = document.querySelector('.mermaid svg');
-    if (link && first) {
+      if (vb && vb.width && vb.height) {
+        s.style.maxWidth = 'none';
+        s.style.width = vb.width + 'px';
+        s.style.height = vb.height + 'px';
+      }
+    }
+
+    if (btnFit) btnFit.addEventListener('click', applyFit);
+    if (btnFull) btnFull.addEventListener('click', applyFull);
+
+    if (link) {
       link.addEventListener('click', (e) => {
         e.preventDefault();
-        const blob = new Blob([new XMLSerializer().serializeToString(first)], { type: 'image/svg+xml' });
+        const svg = document.querySelector('.mermaid svg');
+        if (!svg) return;
+        const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' });
         window.open(URL.createObjectURL(blob), '_blank');
       });
     }
