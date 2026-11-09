@@ -47,7 +47,7 @@ Dos procesos gestionados con PM2 (`ecosystem.config.cjs`):
    es "no esta configurado" o "no se puede verificar", nunca un invento.
 2. La aprobacion humana vive fuera del modelo. Las acciones destructivas o
    con efectos externos exigen una confirmacion real del propietario por su
-   chat (OTP, "confirmar borrado <id>", "aprobar skill <nombre>"); un
+   chat (OTP, "confirmar borrado \<id\>", "aprobar skill \<nombre\>"); un
    booleano decidido por el LLM no es aprobacion. Ver [Seguridad](seguridad.md).
 3. Fail-closed. Sin token de API la API no abre; sin clave de cifrado no se
    guardan credenciales; sin fuente de datos no se responde con estimaciones.
