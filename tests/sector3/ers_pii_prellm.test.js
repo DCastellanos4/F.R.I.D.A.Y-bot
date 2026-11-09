@@ -144,3 +144,60 @@ test('guardia: si el ultimo turno pedia confirmacion, no hay bypass', async () =
   assert.equal(respuesta, 'respuesta del agente', 'con confirmacion pendiente el agente decide');
   assert.ok(llamadasLlm.length >= 1);
 });
+
+test('pre-LLM multipart: contenido no textual hacia la nube se rechaza fail-closed y no sale nada', async () => {
+  const inner = innerGrabador({ message: { role: 'assistant', content: 'ok' } });
+  const llm = crearAnonimizadorPreLlm({ inner });
+  await assert.rejects(
+    llm.chatCompletion({
+      provider: 'groq',
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'lee esto' }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,AA' } }] }]
+    }),
+    /multipart/i
+  );
+  assert.equal(inner.recibidas.length, 0, 'ningun byte de la peticion multipart alcanzo al proveedor cloud');
+});
+
+test('pre-LLM local probado: provider ollama sin baseUrl pasa intacto (ticketVision local no se rompe)', async () => {
+  const inner = innerGrabador({ message: { role: 'assistant', content: '{"establecimiento":"X"}' } });
+  const llm = crearAnonimizadorPreLlm({ inner });
+  const multipart = [{ type: 'text', text: 'PROMPT' }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,AA' } }];
+  const r = await llm.chatCompletion({ provider: 'ollama', model: 'qwen2.5vl:7b', messages: [{ role: 'user', content: multipart }] });
+  assert.equal(r.message.content, '{"establecimiento":"X"}');
+  assert.deepEqual(inner.recibidas[0].messages[0].content, multipart, 'la peticion local viaja sin anonimizar ni reordenar');
+});
+
+test('pre-LLM local probado: baseUrl loopback explicito tambien pasa intacto', async () => {
+  const inner = innerGrabador({ message: { role: 'assistant', content: 'ok' } });
+  const llm = crearAnonimizadorPreLlm({ inner });
+  await llm.chatCompletion({ provider: 'ollama', baseUrl: 'http://127.0.0.1:11434', messages: [{ role: 'user', content: 'mi telefono es +34611222333' }] });
+  assert.match(inner.recibidas[0].messages[0].content, /\+34611222333/, 'destino local: sin anonimizar');
+});
+
+test('pre-LLM: etiqueta ollama con baseUrl REMOTA no es local probado; multipart se rechaza y texto se anonimiza', async () => {
+  const inner = innerGrabador({ message: { role: 'assistant', content: 'ok' } });
+  const llm = crearAnonimizadorPreLlm({ inner });
+  await assert.rejects(
+    llm.chatCompletion({ provider: 'ollama', baseUrl: 'https://ollama.remoto.example', messages: [{ role: 'user', content: [{ type: 'text', text: 'x' }] }] }),
+    /multipart/i
+  );
+  assert.equal(inner.recibidas.length, 0);
+  await llm.chatCompletion({ provider: 'ollama', baseUrl: 'https://ollama.remoto.example', messages: [{ role: 'user', content: 'mi telefono es +34611222333' }] });
+  assert.ok(!inner.recibidas[0].messages[0].content.includes('+34611222333'), 'baseUrl remota no probada local: se anonimiza');
+});
+
+test('proteccion central: el despachador de llmService enruta por la envolvente registrada y limpiar la retira', async () => {
+  const { chatCompletion, registrarEnvolventeChatCompletion, limpiarEnvolventeChatCompletion } = await import('../../src/core/llmService.js');
+  const prev = process.env.DAVIS_PII_PRELLM;
+  process.env.DAVIS_PII_PRELLM = '1';
+  const llamadas = [];
+  registrarEnvolventeChatCompletion(async (p) => { llamadas.push(p); return { message: { role: 'assistant', content: 'via envolvente' } }; });
+  try {
+    const r = await chatCompletion({ messages: [{ role: 'user', content: 'hola' }] });
+    assert.equal(r.message.content, 'via envolvente');
+    assert.equal(llamadas.length, 1, 'la llamada paso por la envolvente central, no por el crudo');
+  } finally {
+    limpiarEnvolventeChatCompletion();
+    if (prev === undefined) delete process.env.DAVIS_PII_PRELLM; else process.env.DAVIS_PII_PRELLM = prev;
+  }
+});

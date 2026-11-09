@@ -21,8 +21,9 @@
  *    envuelto: una sola anonimizacion por peticion, contexto preservado.
  *
  * LIMITES DECLARADOS: solo contenido textual de mensajes (string) y
- * arguments de tool_calls (string JSON); contenido binario o partes
- * no textuales no se anonimizan (no existe hoy en este sistema).
+ * arguments de tool_calls (string JSON). Multipart hacia la nube:
+ * fail-closed (rechazo). Destino local probado (Ollama loopback, p. ej.
+ * ticketVision qwen2.5vl local): pasa intacto, nada sale a la nube.
  *
  * Strict Policy: Zero Emojis.
  */
@@ -36,6 +37,22 @@ import { afirmarLLMProvider } from '../../../ports/outbound/LLMProviderPort.js';
  * @param {string[]} [deps.permitir]    Identificadores autorizados que NO se
  *        enmascaran (lista blanca acotada; NO es un permiso general).
  */
+// Local probado: provider ollama/local Y (sin baseUrl => cliente local
+// por defecto 127.0.0.1:11434, o baseUrl cuyo host es loopback). Cualquier
+// otra combinacion se considera nube y exige anonimizacion.
+function esDestinoLocalProbado(peticion) {
+  const prov = String(peticion?.provider || '').toLowerCase();
+  if (prov !== 'ollama' && prov !== 'local') return false;
+  const base = peticion?.baseUrl;
+  if (!base) return true;
+  try {
+    const host = new URL(String(base)).hostname;
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+  } catch {
+    return false;
+  }
+}
+
 export function crearAnonimizadorPreLlm({ inner, anonimizador = null, permitir = [] } = {}) {
   afirmarLLMProvider(inner);
   const pii = anonimizador || crearPiiAnonymizer();
@@ -110,6 +127,22 @@ export function crearAnonimizadorPreLlm({ inner, anonimizador = null, permitir =
     async chatCompletion(peticion) {
       if (peticion && peticion.options && peticion.options.stream === true) {
         throw new Error('PII pre-LLM: streaming no soportado en este corte; llamada bloqueada (fail-closed).');
+      }
+      // Destino local PROBADO (Ollama en esta maquina): nada sale a la
+      // nube, no hay nada que anonimizar. No basta la etiqueta del
+      // provider: un baseUrl remoto lo invalida y se trata como nube.
+      if (esDestinoLocalProbado(peticion)) {
+        return inner.chatCompletion(peticion);
+      }
+      // Multipart (imagen/audio/partes no textuales): no se anonimiza en
+      // este corte. Hacia la nube se RECHAZA (fail-closed) antes de que
+      // salga nada; contenido binario nunca alcanza al proveedor cloud.
+      if (Array.isArray(peticion?.messages)) {
+        for (const m of peticion.messages) {
+          if (m && m.content !== undefined && m.content !== null && typeof m.content !== 'string') {
+            throw new Error('PII pre-LLM: contenido multipart no anonimizable hacia proveedor cloud; llamada bloqueada (fail-closed).');
+          }
+        }
       }
       // Mapa por peticion: nunca compartido, nunca enviado.
       const mapa = {};

@@ -279,3 +279,39 @@ test('RF-02: sin enrutador el camino es el historico byte a byte', async () => {
   assert.equal(respuesta, 'respuesta del agente');
   assert.ok(llamadasLlm.length >= 1);
 });
+
+test('RF-02 guardias de salida: la respuesta del nivel 1 sale sin emojis (misma superficie que el agente)', async () => {
+  const llamadasLlm = [];
+  const enrutador = {
+    clasificarIntencion: async () => ({ intencion: 'conversacion', confianza: 0.95, via: 'local_slm' }),
+    responderConversacion: async () => ({ exito: true, via: 'local_slm', respuesta: 'Perfecto, ahi va. \u{1F600}\u{1F680}', confianza: 0.9 })
+  };
+  const processor = processorConEnrutador(enrutador, llamadasLlm);
+  const respuesta = await processor.procesarMensajeEntrante({ userId: 'u', text: 'buenas', channel: 'whatsapp' });
+  assert.equal(respuesta, 'Perfecto, ahi va.');
+  assert.equal(llamadasLlm.length, 0);
+});
+
+test('RF-02 guardias de salida: respuesta que finge una accion ejecutada NO se entrega; cae al agente', async () => {
+  const llamadasLlm = [];
+  const enrutador = {
+    clasificarIntencion: async () => ({ intencion: 'conversacion', confianza: 0.95, via: 'local_slm' }),
+    responderConversacion: async () => ({ exito: true, via: 'local_slm', respuesta: 'Ya lo he enviado a tu contacto, David.', confianza: 0.9 })
+  };
+  const processor = processorConEnrutador(enrutador, llamadasLlm);
+  const respuesta = await processor.procesarMensajeEntrante({ userId: 'u', text: 'buenas', channel: 'whatsapp' });
+  assert.equal(respuesta, 'respuesta del agente', 'representacion falsa de ejecucion: el agente es el unico que ejecuta');
+  assert.ok(llamadasLlm.length >= 1, 'el agente fue invocado');
+});
+
+test('RF-02 guardias de salida: promesa futura del nivel 1 (te aviso / queda programado) cae al agente', async () => {
+  const llamadasLlm = [];
+  const enrutador = {
+    clasificarIntencion: async () => ({ intencion: 'conversacion', confianza: 0.95, via: 'local_slm' }),
+    responderConversacion: async () => ({ exito: true, via: 'local_slm', respuesta: 'Queda programado, te aviso manana.', confianza: 0.9 })
+  };
+  const processor = processorConEnrutador(enrutador, llamadasLlm);
+  const respuesta = await processor.procesarMensajeEntrante({ userId: 'u', text: 'buenas', channel: 'whatsapp' });
+  assert.equal(respuesta, 'respuesta del agente');
+  assert.ok(llamadasLlm.length >= 1);
+});

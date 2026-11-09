@@ -24,8 +24,10 @@ del documento, no del codigo.
   canal de entrega; whatsappBot registra el adaptador solo con ese env).
 - **RF-02**: modulos SLM (delta revisado) + wiring en el clasificador
   conservando umbral 0.6 y cache; conversacion nivel-1 consumida en
-  messageProcessor con escalada al agente (extraccion de argumentos:
-  costura de consumo en jarvisAgent en evaluacion, ver brechas);
+  messageProcessor con guardias (confirmacion desnuda o pendiente siempre
+  llega al agente) y escalada; extraccion de argumentos declarada NO
+  consumida por disenyo (re-extraer lo que el LLM ya especifico anade
+  generacion y arriesga cambiar la accion; ver brechas);
   metricas `jarvis_inferencia_decisiones_total`
   y `jarvis_tokens_saved_by_local_slm_total` (ESTIMACION por bytes, no
   coste medido). Via cloud: siempre el proveedor actual (Groq).
@@ -45,9 +47,12 @@ del documento, no del codigo.
   efectos (herramienta + args anonimizados): la RESPUESTA de la
   herramienta no es visible en esa costura y queda fuera (limite
   declarado; cerrarlo requiere una costura post-ejecucion en el agente).
-- RNF-04 PII PRE-LLM: el anonimizador existe y se usa para los hashes de
-  auditoria, pero TODAVIA no hay hook que anonimice el contenido que sale
-  hacia el LLM cloud en todos los caminos. Abierto.
+- RNF-04 PII PRE-LLM: adaptador envolvente del proveedor cloud activo
+  con `DAVIS_PII_PRELLM=1` (anonimiza contenido y arguments hacia la
+  nube, restaura en local, mapa por peticion nunca enviado, estructura e
+  ids intactos, fail-closed, streaming bloqueado de momento). Limite:
+  sin ese env el camino historico NO anonimiza; la activacion en
+  produccion es decision del canal.
 - La cadena SHA256 es evidencia de integridad, NO firma criptografica ni
   inmutabilidad. Residual EXPLICITO: la anonimizacion PII es determinista,
   asi que el hash de un valor PII permite VERIFICAR una sospecha (ataque

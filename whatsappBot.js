@@ -16,6 +16,7 @@ import { DATA_DIR } from './src/config/paths.js';
 // Baileys al puerto de entrada InboundMessage y lo entrega al procesador
 // compuesto en la raiz de composicion, que inyecta los puertos de salida.
 import { procesarMensajeEntrante, crearPuenteWhatsAppTenantsCompuesto } from './src/composition/container.js';
+import { chatCompletion as chatCompletionPorDefecto } from './src/core/llmService.js';
 import { crearInboundDesdeWhatsApp } from './src/adapters/inbound/whatsapp/whatsappInboundAdapter.js';
 import { crearWhatsAppChannelAdapter } from './src/adapters/outbound/channels/whatsappChannelAdapter.js';
 import { normalizarMarkdownWhatsApp } from './src/services/textFormatService.js';
@@ -633,6 +634,11 @@ export async function iniciarWhatsApp() {
 export async function procesarMensajesEntrantes(sock, { messages, type }, deps = {}) {
     if (type !== 'notify') return;
 
+    // Proveedor LLM efectivo: la prueba inyecta; en produccion se usa el
+    // configurado (despachador central: con DAVIS_PII_PRELLM=1 incluye la
+    // anonimizacion pre-LLM tambien en condensacion, traductor y entrevista).
+    const chatCompletionEfectivo = typeof deps.chatCompletion === 'function' ? deps.chatCompletion : chatCompletionPorDefecto;
+
     for (const msg of messages) {
       if (!msg.message || msg.key.fromMe) continue;
 
@@ -832,7 +838,7 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         continue;
       }
       if (estadoTrad) {
-        const rTrad = await traducir(texto, estadoTrad.idioma, { chatCompletion: deps.chatCompletion });
+        const rTrad = await traducir(texto, estadoTrad.idioma, { chatCompletion: chatCompletionEfectivo });
         await sock.sendMessage(remoteJid, {
           text: rTrad.ok ? rTrad.traduccion : `No he podido traducirlo, David: ${rTrad.error}`
         }, { quoted: msg });
@@ -848,7 +854,7 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         continue;
       }
       if (sesionEntrevista) {
-        const rEnt = await responderEntrevista(texto, { rutaArchivo: deps.rutaArchivoEntrevistas, chatId: remoteJid, chatCompletion: deps.chatCompletion });
+        const rEnt = await responderEntrevista(texto, { rutaArchivo: deps.rutaArchivoEntrevistas, chatId: remoteJid, chatCompletion: chatCompletionEfectivo });
         await sock.sendMessage(remoteJid, {
           text: rEnt.ok
             ? (rEnt.fin ? `${rEnt.evaluacion}\n\nSimulacro terminado: ${rEnt.resultado.aciertos}/${rEnt.resultado.total} respuestas acertadas.` : rEnt.evaluacion)
@@ -1091,7 +1097,7 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
           opciones: {
           chatId: remoteJid,
           urgencyDirective,
-          chatCompletion: deps.chatCompletion,
+          chatCompletion: chatCompletionEfectivo,
           carpetaTrazas: deps.carpetaTrazas,
           avisarSaludClasificador: resolverAvisoSaludClasificador(deps).fn,
           rutaArchivoMetricasClasificador: deps.rutaArchivoMetricasClasificador,
@@ -1181,7 +1187,7 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
           registrarIntercambio(remoteJid, texto, respuesta);
           // Condensacion en segundo plano cuando el chat supera el tope:
           // fire-and-forget (errores capturados dentro), nunca bloquea la respuesta.
-          programarCondensacionSiNecesario(remoteJid, { chatCompletion: deps.chatCompletion });
+          programarCondensacionSiNecesario(remoteJid, { chatCompletion: chatCompletionEfectivo });
         } catch (errHist) {
           console.error('[Historial] No se pudo registrar el intercambio:', errHist.message);
         }

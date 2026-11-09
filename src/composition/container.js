@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { crearLLMServiceProviderAdapter } from '../adapters/outbound/llm/llmServiceProviderAdapter.js';
+import { registrarEnvolventeChatCompletion, limpiarEnvolventeChatCompletion } from '../core/llmService.js';
 import { crearJsonMemoryRepository } from '../adapters/outbound/persistence/jsonMemoryRepository.js';
 import { crearJsonlClassifierMetricsStore } from '../adapters/outbound/persistence/jsonlClassifierMetricsStore.js';
 import { crearPuenteWhatsAppTenants } from './whatsappTenantBridge.js';
@@ -138,6 +139,13 @@ export function crearContenedor(overrides = {}) {
   if (overrides.piiPreLlm === true || (overrides.piiPreLlm === undefined && process.env.DAVIS_PII_PRELLM === '1')) {
     const permitir = (process.env.DAVIS_PII_PERMITIR || '').split(',').map((p) => p.trim()).filter(Boolean);
     llmProvider = crearAnonimizadorPreLlm({ inner: llmProvider, permitir });
+    // Proteccion central: los imports directos de llmService (historial,
+    // summarizer, ticketVision...) tambien quedan cubiertos. La
+    // envolvente registrada envuelve el crudo: sin recursion ni doble
+    // tokenizacion (el camino por puerto ya envuelto no re-anonimiza).
+    registrarEnvolventeChatCompletion((p) => llmProvider.chatCompletion(p));
+  } else {
+    limpiarEnvolventeChatCompletion();
   }
   // RF-02: enrutador de inferencia especulativa. INERTE por defecto: sin
   // DAVIS_SLM_MODEL el adaptador es null, no se construye router y toda la

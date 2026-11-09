@@ -24,6 +24,8 @@ const carpetaTrazas = path.join(dirEntorno, 'trazas');
 
 function sockSimulado(enviados) {
   return {
+    // Sesion abierta simulada: Baileys puebla sock.user tras connection=open.
+    user: { id: '34600000000:55@s.whatsapp.net', name: 'DAVIS' },
     readMessages: async () => {},
     sendPresenceUpdate: async () => {},
     sendMessage: async (jid, payload) => { enviados.push({ jid, payload }); return { key: { id: 'SIM-' + enviados.length } }; }

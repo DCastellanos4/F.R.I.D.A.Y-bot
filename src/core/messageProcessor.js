@@ -28,6 +28,25 @@ function esConfirmacionDesnuda(texto) {
   return CONFIRMACIONES_DESNUDAS.has(limpio);
 }
 
+// Filtro de salida del bypass conversacional (mismas reglas de superficie
+// que una respuesta del agente). Devuelve el texto listo para entregar o
+// null si NO debe entregarse (cae al agente):
+//  - emojis eliminados (politica estricta zero-emoji del canal);
+//  - afirmar una accion ya ejecutada ('he enviado...', 'ya lo borre...')
+//    o prometer una futura ('te aviso', 'queda programado') es
+//    representacion falsa de ejecucion: el nivel 1 no ejecuta nada.
+const EMOJI_REGEX = /\p{Extended_Pictographic}/gu;
+const RE_ACCION_EJECUTADA = /\b(he|ya|acabo de)\s+(enviado|mandado|borrado|eliminado|creado|guardado|agendado|programado|apagado|encendido|comprado|pagado|reservado|publicado|recordado|avisado)\b/i;
+const RE_PROMESA_FUTURA = /\b(te\s+(aviso|avisare|mando|enviare|recuerdo)|queda(n)?\s+(programado|agendado|hecho|listo)|lo\s+(hare|hago\s+(luego|despues|mas tarde)))\b/i;
+
+function prepararRespuestaConversacion(respuesta, exito) {
+  if (exito !== true || typeof respuesta !== 'string') return null;
+  const limpia = respuesta.replace(EMOJI_REGEX, '').replace(/[ \t]{2,}/g, ' ').trim();
+  if (!limpia) return null;
+  if (RE_ACCION_EJECUTADA.test(limpia) || RE_PROMESA_FUTURA.test(limpia)) return null;
+  return limpia;
+}
+
 function ultimoTurnoPideConfirmacion(historial) {
   if (!Array.isArray(historial)) return false;
   for (let i = historial.length - 1; i >= 0; i--) {
@@ -95,40 +114,48 @@ export function crearMessageProcessor({ llmProvider, memoryRepository, metricasC
         opcionesConPuertos.rutaArchivoIdempotencia = rutaArchivoIdempotenciaDefecto;
       }
 
-      // RF-02 consumo (conversacion): con enrutador especulativo activo,
-      // un mensaje clasificado como charla pura con respuesta local de
-      // confianza suficiente se responde en el nivel 1 sin invocar al
-      // agente. Cualquier otro desenlace sigue el camino historico
-      // EXACTO. La clasificacion se cachea por mensaje normalizado, asi
-      // que cuando el agente clasifica despues reutiliza la misma.
-      // GUARDIAS (la confianza autodeclarada del SLM NO es seguridad):
-      //  - mensajes de confirmacion desnuda ('si', 'vale', 'hazlo'...)
-      //    NUNCA se interceptan: pueden confirmar una accion pendiente.
-      //  - si el ultimo turno del asistente pide confirmacion, tampoco.
-      //  - aqui no se ejecuta ninguna herramienta: solo se devuelve texto.
-      if (enrutadorInferencia && typeof enrutadorInferencia.responderConversacion === 'function'
-          && !esConfirmacionDesnuda(inbound.text) && !ultimoTurnoPideConfirmacion(historial)) {
-        try {
-          const clas = await clasificarIntencionConModelo(inbound.text, opcionesConPuertos);
-          if (clas && clas.intencion === 'conversacion' && clas.confianza >= 0.6) {
-            const local = await enrutadorInferencia.responderConversacion(inbound.text, undefined, { tenantId: opcionesConPuertos.tenantId });
-            if (local && local.exito === true && typeof local.respuesta === 'string' && local.respuesta.trim()) {
-              return local.respuesta;
-            }
-          }
-        } catch (errConv) {
-          console.warn('[RF-02] Conversacion nivel 1 no disponible; camino historico:', errConv && errConv.message);
-        }
-      }
-
       // Span raiz de la peticion: el TraceId de este mensaje atraviesa
       // clasificacion, llamadas LLM, herramientas y escrituras de BD.
       // Atributos: solo metadatos (canal y hash opaco de sesion), NUNCA
       // el texto del mensaje (privacidad, regla dura de telemetria).
+      // El bypass conversacional vive DENTRO del span: las trazas no se
+      // pierden cuando el nivel 1 responde sin agente.
       return conSpan('mensaje_entrante', {
         canal: String(inbound.channel || 'desconocido').slice(0, 30),
         sesion: hashSesion(inbound.userId)
-      }, () => (enAmbito ? consultarJarvisEnAmbito : consultarJarvis)(inbound.text, historial, opcionesConPuertos));
+      }, async () => {
+        // RF-02 consumo (conversacion): con enrutador especulativo activo,
+        // un mensaje clasificado como charla pura con respuesta local de
+        // confianza suficiente se responde en el nivel 1 sin invocar al
+        // agente. Cualquier otro desenlace sigue el camino historico
+        // EXACTO. La clasificacion se cachea por mensaje normalizado, asi
+        // que cuando el agente clasifica despues reutiliza la misma.
+        // GUARDIAS (la confianza autodeclarada del SLM NO es seguridad):
+        //  - mensajes de confirmacion desnuda ('si', 'vale', 'hazlo'...)
+        //    NUNCA se interceptan: pueden confirmar una accion pendiente.
+        //  - si el ultimo turno del asistente pide confirmacion, tampoco.
+        //  - aqui no se ejecuta ninguna herramienta: solo se devuelve texto.
+        //  - la respuesta del nivel 1 pasa las MISMAS guardias de salida
+        //    que la del agente: sin emojis, y si declara una accion
+        //    ejecutada o promete una futura (fingir envio/borrado/
+        //    programacion) NO se entrega: cae al agente, que es el unico
+        //    que puede ejecutar y representar ejecuciones. Heuristica de
+        //    defensa en profundidad, NO certifica seguridad por si sola.
+        if (enrutadorInferencia && typeof enrutadorInferencia.responderConversacion === 'function'
+            && !esConfirmacionDesnuda(inbound.text) && !ultimoTurnoPideConfirmacion(historial)) {
+          try {
+            const clas = await clasificarIntencionConModelo(inbound.text, opcionesConPuertos);
+            if (clas && clas.intencion === 'conversacion' && clas.confianza >= 0.6) {
+              const local = await enrutadorInferencia.responderConversacion(inbound.text, undefined, { tenantId: opcionesConPuertos.tenantId });
+              const saneada = prepararRespuestaConversacion(local && local.respuesta, local && local.exito);
+              if (saneada) return saneada;
+            }
+          } catch (errConv) {
+            console.warn('[RF-02] Conversacion nivel 1 no disponible; camino historico:', errConv && errConv.message);
+          }
+        }
+        return (enAmbito ? consultarJarvisEnAmbito : consultarJarvis)(inbound.text, historial, opcionesConPuertos);
+      });
   }
   return Object.freeze({
     procesarMensajeEntrante: (inbound, ctx) => procesar(inbound, ctx, false),

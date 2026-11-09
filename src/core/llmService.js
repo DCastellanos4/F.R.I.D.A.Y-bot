@@ -289,7 +289,48 @@ export function normalizarUsoProveedor(res, proveedor) {
  * Unified Chat Completion API:
  * Executes chat completions across local Ollama and Cloud OpenAI-compatible endpoints with full tool calling support.
  */
-export async function chatCompletion({
+// Proteccion central RNF-04: con DAVIS_PII_PRELLM=1 TODA llamada a
+// chatCompletion (incluidos los imports directos anteriores a la
+// construccion del contenedor) pasa por la envolvente PII; si la raiz de
+// composicion aun no registro la suya, se construye una perezosa aqui:
+// el arranque NUNCA queda fail-open por orden de inicializacion.
+// Sin recursion: la envolvente envuelve SIEMPRE chatCompletionCrudo,
+// nunca este despachador. Una sola anonimizacion por peticion: el
+// failover interno entre proveedores ocurre dentro del crudo.
+let envolventeCentral = null;
+let envolventePerezosa = null;
+
+export function registrarEnvolventeChatCompletion(fn) {
+  envolventeCentral = typeof fn === 'function' ? fn : null;
+}
+
+export function limpiarEnvolventeChatCompletion() {
+  envolventeCentral = null;
+}
+
+async function obtenerEnvolventeCentral() {
+  if (envolventeCentral) return envolventeCentral;
+  if (!envolventePerezosa) {
+    const { crearAnonimizadorPreLlm } = await import('../adapters/outbound/llm/piiPreLlmAdapter.js');
+    const permitir = (process.env.DAVIS_PII_PERMITIR || '').split(',').map((p) => p.trim()).filter(Boolean);
+    const envoltorio = crearAnonimizadorPreLlm({
+      inner: { nombre: 'llmService-crudo', chatCompletion: (p) => chatCompletionCrudo(p) },
+      permitir
+    });
+    envolventePerezosa = (p) => envoltorio.chatCompletion(p);
+  }
+  return envolventePerezosa;
+}
+
+export async function chatCompletion(peticion) {
+  if (process.env.DAVIS_PII_PRELLM === '1') {
+    const envolvente = await obtenerEnvolventeCentral();
+    return envolvente(peticion);
+  }
+  return chatCompletionCrudo(peticion);
+}
+
+export async function chatCompletionCrudo({
   messages = [],
   tools,
   options = {},
