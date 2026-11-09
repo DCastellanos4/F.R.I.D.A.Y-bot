@@ -26,6 +26,10 @@ import { crearSqliteMemoryRepository } from '../adapters/outbound/persistence/sq
 import { crearSqliteMemoryStore } from '../adapters/outbound/persistence/sqlite/sqliteMemoryStore.js';
 import { abrirBaseDatos } from '../adapters/outbound/persistence/sqlite/connection.js';
 import { ejecutarMigraciones } from '../adapters/outbound/persistence/sqlite/migraciones.js';
+import { crearOllamaSlmAdapter } from '../adapters/outbound/llm/ollamaSlmAdapter.js';
+import { crearLocalSlmInferenceService } from '../services/localSlmInferenceService.js';
+import { crearEnrutadorInferencia } from '../core/inferenceRouter.js';
+import { registrarDecisionInferencia } from '../observability/telemetry.js';
 
 /**
  * Persistencia activa: DAVIS_PERSISTENCE=json (por defecto, comportamiento
@@ -69,6 +73,18 @@ function crearPersistenciaActiva(overrides) {
 
 export function crearContenedor(overrides = {}) {
   const llmProvider = overrides.llmProvider ?? crearLLMServiceProviderAdapter();
+  // RF-02: enrutador de inferencia especulativa. INERTE por defecto: sin
+  // DAVIS_SLM_MODEL el adaptador es null, no se construye router y toda la
+  // clasificacion sigue la via cloud historica. La via nube del router es
+  // siempre el proveedor actual (Groq); el router no elige modelo cloud.
+  const slmAdapter = overrides.slmAdapter !== undefined ? overrides.slmAdapter : crearOllamaSlmAdapter();
+  const enrutadorInferencia = overrides.enrutadorInferencia ?? (slmAdapter
+    ? crearEnrutadorInferencia({
+        slm: crearLocalSlmInferenceService({ provider: slmAdapter }),
+        chatCompletionNube: (p) => llmProvider.chatCompletion(p),
+        registrarDecision: registrarDecisionInferencia
+      })
+    : null);
   const persistenciaActiva = crearPersistenciaActiva(overrides);
   const memoryRepository = persistenciaActiva.memoryRepository;
   const metricasClasificador = overrides.metricasClasificador ?? crearJsonlClassifierMetricsStore();
@@ -91,6 +107,7 @@ export function crearContenedor(overrides = {}) {
     metricasClasificador,
     crearStoreMetricas: crearJsonlClassifierMetricsStore,
     accesoTenants: overrides.accesoTenants || null,
+    enrutadorInferencia,
     rutaArchivoIdempotenciaDefecto: overrides.rutaArchivoIdempotenciaDefecto ?? rutaIdempTest
   });
   const procesarBase = processor.procesarMensajeEntrante;
@@ -99,6 +116,7 @@ export function crearContenedor(overrides = {}) {
     llmProvider,
     memoryRepository,
     metricasClasificador,
+    enrutadorInferencia,
     persistencia: persistenciaActiva.persistencia || null,
     async procesarMensajeEntrante(inbound, ctx) {
       const respuesta = await procesarBase(inbound, ctx);

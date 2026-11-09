@@ -18,6 +18,7 @@
  */
 import crypto from 'node:crypto';
 import { TENANT_PROPIETARIO, afirmarTenantId } from '../core/tenancy.js';
+import { crearPiiAnonymizer } from './piiAnonymizerService.js';
 
 const GENESIS = 'GENESIS';
 
@@ -33,10 +34,17 @@ export function canonizar(valor) {
   return `{${claves.map((k) => `${JSON.stringify(k)}:${canonizar(valor[k])}`).join(',')}}`;
 }
 
-export function crearAuditLogService(db) {
+export function crearAuditLogService(db, { anonimizador = null } = {}) {
   if (!db || typeof db.prepare !== 'function') {
     throw new TypeError('crearAuditLogService requiere una base better-sqlite3 abierta.');
   }
+  // Los hashes se calculan sobre el contenido ANONIMIZADO: un SHA256 sin
+  // clave sobre un telefono o IBAN real seria reversible por diccionario.
+  // Limite residual declarado: argumentos no-PII de baja entropia (p. ej.
+  // un importe) siguen siendo adivinables por diccionario; endurecerlo
+  // requeriria HMAC con clave fuera de la DB.
+  const pii = anonimizador || crearPiiAnonymizer();
+  const enmascarar = (v) => pii.anonimizar(canonizar(v)).texto;
   const selUltimo = db.prepare('SELECT hash FROM audit_herramientas ORDER BY id DESC LIMIT 1');
   const ins = db.prepare(`
     INSERT INTO audit_herramientas (tenant_id, herramienta, args_sha256, respuesta_sha256, prev_hash, hash, creado_en)
@@ -64,8 +72,8 @@ export function crearAuditLogService(db) {
       const fila = {
         tenant_id: tenantId,
         herramienta: herramienta.trim().slice(0, 80),
-        args_sha256: sha256(canonizar(args)),
-        respuesta_sha256: respuesta === null || respuesta === undefined ? null : sha256(canonizar(respuesta)),
+        args_sha256: sha256(enmascarar(args)),
+        respuesta_sha256: respuesta === null || respuesta === undefined ? null : sha256(enmascarar(respuesta)),
         creado_en: (ahora instanceof Date ? ahora : new Date(ahora ?? Date.now())).toISOString()
       };
       return db.transaction(() => {

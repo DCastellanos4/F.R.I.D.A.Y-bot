@@ -183,6 +183,22 @@ export async function iniciarObservabilidad(opts = {}) {
           help: 'Errores de herramientas por tipo',
           labelNames: ['herramienta', 'tipo'],
           registers: [registry]
+        }),
+        // RF-02: decisiones del enrutador especulativo y ahorro ESTIMADO
+        // de tokens de entrada (estimacion por bytes, como
+        // groqBudget.estimarTokensPeticion; NO es coste medido ni ahorro
+        // contrafactual exacto; el panel debe etiquetarlo como estimacion).
+        inferenciaDecisiones: new prom.Counter({
+          name: 'jarvis_inferencia_decisiones_total',
+          help: 'Decisiones del enrutador de inferencia por via y motivo',
+          labelNames: ['via', 'motivo', 'tarea'],
+          registers: [registry]
+        }),
+        tokensAhorradosSlm: new prom.Counter({
+          name: 'jarvis_tokens_saved_by_local_slm_total',
+          help: 'Tokens de entrada EVITADOS en cloud por via local (ESTIMACION por bytes)',
+          labelNames: [],
+          registers: [registry]
         })
       };
       estado.registry = registry;
@@ -404,6 +420,25 @@ export function registrarFinTool({ herramienta = 'desconocida', duracionSeg = 0,
   estado.metricas.toolDuracion.observe({ herramienta: nombre, resultado: error ? 'error' : 'ok' }, Math.max(0, duracionSeg));
   if (error) {
     estado.metricas.toolErrores.inc({ herramienta: nombre, tipo: claseErrorLabel(error) });
+  }
+}
+
+/**
+ * RF-02: puente del enrutador especulativo hacia Prometheus. Recibe las
+ * decisiones del router (via local_slm/cloud, motivo, tarea) y el ahorro
+ * ESTIMADO de tokens de entrada cuando la via local resolvio. El tenant
+ * NO se etiqueta (cardinalidad); su detalle queda en las trazas.
+ */
+export function registrarDecisionInferencia({ via = 'desconocida', motivo = 'desconocido', tarea = 'desconocida', tokensAhorradosEstimados = 0 } = {}) {
+  if (!estado.metricasActivas) return;
+  estado.metricas.inferenciaDecisiones.inc({
+    via: String(via).slice(0, 40),
+    motivo: String(motivo).slice(0, 60),
+    tarea: String(tarea).slice(0, 40)
+  });
+  const ahorro = Math.max(0, Math.trunc(Number(tokensAhorradosEstimados) || 0));
+  if (via === 'local_slm' && ahorro > 0) {
+    estado.metricas.tokensAhorradosSlm.inc(ahorro);
   }
 }
 

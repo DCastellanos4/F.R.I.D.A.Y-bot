@@ -186,6 +186,45 @@ export async function clasificarIntencionConModelo(mensaje, deps = {}) {
   const enCache = leerCache(clave);
   if (enCache) return { ...enCache, origen: 'cache' };
 
+  // Costura RF-02: con enrutador especulativo inyectado (SLM local con
+  // escalada), la clasificacion pasa por el. El umbral de inyeccion de
+  // herramientas (UMBRAL_CONFIANZA = 0.6), la cache por mensaje
+  // normalizado y las metricas de salud se conservan EXACTOS sobre la
+  // clasificacion final, venga de la via local o de la nube. Si el
+  // enrutador falla, se cae a la via directa historica.
+  if (deps.enrutadorInferencia && typeof deps.enrutadorInferencia.clasificarIntencion === 'function') {
+    try {
+      const r = await deps.enrutadorInferencia.clasificarIntencion(mensaje, ETIQUETAS, { tenantId: deps.tenantId });
+      if (r && r.intencion) {
+        const resultado = {
+          intencion: r.intencion,
+          confianza: r.confianza,
+          herramientas: r.confianza >= UMBRAL_CONFIANZA
+            ? herramientasParaIntenciones([r.intencion])
+            : [],
+          origen: r.via === 'local_slm' ? 'local_slm' : 'modelo'
+        };
+        escribirCache(clave, {
+          intencion: resultado.intencion,
+          confianza: resultado.confianza,
+          herramientas: resultado.herramientas
+        });
+        almacenMetricas(deps).registrar({
+          tipo: 'clasificacion',
+          resultado: r.confianza >= UMBRAL_CONFIANZA ? 'ok' : 'baja_confianza',
+          intencion: r.intencion,
+          confianza: r.confianza,
+          via: r.via || 'cloud'
+        });
+        return resultado;
+      }
+      almacenMetricas(deps).registrar({ tipo: 'clasificacion', resultado: 'parse_fail', via: r?.via || 'cloud' });
+      return null;
+    } catch (err) {
+      console.error('[RouterModelo] Error del enrutador especulativo, via directa:', err.message);
+    }
+  }
+
   const promptSistema = [
     'Clasifica la intencion principal del mensaje de David en UNA de estas etiquetas:',
     ETIQUETAS.join(', ') + '.',

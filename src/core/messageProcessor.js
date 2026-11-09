@@ -15,7 +15,7 @@ import { afirmarLLMProvider } from '../ports/outbound/LLMProviderPort.js';
 import { afirmarMemoryRepository } from '../ports/outbound/MemoryRepositoryPort.js';
 import { conSpan, hashSesion } from '../observability/telemetry.js';
 
-export function crearMessageProcessor({ llmProvider, memoryRepository, metricasClasificador, crearStoreMetricas, rutaArchivoIdempotenciaDefecto, accesoTenants = null } = {}) {
+export function crearMessageProcessor({ llmProvider, memoryRepository, metricasClasificador, crearStoreMetricas, rutaArchivoIdempotenciaDefecto, accesoTenants = null, enrutadorInferencia = null } = {}) {
   if (llmProvider !== undefined) afirmarLLMProvider(llmProvider);
   if (memoryRepository !== undefined) afirmarMemoryRepository(memoryRepository);
 
@@ -39,6 +39,11 @@ export function crearMessageProcessor({ llmProvider, memoryRepository, metricasC
       }
       if (memoryRepository && !opcionesConPuertos.memoryRepository) {
         opcionesConPuertos.memoryRepository = memoryRepository;
+      }
+      // RF-02: enrutador especulativo inyectado por la raiz de composicion
+      // (null salvo DAVIS_SLM_MODEL); una opcion explicita del llamador gana.
+      if (enrutadorInferencia && !opcionesConPuertos.enrutadorInferencia) {
+        opcionesConPuertos.enrutadorInferencia = enrutadorInferencia;
       }
       // Metricas del clasificador: puerto inyectado; una ruta historica
       // suelta se traduce a store aqui (la raiz conoce adaptadores, el
