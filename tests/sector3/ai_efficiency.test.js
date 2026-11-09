@@ -159,3 +159,62 @@ test('cola larga termina sin enviar otra llamada y no usa error de proveedor ago
   assert.match(mensajeErrorParaUsuario(e), /presupuesto preventivo/);
   assert.doesNotMatch(mensajeErrorParaUsuario(e), /informacion privada|principal|respaldo/);
 });
+
+test('parafrasis de funciones/altas recibe contexto pertinente sin inventario permanente', async () => {
+  for (const [mensaje, esperado, ausente] of [
+    ['cuales son tus funciones', 'CAPACIDADES REALES', 'CONFIGURACION PENDIENTE'],
+    ['que servicios siguen sin conectar', 'CONFIGURACION PENDIENTE', 'CAPACIDADES REALES']
+  ]) {
+    let visto = false;
+    const r = await consultarJarvisAislado(mensaje, [], { chatCompletion: async p => {
+      if (p.messages[0].content.includes('Clasifica la intencion')) return { message: { content: 'no se' } };
+      const sistema = p.messages[0].content;
+      assert.ok(sistema.includes(esperado)); assert.ok(!sistema.includes(ausente)); visto = true;
+      if (esperado === 'CAPACIDADES REALES') assert.match(sistema, /clima; recordatorios/);
+      else assert.match(sistema, /Home Assistant|MobilityLabs/);
+      return { message: { content: 'Contexto pertinente comprobado.' } };
+    } });
+    assert.equal(visto, true); assert.match(r, /comprobado/);
+  }
+});
+
+test('parafrasis fuera de heuristica recupera inventario mediante contexto nativo bajo demanda', async () => {
+  for (const [mensaje, contexto, marca] of [
+    ['hazme un recorrido por lo que llevas dentro', 'capacidades', 'CAPACIDADES REALES'],
+    ['dime lo que no esta listo para arrancar', 'configuracion', 'CONFIGURACION PENDIENTE']
+  ]) {
+    let n = 0;
+    const r = await consultarJarvisAislado(mensaje, [], { chatCompletion: async p => {
+      if (p.messages[0].content.includes('Clasifica la intencion')) return { message: { content: 'no se' } };
+      n++;
+      if (n === 1) {
+        assert.ok(!p.messages[0].content.includes(marca), 'no coincidia con la heuristica ni se enviaba siempre');
+        assert.ok(p.tools.some(h => h.function.name === 'descubrir_herramientas'));
+        return { message: { content: '', tool_calls: [{ id: 'contexto', function: { name: 'descubrir_herramientas', arguments: { consulta: mensaje, contexto } } }] } };
+      }
+      const datos = p.messages.find(m => m.role === 'tool' && m.content.includes(marca));
+      assert.ok(datos, 'el inventario real se recupera aunque no encaje en regex');
+      if (contexto === 'capacidades') assert.match(datos.content, /finanzas personales/);
+      else assert.match(datos.content, /MobilityLabs/);
+      return { message: { content: 'Inventario consultado sin accion externa.' } };
+    } });
+    assert.equal(n, 2); assert.match(r, /Inventario consultado/);
+  }
+});
+
+test('preguntas de funciones/configuracion de tenant no reciben inventario owner ni acceso a recuperarlo', async () => {
+  const { consultarJarvisEnAmbito } = await import('../../src/core/jarvisAgent.js');
+  for (const mensaje of ['cuales son tus funciones', 'que servicios siguen sin conectar']) {
+    let n = 0;
+    await consultarJarvisEnAmbito(mensaje, [], {
+      tenantId: 'sint-contexto', controlUso: { autorizar: () => ({ permitido: true }) }, rolDeTenant: () => 'usuario',
+      chatCompletion: async p => {
+        n++;
+        const todo = JSON.stringify(p);
+        assert.doesNotMatch(todo, /Home Assistant|MobilityLabs|CAPACIDADES REALES|CONFIGURACION PENDIENTE|descubrir_herramientas/);
+        return { message: { content: p.messages[0].content.includes('Clasifica la intencion') ? 'no se' : 'Solo capacidades de este usuario.' } };
+      }
+    });
+    assert.ok(n > 0, 'la prueba no es vacua');
+  }
+});

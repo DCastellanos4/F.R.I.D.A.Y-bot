@@ -4,9 +4,10 @@ export const NOMBRE_DESCUBRIR = 'descubrir_herramientas';
 export const HERRAMIENTA_DESCUBRIR = Object.freeze({
   type: 'function', function: {
     name: NOMBRE_DESCUBRIR,
-    description: 'Busca y carga esquemas de herramientas que faltan para la peticion. No ejecuta acciones. Si una herramienta necesaria no esta ofrecida, buscala antes de afirmar que no existe. Puedes pedir nombres exactos o describir la tarea.',
+    description: 'Busca y carga esquemas de herramientas que faltan para la peticion. No ejecuta acciones. Si una herramienta necesaria no esta ofrecida, buscala antes de afirmar que no existe. Puedes pedir nombres exactos o describir la tarea. Para preguntas sobre tus funciones o altas pendientes, recupera contexto capacidades o configuracion antes de responder.',
     parameters: { type: 'object', properties: {
       consulta: { type: 'string', description: 'Tarea que necesitas realizar.' },
+      contexto: { type: 'string', enum: ['capacidades', 'configuracion'], description: 'Recupera el inventario real del asistente o sus integraciones pendientes, sin ejecutar acciones.' },
       nombres: { type: 'array', items: { type: 'string' }, maxItems: 8, description: 'Nombres exactos opcionales de las herramientas a cargar.' }
     }, required: ['consulta'], additionalProperties: false }
   }
