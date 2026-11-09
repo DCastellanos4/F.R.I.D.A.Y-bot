@@ -12,6 +12,10 @@
  *
  * La respuesta se encola en channel_responses con id determinista por
  * trabajo: una reejecucion tras caida nunca duplica la entrega al canal.
+ * SIN garantia exactly-once para efectos EXTERNOS de herramientas: la
+ * reejecucion tras una caida a mitad se apoya en la ventana de
+ * idempotencia persistente del core; el checkpoint registra lo ya
+ * completado y NUNCA reemite envios por su cuenta.
  *
  * Strict Policy: Zero Emojis.
  */
