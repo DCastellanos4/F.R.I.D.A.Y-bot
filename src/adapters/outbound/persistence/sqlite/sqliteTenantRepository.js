@@ -58,6 +58,9 @@ export function crearSqliteTenantRepository(db, deps = {}) {
       insIdent.run(tenantId, canal, identificador, ahora());
       return { ok: true };
     },
+    identidadRegistrada(canal, identificador) {
+      return getIdent.get(String(canal),String(identificador))?.tenant_id || null;
+    },
     /** Coincidencia EXACTA. Devuelve tenantId o null. Nunca crea nada. */
     buscar(canal, identificador) {
       const f = getIdent.get(String(canal), String(identificador));

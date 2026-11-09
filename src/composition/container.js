@@ -14,6 +14,7 @@ import path from 'node:path';
 import { crearLLMServiceProviderAdapter } from '../adapters/outbound/llm/llmServiceProviderAdapter.js';
 import { crearJsonMemoryRepository } from '../adapters/outbound/persistence/jsonMemoryRepository.js';
 import { crearJsonlClassifierMetricsStore } from '../adapters/outbound/persistence/jsonlClassifierMetricsStore.js';
+import { crearPuenteWhatsAppTenants } from './whatsappTenantBridge.js';
 import { crearMessageProcessor } from '../core/messageProcessor.js';
 import { DATA_DIR } from '../config/paths.js';
 import { registrarStoreMemoriasPorDefecto } from '../services/memoryService.js';
@@ -119,3 +120,13 @@ const contenedorPorDefecto = crearContenedor();
 
 /** Punto de entrada listo para los canales en produccion. */
 export const procesarMensajeEntrante = contenedorPorDefecto.procesarMensajeEntrante;
+
+/** Fabrica para el listener Baileys. No abre gates ni registra identidades. */
+export function crearPuenteWhatsAppTenantsCompuesto({ esPropietario } = {}) {
+  const p = contenedorPorDefecto.persistencia;
+  if (!p?.tenantRepository || !p?.limitesStore) return null;
+  return crearPuenteWhatsAppTenants({
+    tenantRepository: p.tenantRepository, limitesStore: p.limitesStore,
+    llmProvider: contenedorPorDefecto.llmProvider, esPropietario
+  });
+}

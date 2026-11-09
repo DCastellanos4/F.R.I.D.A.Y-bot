@@ -18,13 +18,14 @@ export function crearAccesoTenants({ autenticar, esPropietario, tenantRepository
       if (!tid || tid === TENANT_PROPIETARIO) return null;
       const t = tenantRepository.obtener(tid);
       if (!t || t.estado !== 'activo' || t.rol !== 'usuario') return null;
+      const vinculada = (id) => id === tid && tenantRepository.buscar(identidad.canal,identidad.identificador) === tid;
       return {
         tenantId: tid, chatId,
         // Se relee el estado en cada control de herramienta. No cachear roles
         // ni listas de permisos en el canal despues de una revocacion.
-        rolDeTenant: (id) => { const actual = tenantRepository.obtener(id); return actual?.estado === 'activo' ? actual.rol : null; },
+        rolDeTenant: (id) => { if (!vinculada(id)) return null; const actual = tenantRepository.obtener(id); return actual?.estado === 'activo' ? actual.rol : null; },
         permitidasUsuario: [],
-        permisosDeTenant: (id) => tenantRepository.leerPermisos(id),
+        permisosDeTenant: (id) => vinculada(id) ? tenantRepository.leerPermisos(id) : [],
         controlUso: limitesStore
       };
     }

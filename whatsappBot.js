@@ -15,7 +15,7 @@ import { DATA_DIR } from './src/config/paths.js';
 // El bot (capa de canal) ya no importa el cerebro: traduce cada mensaje de
 // Baileys al puerto de entrada InboundMessage y lo entrega al procesador
 // compuesto en la raiz de composicion, que inyecta los puertos de salida.
-import { procesarMensajeEntrante } from './src/composition/container.js';
+import { procesarMensajeEntrante, crearPuenteWhatsAppTenantsCompuesto } from './src/composition/container.js';
 import { crearInboundDesdeWhatsApp } from './src/adapters/inbound/whatsapp/whatsappInboundAdapter.js';
 import { crearWhatsAppChannelAdapter } from './src/adapters/outbound/channels/whatsappChannelAdapter.js';
 import { normalizarMarkdownWhatsApp } from './src/services/textFormatService.js';
@@ -103,6 +103,9 @@ function esMensajeDeDavid(jid) {
 
   return false;
 }
+
+// Preparado pero inerte: el puente aplica ambos gates antes de resolver datos.
+const puenteWhatsAppTenants = crearPuenteWhatsAppTenantsCompuesto({ esPropietario: esMensajeDeDavid });
 
 /**
  * Extrae texto desempaquetando cualquier estructura de mensaje de Baileys
@@ -627,6 +630,11 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
       // 2. Filtro de seguridad con Buzon VIP y Respuestas de Terceros
       if (!esMensajeDeDavid(remoteJid)) {
         if (remoteJid.endsWith('@g.us')) continue;
+
+        // Solo el carril tenant registrado/habilitado puede consumir aqui el
+        // mensaje. Gate cerrado/desconocidos conservan el buzon/VIP historico.
+        const puente = deps.puenteWhatsAppTenants || puenteWhatsAppTenants;
+        if (puente && (await puente.procesar(sock,msg)).gestionado === true) continue;
 
         const remitenteLimpio = remoteJid.split('@')[0].replace(/\D/g, '');
         console.log(`[WhatsApp Mensaje Externo] Recibido de +${remitenteLimpio}: ${remoteJid}`);
