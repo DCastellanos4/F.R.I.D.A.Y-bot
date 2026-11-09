@@ -36,9 +36,15 @@ export function crearEntregadorRespuestas({ outboxStore, canales = {}, intervalo
       if (!outboxStore.marcarRespuestaEnviando(resp.id)) continue; // la tomo otro
       try {
         await canal.enviarTexto(resp.destinatario, resp.payload?.texto ?? '');
-      } catch {
-        // El canal NO confirmo el envio: vuelve a pendiente y reintenta.
-        outboxStore.volverRespuestaAPendiente(resp.id);
+      } catch (error) {
+        if (error && error.esFalloPreEnvioVerificado === true) {
+          // El canal garantiza que el mensaje no salio: reintento seguro.
+          outboxStore.volverRespuestaAPendiente(resp.id);
+        } else {
+          // Timeout, desconexion o rechazo del SDK tras el intento: el
+          // mensaje PUDO llegar. Resultado incierto; jamas reenvio ciego.
+          outboxStore.marcarRespuestaIncerta(resp.id);
+        }
         continue;
       }
       try {

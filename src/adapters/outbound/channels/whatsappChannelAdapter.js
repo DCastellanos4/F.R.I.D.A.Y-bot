@@ -14,11 +14,23 @@ export function crearWhatsAppChannelAdapter(sock) {
   if (!sock || typeof sock.sendMessage !== 'function') {
     throw new TypeError('whatsappChannelAdapter: se necesita un sock con sendMessage.');
   }
+  const falloPreEnvio = (mensaje) => {
+    const error = new Error(mensaje);
+    error.esFalloPreEnvioVerificado = true;
+    return error;
+  };
+  const enviar = (destinatario, payload, opciones) => {
+    // Verificacion previa: sin sesion de WhatsApp el mensaje NO puede salir,
+    // asi que este fallo si permite reintento. Todo lo que ocurra despues
+    // (timeout, corte de socket, rechazo de Baileys) es resultado incierto.
+    if (!sock.user) {
+      return Promise.reject(falloPreEnvio('whatsapp: sin sesion abierta, el mensaje no salio'));
+    }
+    return sock.sendMessage(destinatario, payload, opciones);
+  };
   return afirmarMessageChannel(Object.freeze({
     canal: 'whatsapp',
-    enviarTexto: (destinatario, texto, opciones = {}) =>
-      sock.sendMessage(destinatario, { text: texto }, opciones),
-    enviarInteractivo: (destinatario, payload, opciones = {}) =>
-      sock.sendMessage(destinatario, payload, opciones)
+    enviarTexto: (destinatario, texto, opciones = {}) => enviar(destinatario, { text: texto }, opciones),
+    enviarInteractivo: (destinatario, payload, opciones = {}) => enviar(destinatario, payload, opciones)
   }));
 }

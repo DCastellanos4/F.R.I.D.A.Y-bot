@@ -100,6 +100,10 @@ export function crearSqliteOutboxStore(db) {
     UPDATE channel_responses SET estado = 'pendiente', enviando_en = NULL
     WHERE id = @id AND estado = 'enviando'
   `);
+  const updRespuestaIncerta = db.prepare(`
+    UPDATE channel_responses SET estado = 'incierto', enviando_en = NULL
+    WHERE id = @id AND estado = 'enviando'
+  `);
   const updEnviosIncertos = db.prepare(`
     UPDATE channel_responses SET estado = 'incierto'
     WHERE estado = 'enviando' AND enviando_en < @corte
@@ -296,9 +300,18 @@ export function crearSqliteOutboxStore(db) {
       return updRespuestaEnviando.run({ id, ahora: aIso(ahora) }).changes === 1;
     },
 
-    /** El envio FALLO (el canal no lo confirmo): vuelve a pendiente y se reintenta. */
+    /** Fallo pre-envio verificado (el mensaje NO salio): vuelve a pendiente y se reintenta. */
     volverRespuestaAPendiente(id) {
       updRespuestaVolverPendiente.run({ id });
+    },
+
+    /**
+     * El intento de envio pudo haber llegado al proveedor (timeout, corte
+     * de socket, rechazo del SDK tras intentar): se cierra a 'incierto'
+     * de inmediato y NUNCA se reenvia automaticamente.
+     */
+    marcarRespuestaIncerta(id) {
+      updRespuestaIncerta.run({ id });
     },
 
     /**

@@ -201,7 +201,7 @@ test('entrega: muerte con envio resuelto sin marcar cierra a incierto y NUNCA re
   db.close();
 });
 
-test('entrega: fallo de envio confirmado vuelve a pendiente y reintenta', async () => {
+test('entrega: SOLO fallo pre-envio verificado vuelve a pendiente y reintenta', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'davis-deliver-retry-'));
   const db = abrirBaseDatos(path.join(dir, 'j.db'));
   ejecutarMigraciones(db);
@@ -212,12 +212,45 @@ test('entrega: fallo de envio confirmado vuelve a pendiente y reintenta', async 
   store.encolarRespuesta({ jobId: idJob, canal: 'whatsapp', destinatario: 'u', payload: { texto: 'resp' } });
   const d = crearEntregadorRespuestas({
     outboxStore: store, intervaloMs: 20,
-    canales: { whatsapp: { canal: 'whatsapp', enviarTexto: async () => { intentos += 1; if (intentos === 1) throw new Error('canal caido'); } } }
+    canales: { whatsapp: { canal: 'whatsapp', enviarTexto: async () => {
+      intentos += 1;
+      if (intentos === 1) {
+        // Sesion inexistente: el adaptador garantiza que el mensaje no salio.
+        throw Object.assign(new Error('sin sesion abierta'), { esFalloPreEnvioVerificado: true });
+      }
+    } } }
   });
   d.iniciar();
   for (let i = 0; i < 100 && intentos < 2; i++) await new Promise((r) => setTimeout(r, 20));
   await d.cerrar();
-  assert.equal(intentos, 2, 'fallo confirmado: reintento y exito');
+  assert.equal(intentos, 2, 'fallo pre-envio verificado: reintento y exito');
   assert.equal(store.respuestasPendientes({ canal: 'whatsapp' }).length, 0);
+  assert.equal(store.respuestasIncertas().length, 0);
+  db.close();
+});
+
+test('entrega: timeout ambiguo tras el intento cierra a incierto y NUNCA reintenta', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'davis-deliver-timeout-'));
+  const db = abrirBaseDatos(path.join(dir, 'j.db'));
+  ejecutarMigraciones(db);
+  const store = crearSqliteOutboxStore(db);
+  const { crearEntregadorRespuestas } = await import('../../src/workers/responseDeliverer.js');
+  let envios = 0;
+  const idJob = store.publicar({ canal: 'whatsapp', tipo: 'mensaje_entrante', payload: { userId: 'u', text: 'x' } });
+  store.encolarRespuesta({ jobId: idJob, canal: 'whatsapp', destinatario: 'u', payload: { texto: 'resp' } });
+  // Canal faux: el mensaje llega al socket pero el SDK rechaza por timeout.
+  // Eso NO prueba que WhatsApp no lo recibiera.
+  const canalAmbiguo = { canal: 'whatsapp', enviarTexto: async () => {
+    envios += 1; // el intento salio hacia el proveedor
+    throw new Error('Timed Out'); // sin marca de pre-envio: resultado incierto
+  } };
+  const d = crearEntregadorRespuestas({ outboxStore: store, intervaloMs: 20, canales: { whatsapp: canalAmbiguo } });
+  d.iniciar();
+  await new Promise((r) => setTimeout(r, 150));
+  await d.cerrar();
+  assert.equal(envios, 1, 'timeout ambiguo: un solo intento, cero reenvios ciegos');
+  assert.equal(store.respuestasPendientes({ canal: 'whatsapp' }).length, 0, 'no vuelve a pendiente');
+  const inciertas = store.respuestasIncertas();
+  assert.equal(inciertas.length, 1, 'queda incierta y visible para reconciliacion');
   db.close();
 });
