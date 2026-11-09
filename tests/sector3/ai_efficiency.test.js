@@ -247,3 +247,16 @@ test('evidencia minima no reinyecta esquemas ni configuracion y no altera explic
   } });
   assert.equal(n, 1);
 });
+
+
+test('guardia inventario no borra negaciones ni explicaciones ajenas o referencias de confianza', async () => {
+  const { corregirInventarioInventado } = await import('../../src/core/selectiveContext.js');
+  for (const t of [
+    'No tengo un procesador de datos estructurados ni un modulo de busqueda web.',
+    'En tu app tienes un modulo de busqueda web y un procesador de datos estructurados.',
+    'Tengo un ejemplo para tu app: modulo de busqueda web.',
+    'No dispongo de un modulo de busqueda web.',
+    'Confio en tu modulo de busqueda web, no hablo de mis capacidades.',
+    'Puedo resumir una pagina web concreta y consultar noticias con fuentes.'
+  ]) assert.equal(corregirInventarioInventado(t), t);
+});

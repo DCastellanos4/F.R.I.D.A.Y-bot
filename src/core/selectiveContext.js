@@ -45,7 +45,7 @@ export function corregirInventarioInventado(texto) {
   // siempre presente es la defensa general; esto no pretende validar toda
   // respuesta ni bloquear explicaciones tecnicas sobre otros sistemas.
   const t = String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  const autoDescripcion = /(?:dentro llevo|dispongo de|cuento con|tengo un|mis (?:modulos|capacidades))/.test(t);
+  const autoDescripcion = /^\s*dentro llevo un conjunto modular de capacidades(?: que se activan bajo demanda)?\s*:/i.test(t);
   const moduloInventado = /modulo de busqueda web|procesador de datos estructurados/.test(t);
   if (!autoDescripcion || !moduloInventado) return texto;
   return 'Puedo consultar el clima, gestionar recordatorios y mensajes WhatsApp programados, guardar y buscar memoria/notas/contactos, consultar noticias y resumir enlaces, buscar productos sin comprar, consultar el servidor y transporte de Madrid, y ayudarte con estudio, carrera y registros personales. Algunas funciones requieren configuracion; eso no significa que esten conectadas. No tengo un buscador web general ni un motor autonomo de procesamiento JSON, CSV o XML.';
