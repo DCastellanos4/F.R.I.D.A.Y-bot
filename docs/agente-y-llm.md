@@ -39,11 +39,18 @@ una garantia de cuota del proveedor. Detalle en [eficiencia-ia.md](eficiencia-ia
 `src/core/selectiveContext.js` compone el system prompt por piezas:
 
 - `NUCLEO_PERSONALIDAD`: identidad y tono de D.A.V.I.S., siempre presente.
-- `INSTRUCCIONES_DOMINIO`: reglas por area, solo cuando el mensaje las toca.
-- `CAPACIDADES_MINIMAS`: recordatorio corto de que si tiene herramientas.
-- `RESUMEN_CAPACIDADES_FACTUAL`: descripcion determinista de las
-  capacidades reales, generada desde un inventario verificado, para que el
-  modelo describa lo que existe y no improvise modulos inexistentes.
+- `CAPACIDADES_MINIMAS`: lista corta de capacidades verificadas, con el
+  recordatorio de que una funcion implementada no prueba que su integracion
+  este configurada; siempre presente.
+- `INSTRUCCIONES_DOMINIO`: reglas por area, filtradas segun las
+  herramientas ofrecidas en esa llamada.
+- Un bloque contextual de "capacidades reales y limite honesto" que solo se
+  anade cuando la pregunta trata sobre las propias capacidades.
+
+Aparte del prompt, `RESUMEN_CAPACIDADES_FACTUAL` no se envia al modelo: es
+la respuesta determinista que sustituye la salida cuando la consulta es
+puramente "que sabes hacer" (y solo hubo llamadas de descubrimiento), para
+que la autodescripcion no elabore mas alla del inventario verificado.
 
 ## Catalogo de herramientas y enrutado
 

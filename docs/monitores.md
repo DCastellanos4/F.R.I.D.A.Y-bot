@@ -2,8 +2,12 @@
 
 Vigilancia proactiva del propio sistema. Toda alerta viaja por
 `alertQueueService` (`data/alerts_queue.json`) y la entrega el proceso de
-WhatsApp en el chat del propietario, respetando el modo nocturno. Ningun
-monitor actua sobre terceros ni toma acciones destructivas: miden y avisan.
+WhatsApp en el chat del propietario, respetando el modo nocturno. Los
+monitores miden y avisan; ninguno actua sobre terceros ni toca datos de
+usuario. Dos automatismos acotados si actuan sobre el propio sistema: el
+auto-reinicio de contenedores (`dockerMonitorService`, con cortacircuitos
+anti flapping) y la purga de descargas temporales al superar el umbral de
+disco (`diskStorageService`).
 
 ## Salud del servidor
 

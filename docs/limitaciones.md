@@ -22,8 +22,9 @@ las brechas declaradas en la revision actual.
 Lectura de tickets por foto, EMT Madrid, radar de InfoJobs, Google
 Calendar, Home Assistant, qBittorrent, Wake-on-LAN, estimacion de factura
 Oracle, subida de backups a Object Storage, fuente en vivo de precios de
-viajes. En todos los casos el bot declara la carencia y nunca simula la
-funcion.
+viajes. Cada pieza declara la carencia cuando falta su credencial y nunca
+simula la funcion; el estado concreto en cada despliegue depende de esas
+variables de entorno.
 
 ## Limites de fuentes de datos
 
@@ -44,8 +45,9 @@ funcion.
   reenvia solo (reenviar podria duplicar un mensaje que si llego).
 - El backup manual no garantiza consistencia con escritores concurrentes;
   el snapshot consistente es el de despliegue, con procesos parados.
-- Observabilidad (OpenTelemetry/Prometheus/Grafana) apagada por defecto;
-  requiere activacion en el VPS (ver [observabilidad.md](observabilidad.md)).
+- Observabilidad (OpenTelemetry/Prometheus/Grafana): opcional y apagada
+  por defecto en el codigo; su activacion es por entorno
+  (ver [observabilidad.md](observabilidad.md)).
 - Presupuesto Groq: preventivo por proceso, no garantia de cuota; las
   cabeceras del proveedor mandan.
 
