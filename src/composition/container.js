@@ -38,6 +38,7 @@ import { crearHttpCrossEncoderReranker } from '../adapters/outbound/rerankers/ht
 import { esDocumentoSensibleRag, registrarBuscadorHibridoPorDefecto } from '../services/semanticMemoryService.js';
 import { crearPipelineAsincrono } from './asyncPipeline.js';
 import { crearAuditLogService } from '../security/auditLogService.js';
+import { crearAnonimizadorPreLlm } from '../adapters/outbound/llm/piiPreLlmAdapter.js';
 
 /**
  * Persistencia activa: DAVIS_PERSISTENCE=json (por defecto, comportamiento
@@ -128,7 +129,16 @@ function crearPipelineDesdeEntorno({ procesar, overrides }) {
 }
 
 export function crearContenedor(overrides = {}) {
-  const llmProvider = overrides.llmProvider ?? crearLLMServiceProviderAdapter();
+  let llmProvider = overrides.llmProvider ?? crearLLMServiceProviderAdapter();
+  // RNF-04 PII PRE-LLM: con DAVIS_PII_PRELLM=1 todo texto hacia el LLM
+  // cloud sale anonimizado y la respuesta se restaura en local (mapa por
+  // peticion, nunca enviado). Lista blanca acotada por
+  // DAVIS_PII_PERMITIR (csv): NO es un permiso general, solo evita
+  // enmascarar identificadores ya autorizados (p. ej. el propio numero).
+  if (overrides.piiPreLlm === true || (overrides.piiPreLlm === undefined && process.env.DAVIS_PII_PRELLM === '1')) {
+    const permitir = (process.env.DAVIS_PII_PERMITIR || '').split(',').map((p) => p.trim()).filter(Boolean);
+    llmProvider = crearAnonimizadorPreLlm({ inner: llmProvider, permitir });
+  }
   // RF-02: enrutador de inferencia especulativa. INERTE por defecto: sin
   // DAVIS_SLM_MODEL el adaptador es null, no se construye router y toda la
   // clasificacion sigue la via cloud historica. La via nube del router es

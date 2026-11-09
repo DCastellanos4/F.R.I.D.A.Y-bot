@@ -16,6 +16,30 @@ import { afirmarMemoryRepository } from '../ports/outbound/MemoryRepositoryPort.
 import { conSpan, hashSesion } from '../observability/telemetry.js';
 import { clasificarIntencionConModelo } from './intentRouterService.js';
 
+// Confirmaciones desnudas: mismo vocabulario que la guardia historica
+// (specialistRouterService); estos mensajes SIEMPRE llegan al agente.
+const CONFIRMACIONES_DESNUDAS = new Set([
+  'si', 'ok', 'vale', 'hazlo', 'procede', 'adelante', 'continua', 'dale',
+  'confirmo', 'correcto', 'exacto', 'eso', 'yes', 'no'
+]);
+
+function esConfirmacionDesnuda(texto) {
+  const limpio = String(texto || '').trim().toLowerCase().replace(/[.!,?¿¡]+/g, '').trim();
+  return CONFIRMACIONES_DESNUDAS.has(limpio);
+}
+
+function ultimoTurnoPideConfirmacion(historial) {
+  if (!Array.isArray(historial)) return false;
+  for (let i = historial.length - 1; i >= 0; i--) {
+    const turno = historial[i];
+    const rol = turno && (turno.role || turno.rol);
+    if (rol !== 'assistant') continue;
+    const contenido = String((turno && (turno.content ?? turno.contenido)) || '').toLowerCase();
+    return /responde "si"|hasta que confirmes|confirmacion|confirmar|lo registro hasta/.test(contenido);
+  }
+  return false;
+}
+
 export function crearMessageProcessor({ llmProvider, memoryRepository, metricasClasificador, crearStoreMetricas, rutaArchivoIdempotenciaDefecto, accesoTenants = null, enrutadorInferencia = null, buscadorHibrido = null } = {}) {
   if (llmProvider !== undefined) afirmarLLMProvider(llmProvider);
   if (memoryRepository !== undefined) afirmarMemoryRepository(memoryRepository);
@@ -77,7 +101,13 @@ export function crearMessageProcessor({ llmProvider, memoryRepository, metricasC
       // agente. Cualquier otro desenlace sigue el camino historico
       // EXACTO. La clasificacion se cachea por mensaje normalizado, asi
       // que cuando el agente clasifica despues reutiliza la misma.
-      if (enrutadorInferencia && typeof enrutadorInferencia.responderConversacion === 'function') {
+      // GUARDIAS (la confianza autodeclarada del SLM NO es seguridad):
+      //  - mensajes de confirmacion desnuda ('si', 'vale', 'hazlo'...)
+      //    NUNCA se interceptan: pueden confirmar una accion pendiente.
+      //  - si el ultimo turno del asistente pide confirmacion, tampoco.
+      //  - aqui no se ejecuta ninguna herramienta: solo se devuelve texto.
+      if (enrutadorInferencia && typeof enrutadorInferencia.responderConversacion === 'function'
+          && !esConfirmacionDesnuda(inbound.text) && !ultimoTurnoPideConfirmacion(historial)) {
         try {
           const clas = await clasificarIntencionConModelo(inbound.text, opcionesConPuertos);
           if (clas && clas.intencion === 'conversacion' && clas.confianza >= 0.6) {
