@@ -25,6 +25,16 @@ const { chatCompletion, reiniciarCircuitoModelos } = await import('../../src/cor
 const { mensajeErrorParaUsuario } = await import('../../src/services/errorSanitizerService.js');
 const { consultarJarvisAislado: consultarJarvis } = await import('../helpers/jarvisAislado.js');
 
+const { crearPresupuestoGroq } = await import('../../src/core/groqBudget.js');
+const presupuestosSimulados = new WeakMap();
+function presupuestoSimulado(cliente) {
+  if (!presupuestosSimulados.has(cliente)) {
+    let reloj = 0;
+    presupuestosSimulados.set(cliente, crearPresupuestoGroq({ ahora: () => reloj, esperar: async ms => { reloj += ms; } }));
+  }
+  return presupuestosSimulados.get(cliente);
+}
+
 const PRIMARIO = 'openai/gpt-oss-120b';
 const RESPALDO = 'openai/gpt-oss-20b';
 
@@ -72,7 +82,7 @@ function paramsBasicos(cliente, extra = {}) {
     messages: [{ role: 'user', content: 'prueba' }],
     provider: 'groq',
     apiKey: 'gsk_test',
-    options: { crearCliente: () => cliente, esperar: async () => {}, ...extra }
+    options: { crearCliente: () => cliente, presupuestoGroq: presupuestoSimulado(cliente), esperar: async () => {}, ...extra }
   };
 }
 
@@ -231,7 +241,7 @@ function chatConRouterReal(cliente) {
     ...peticion,
     provider: 'groq',
     apiKey: 'gsk_test',
-    options: { ...(peticion.options || {}), crearCliente: () => cliente, esperar: async () => {} }
+    options: { ...(peticion.options || {}), crearCliente: () => cliente, presupuestoGroq: presupuestoSimulado(cliente), esperar: async () => {} }
   });
 }
 

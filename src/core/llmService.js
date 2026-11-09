@@ -2,6 +2,7 @@ import { Ollama } from 'ollama';
 import OpenAI from 'openai';
 import { config } from '../config/config.js';
 import { limitarHerramientasParaProveedor } from './tools.js';
+import { presupuestoGroqPara, reiniciarPresupuestosGroq } from './groqBudget.js';
 
 // Ventana de contexto y limite de generacion configurables por entorno.
 // Subirlos en un VPS ARM es una HIPOTESIS a medir (latencia y memoria suben
@@ -400,6 +401,11 @@ export async function chatCompletion({
     payloadBase.tools = limitarHerramientasParaProveedor(tools, messages);
   }
 
+  const esGroq = cloudConfig.provider === 'groq' || (cloudConfig.baseUrl || '').includes('groq.com');
+  const presupuesto = esGroq ? (options.presupuestoGroq || presupuestoGroqPara(cloudConfig)) : null;
+  // Reservar salida explicitamente, tambien en primera llamada/auxiliares.
+  if (presupuesto && !payloadBase.max_tokens) payloadBase.max_tokens = NUM_PREDICT_DEFECTO;
+  let estadisticaPresupuesto = null;
   let res = null;
   let modeloUsado = null;
   let ultimoError = null;
@@ -418,7 +424,18 @@ export async function chatCompletion({
     for (let intento = 1; intento <= MAX_INTENTOS_POR_MODELO; intento++) {
       intentosTotales++;
       try {
-        res = await client.chat.completions.create({ ...payloadBase, model: candidato });
+        const payload = { ...payloadBase, model: candidato };
+        const enviar = async () => {
+          const solicitud = client.chat.completions.create(payload);
+          // OpenAI SDK expone cabeceras sin guardar contenido en telemetria.
+          if (typeof solicitud?.withResponse === 'function') return solicitud.withResponse().then(r => ({ data: r.data, headers: r.response?.headers }));
+          return { data: await solicitud }; // cliente guionizado/compatible
+        };
+        if (presupuesto) {
+          const medido = await presupuesto.ejecutar(payload, enviar);
+          res = medido.data;
+          estadisticaPresupuesto = medido.presupuesto;
+        } else res = (await enviar()).data;
         modeloUsado = candidato;
         break;
       } catch (err) {
@@ -498,6 +515,7 @@ export async function chatCompletion({
     provider: cloudConfig.provider,
     usage: normalizarUsoProveedor(res, cloudConfig.provider),
     usageIntentosNoReportado: intentosTotales > 1,
+    presupuesto: estadisticaPresupuesto,
     model: modeloUsado,
     degradado: modeloUsado !== modeloPrincipal,
     failover: { modeloPrincipal, motivoPrincipal: modeloUsado !== modeloPrincipal ? (motivoSaltoPrincipal || 'temporal') : null, cadena, saltadosPorCircuito, intentos: intentosTotales },
@@ -525,6 +543,7 @@ const ESPERA_MAX_REINTENTO_MS = 10000;
 /** Solo para pruebas: limpia el circuito de modelos aparcados. */
 export function reiniciarCircuitoModelos() {
   circuitoModelos.clear();
+  reiniciarPresupuestosGroq();
 }
 
 function modelosRespaldoGroq() {
