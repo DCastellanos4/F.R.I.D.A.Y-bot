@@ -34,10 +34,11 @@ tal en el propio texto.
 - [Tenancy: fundamentos locales](tenancy.md)
 - [Matriz local del minimo multiusuario](tenancy-auditoria-minima-local.md)
 
-### Hoja de ruta
+### Hoja de ruta y evolucion
 - [Roadmap: 50 funciones](roadmap-50-funciones.md): plan de trabajo. Es una
   hoja de ruta, no un catalogo de capacidades entregadas; el estado real de
   cada funcion esta en [Capacidades](capacidades.md).
+- [ERS: Arquitectura proximo nivel](ers-arquitectura-proximo-nivel.md): especificacion de requisitos del sistema para evolucion a arquitectura distribuida asincrona, inferencia especulativa hibrida, base de datos vectorial industrial y Model Context Protocol (MCP).
 
 ## Convenciones
 
