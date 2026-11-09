@@ -22,12 +22,15 @@
  *
  * LIMITES DECLARADOS: solo contenido textual de mensajes (string) y
  * arguments de tool_calls (string JSON). Multipart hacia la nube:
- * fail-closed (rechazo). Destino local probado (Ollama loopback, p. ej.
- * ticketVision qwen2.5vl local): pasa intacto, nada sale a la nube.
+ * fail-closed (rechazo). Destino local PROBADO (Ollama cuyo destino
+ * resuelto - peticion, OLLAMA_HOST, config o defecto - es loopback,
+ * p. ej. ticketVision qwen2.5vl local): pasa intacto. Un OLLAMA_HOST
+ * remoto se trata como nube: nunca PII en claro por config implicita.
  *
  * Strict Policy: Zero Emojis.
  */
 import { crearPiiAnonymizer } from '../../../security/piiAnonymizerService.js';
+import { config } from '../../../config/config.js';
 import { afirmarLLMProvider } from '../../../ports/outbound/LLMProviderPort.js';
 
 /**
@@ -37,20 +40,34 @@ import { afirmarLLMProvider } from '../../../ports/outbound/LLMProviderPort.js';
  * @param {string[]} [deps.permitir]    Identificadores autorizados que NO se
  *        enmascaran (lista blanca acotada; NO es un permiso general).
  */
-// Local probado: provider ollama/local Y (sin baseUrl => cliente local
-// por defecto 127.0.0.1:11434, o baseUrl cuyo host es loopback). Cualquier
-// otra combinacion se considera nube y exige anonimizacion.
-function esDestinoLocalProbado(peticion) {
-  const prov = String(peticion?.provider || '').toLowerCase();
-  if (prov !== 'ollama' && prov !== 'local') return false;
-  const base = peticion?.baseUrl;
-  if (!base) return true;
+// Local probado: provider ollama/local Y destino loopback RESUELTO, no
+// etiquetado. Sin baseUrl explicito el destino real lo decide el cliente
+// Ollama: OLLAMA_HOST del entorno, luego config (ollamaHost), luego el
+// defecto 127.0.0.1:11434. Un OLLAMA_HOST remoto convierte la llamada en
+// NUBE aunque la peticion no diga baseUrl: se anonimiza como cualquier
+// otra salida. Cualquier otra combinacion exige anonimizacion.
+function esHostLoopback(base) {
   try {
     const host = new URL(String(base)).hostname;
     return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
   } catch {
     return false;
   }
+}
+
+function resolverDestinoOllama(peticion) {
+  return peticion?.baseUrl
+    || peticion?.host
+    || process.env.OLLAMA_HOST
+    || config.llm?.ollamaHost
+    || config.ollamaHost
+    || 'http://127.0.0.1:11434';
+}
+
+function esDestinoLocalProbado(peticion) {
+  const prov = String(peticion?.provider || '').toLowerCase();
+  if (prov !== 'ollama' && prov !== 'local') return false;
+  return esHostLoopback(resolverDestinoOllama(peticion));
 }
 
 export function crearAnonimizadorPreLlm({ inner, anonimizador = null, permitir = [] } = {}) {

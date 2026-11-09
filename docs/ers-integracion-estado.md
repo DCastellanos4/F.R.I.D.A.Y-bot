@@ -47,12 +47,23 @@ del documento, no del codigo.
   efectos (herramienta + args anonimizados): la RESPUESTA de la
   herramienta no es visible en esa costura y queda fuera (limite
   declarado; cerrarlo requiere una costura post-ejecucion en el agente).
-- RNF-04 PII PRE-LLM: adaptador envolvente del proveedor cloud activo
-  con `DAVIS_PII_PRELLM=1` (anonimiza contenido y arguments hacia la
-  nube, restaura en local, mapa por peticion nunca enviado, estructura e
-  ids intactos, fail-closed, streaming bloqueado de momento). Limite:
-  sin ese env el camino historico NO anonimiza; la activacion en
-  produccion es decision del canal.
+- RNF-04 PII PRE-LLM: proteccion central en `llmService.chatCompletion`
+  activa con `DAVIS_PII_PRELLM=1`. TODA llamada pasa por la envolvente,
+  incluidos los imports directos anteriores a la construccion del
+  contenedor (envolvente perezosa si la raiz aun no registro la suya);
+  anonimiza contenido y arguments hacia la nube, restaura en local, mapa
+  por peticion nunca enviado, estructura e ids intactos, fail-closed,
+  streaming bloqueado de momento. Multipart hacia la nube: RECHAZADO
+  (fail-closed); destino local solo se respeta con destino RESUELTO
+  loopback (peticion, OLLAMA_HOST, config o defecto 127.0.0.1:11434):
+  un OLLAMA_HOST remoto se trata como nube y se anonimiza, nunca PII en
+  claro por config implicita. ticketVision local (Ollama qwen2.5vl en
+  loopback) conserva transporte y proveedor. Limites: sin ese env el
+  camino historico NO anonimiza; la activacion en produccion es decision
+  del canal; el bypass conversacional aplica las mismas guardias de
+  salida (zero-emoji, caida al agente si finge accion ejecutada o
+  promesa futura) como heuristica de defensa en profundidad, NO como
+  certificacion de seguridad.
 - La cadena SHA256 es evidencia de integridad, NO firma criptografica ni
   inmutabilidad. Residual EXPLICITO: la anonimizacion PII es determinista,
   asi que el hash de un valor PII permite VERIFICAR una sospecha (ataque

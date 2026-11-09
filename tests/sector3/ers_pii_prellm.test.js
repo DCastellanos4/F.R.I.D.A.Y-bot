@@ -201,3 +201,33 @@ test('proteccion central: el despachador de llmService enruta por la envolvente 
     if (prev === undefined) delete process.env.DAVIS_PII_PRELLM; else process.env.DAVIS_PII_PRELLM = prev;
   }
 });
+
+test('pre-LLM: OLLAMA_HOST remoto sin baseUrl explicito NO es local probado (nunca PII en claro por config implicita)', async () => {
+  const prev = process.env.OLLAMA_HOST;
+  process.env.OLLAMA_HOST = 'https://ollama.remoto.example:11434';
+  try {
+    const inner = innerGrabador({ message: { role: 'assistant', content: 'ok' } });
+    const llm = crearAnonimizadorPreLlm({ inner });
+    await llm.chatCompletion({ provider: 'ollama', messages: [{ role: 'user', content: 'mi telefono es +34611222333' }] });
+    assert.ok(!inner.recibidas[0].messages[0].content.includes('+34611222333'), 'OLLAMA_HOST remoto: anonimizado');
+    await assert.rejects(
+      llm.chatCompletion({ provider: 'ollama', messages: [{ role: 'user', content: [{ type: 'text', text: 'x' }] }] }),
+      /multipart/i
+    );
+  } finally {
+    if (prev === undefined) delete process.env.OLLAMA_HOST; else process.env.OLLAMA_HOST = prev;
+  }
+});
+
+test('pre-LLM: OLLAMA_HOST loopback sin baseUrl explicito sigue siendo local probado', async () => {
+  const prev = process.env.OLLAMA_HOST;
+  process.env.OLLAMA_HOST = 'http://localhost:11434';
+  try {
+    const inner = innerGrabador({ message: { role: 'assistant', content: 'ok' } });
+    const llm = crearAnonimizadorPreLlm({ inner });
+    await llm.chatCompletion({ provider: 'ollama', messages: [{ role: 'user', content: 'mi telefono es +34611222333' }] });
+    assert.match(inner.recibidas[0].messages[0].content, /\+34611222333/);
+  } finally {
+    if (prev === undefined) delete process.env.OLLAMA_HOST; else process.env.OLLAMA_HOST = prev;
+  }
+});
