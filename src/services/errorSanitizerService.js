@@ -37,6 +37,9 @@ export function esErrorDeLimite(textoError) {
  */
 export function mensajeErrorParaUsuario(err, { contexto = 'solicitud', numero } = {}) {
   const crudo = String(err?.message || err || '');
+  if (err?.name === 'PresupuestoTemporalError') {
+    return 'La siguiente llamada no cabe ahora en el presupuesto preventivo de tokens y no se ha enviado. Divide la consulta o intentalo de nuevo en unos minutos.';
+  }
   if (err?.name === 'CuotaAgotadaError') {
     // Sin afirmaciones sobre acciones: desde aqui no se sabe si algo se
     // ejecuto; el agente informa del resultado parcial por su propio camino.

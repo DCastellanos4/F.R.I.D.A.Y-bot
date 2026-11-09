@@ -77,6 +77,8 @@ export function crearPresupuestoGroq({ limite = 8000, ahora = Date.now, esperar 
         const esperaMs = ahora() - inicio;
         try {
           const { data, headers } = await enviar();
+          // El proveedor puede contabilizar al completar, no al enviar.
+          reserva.hasta = ahora() + 60000;
           // Sin usage fiable se conserva la reserva completa. No presumir hits.
           const u = data?.usage;
           if (Number.isSafeInteger(u?.prompt_tokens) && u.prompt_tokens >= 0 && Number.isSafeInteger(u?.completion_tokens) && u.completion_tokens >= 0) {
@@ -85,6 +87,7 @@ export function crearPresupuestoGroq({ limite = 8000, ahora = Date.now, esperar 
           observar(headers);
           return { data, presupuesto: { entradaEstimada: estimacion.entrada, salidaReservada: estimacion.salida, esperaMs } };
         } catch (err) {
+          reserva.hasta = ahora() + 60000;
           observar(err?.headers);
           // Un error puede haber consumido tokens: reserva conservadora.
           throw err;

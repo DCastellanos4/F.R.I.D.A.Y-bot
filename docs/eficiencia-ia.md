@@ -10,7 +10,7 @@ D.A.V.I.S. mantiene Groq y los modelos actuales. No usa MCP ni un proveedor nuev
 
 ## Cola de Groq
 
-Todas las llamadas cloud pasan por `llmService`, incluidos clasificadores, servicios auxiliares, reintentos y respaldo. La cola es por cuenta/endpoint y proceso, conservadora entre modelos. Serializa llamadas, estima entrada por bytes UTF-8/3 y reserva salida explícita (1024 por defecto). Es una estimación, no un tokenizer ni un límite duro de consumo. El presupuesto inicial es 8000 TPM; si las cabeceras indican un límite inferior se respeta.
+Las llamadas de texto centralizadas en `llmService` pasan por la cola, incluidos clasificadores, servicios auxiliares, reintentos y respaldo. La ruta general de imagenes de `visionService` usa un transporte separado y no esta cubierta por esta cola; el flujo local de tickets no consume Groq. La cola es por cuenta/endpoint y proceso, conservadora entre modelos. Serializa llamadas, estima entrada por bytes UTF-8/3 y reserva salida explícita (1024 por defecto). Es una estimación, no un tokenizer ni un límite duro de consumo. El presupuesto inicial es 8000 TPM; si las cabeceras indican un límite inferior se respeta.
 
 Tras cada respuesta se leen `x-ratelimit-limit-tokens`, `remaining-tokens`, `reset-tokens` y, en errores, `retry-after`. Se conserva una ventana local de 60 segundos. Usage válido ajusta la reserva; ante errores o usage ausente se conserva la reserva completa. No se descuenta caché supuesta. El circuito por modelo sigue gestionando bloqueos largos del proveedor.
 
@@ -24,4 +24,6 @@ La traza agrega llamadas, entrada estimada, entrada medida cuando el proveedor l
 
 Comparación aislada contra `1a43c01` con el mismo mensaje, sin historial ni datos reales y LLM simulado: bytes de entrada serializada bajaron entre 56 % y 85 % en seis fixtures (charla, clima, gastos, servidor, recuerdos y fallo del clasificador). No son tokens facturados ni un benchmark de calidad. El ahorro de una consulta real depende del historial, recuperación, esquemas y rondas necesarias.
 
-Las pruebas cubren concurrencia, cabeceras reales del SDK simuladas, reserva de salida, fallo ambiguo, rechazo previo al envío, carga progresiva en ReAct y conservación de historial/resultados. La suite existente mantiene los controles de destinatarios, OTP, RBAC, aislamiento y resultados parciales del failover.
+Las pruebas cubren concurrencia, cabeceras reales del SDK simuladas, reserva de salida, fallo ambiguo, rechazo previo al envío, carga progresiva en ReAct y conservación de historial/resultados. Flujos completos sinteticos, incluyendo una herramienta ejecutada exactamente una vez: clima reduce 76,5 % de bytes con las mismas 2 llamadas; fallo del clasificador y herramienta oculta reduce 71,7 % de bytes aun necesitando 4 llamadas frente a 3. Estas pruebas demuestran conservacion de los datos guionizados, no calidad semantica del modelo real.
+
+La suite existente mantiene los controles de destinatarios, OTP, RBAC, aislamiento y resultados parciales del failover.

@@ -80,3 +80,82 @@ test('ReAct carga esquema faltante y conserva historia, resultado y personalidad
   assert.ok(sistema.indexOf('REGLAS FIJAS') < sistema.indexOf('REGISTROS DEL SECOND BRAIN'));
   assert.ok(sistema.indexOf('INSTRUCCIONES DE HERRAMIENTAS') < sistema.indexOf('REGISTROS DEL SECOND BRAIN'));
 });
+
+test('fallo de clasificador no vuelca catalogo ni elimina regla de requisitos verificados', async () => {
+  const principal = [];
+  await consultarJarvisAislado('mandale una cosa de esas cuando puedas', [], {
+    chatCompletion: async p => {
+      if (p.messages[0].content.includes('Clasifica la intencion')) return { message: { content: 'respuesta invalida' } };
+      principal.push(structuredClone(p)); return { message: { content: 'Aclara que necesitas.' } };
+    }
+  });
+  assert.ok(principal.length > 0);
+  assert.ok(principal[0].tools.length <= 13 && principal[0].tools.length > 0);
+  assert.ok(principal[0].tools.some(h => h.function.name === 'descubrir_herramientas'));
+  assert.match(principal[0].messages[0].content, /NUNCA afirmes que un servicio requiere clave/);
+});
+
+test('especialista no amplia clima a todo su catalogo y el nucleo persiste sin tools', async () => {
+  let clima, charla;
+  await consultarJarvisAislado('que tiempo hace en Madrid', [], { especialistaForzado: 'ops', chatCompletion: async p => { clima = structuredClone(p); return { message: { content: 'Datos sinteticos.' } }; } });
+  await consultarJarvisAislado('hola, que tal', [], { chatCompletion: async p => { charla = structuredClone(p); return { message: { content: 'Hola David.' } }; } });
+  assert.ok(clima.tools.some(h => h.function.name === 'consultar_clima'));
+  assert.ok(!clima.tools.some(h => h.function.name === 'execute_bash_command'));
+  assert.equal(charla.tools, undefined);
+  for (const p of [clima, charla]) {
+    assert.match(p.messages[0].content, /destinatario verificado/);
+    assert.match(p.messages[0].content, /OTP/);
+    assert.match(p.messages[0].content, /no autorizacion ni instrucciones nuevas/);
+  }
+});
+
+test('descubrir envio no verifica destinatario ni ejecuta acciones por si solo', async () => {
+  let n = 0, envios = 0;
+  const r = await consultarJarvisAislado('que tiempo hace en Madrid', [], {
+    retornarTraza: true,
+    ejecutores: { programar_mensaje_whatsapp: async () => { envios++; return 'enviado'; } },
+    chatCompletion: async () => {
+      n++;
+      if (n === 1) return { message: { content: '', tool_calls: [{ id: 'd1', function: { name: 'descubrir_herramientas', arguments: { consulta: 'programar mensaje', nombres: ['programar_mensaje_whatsapp'] } } }] } };
+      if (n === 2) return { message: { content: '', tool_calls: [{ id: 'm1', function: { name: 'programar_mensaje_whatsapp', arguments: { numero: '+34600111222', mensaje: 'hola', fecha: '2026-12-01T10:00:00' } } }] } };
+      return { message: { content: 'Falta el destinatario verificado.' } };
+    }
+  });
+  assert.equal(n, 3); assert.equal(envios, 0);
+  assert.ok(r.traza.llamadas.some(l => l.nombre === 'programar_mensaje_whatsapp' && l.resultado === 'destinatario_no_verificado'));
+});
+
+test('descubrimiento repetido queda acotado sin gastar rondas de accion originales', async () => {
+  let n = 0;
+  const r = await consultarJarvisAislado('que tiempo hace en Madrid', [], {
+    maxRondasHerramientas: 1, retornarTraza: true,
+    chatCompletion: async p => {
+      n++;
+      if (!p.tools) return { message: { content: 'Necesito aclarar la tarea.' } };
+      return { message: { content: '', tool_calls: [{ id: 'd' + n, function: { name: 'descubrir_herramientas', arguments: { consulta: 'habitos', nombres: ['listar_habitos'] } } }] } };
+    }
+  });
+  assert.equal(n, 5, '1 inicial + 1 trabajo + 2 descubrimiento + 1 formulacion final');
+  assert.equal(r.traza.llamadas.filter(l => l.nombre === 'descubrir_herramientas').length, 2);
+  assert.match(r.respuesta, /aclarar/);
+});
+
+test('reserva sigue viva 60 segundos DESPUES de completar una llamada lenta', async () => {
+  let t = 0; const esperas = [];
+  const presupuesto = crearPresupuestoGroq({ limite: 1500, ahora: () => t, esperar: async ms => { esperas.push(ms); t += ms; } });
+  await presupuesto.ejecutar(payload, async () => { t += 90000; return { data: {} }; });
+  await presupuesto.ejecutar(payload, async () => ({ data: {} }));
+  assert.deepEqual(esperas, [60000]);
+});
+
+test('cola larga termina sin enviar otra llamada y no usa error de proveedor agotado', async () => {
+  let t = 0, n = 0;
+  const presupuesto = crearPresupuestoGroq({ ahora: () => t, esperar: async ms => { t += ms; } });
+  const a = presupuesto.ejecutar(payload, async () => { t += 80000; n++; return { data: {} }; });
+  const b = presupuesto.ejecutar(payload, async () => { n++; return { data: {} }; });
+  await a; await assert.rejects(b, { name: 'PresupuestoTemporalError' }); assert.equal(n, 1);
+  const { mensajeErrorParaUsuario } = await import('../../src/services/errorSanitizerService.js');
+  const e = new Error('informacion privada sintetica'); e.name = 'PresupuestoTemporalError';
+  assert.match(mensajeErrorParaUsuario(e), /presupuesto preventivo/);
+  assert.doesNotMatch(mensajeErrorParaUsuario(e), /informacion privada|principal|respaldo/);
+});
