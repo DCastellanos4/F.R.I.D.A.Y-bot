@@ -65,3 +65,12 @@ Las rutas preparadas de servicios excluidos NO equivalen a capacidad E2E multius
 - Retirar clave tenant del cache: falla alternancia A/B.
 - Contrato deportivo previo `{noticias}` contra RSS real `{articulos}`: rojo real; corregido admitiendo ambos contratos sin cambiar adaptadores owner existentes.
 - Todas las mutaciones se revirtieron antes de la validacion final. No se cambia produccion.
+
+---
+
+Nota de despliegue (9 noviembre 2026): la base inmutable de esta matriz fue
+`2092d0a`, pero los candidatos locales que describe (incluido el puente de
+WhatsApp de `c4f9089`) ya forman parte del despliegue de produccion en
+`6219338`. Las compuertas publica y de runtime siguen cerradas y no hay
+tenants reales; la matriz sigue siendo valida como descripcion del
+preparado, no de un carril activo.

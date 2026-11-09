@@ -113,3 +113,16 @@ Candidato LOCAL WhatsApp posterior a82d6923 (9 noviembre 2026, NO desplegado):
 Pendiente de una activacion posterior, no presupuestada por esta preparacion: revision y despliegue coordinado del SHA probado; seleccion/autorizacion de identidades reales exactas, herramientas y cifras de cuota; comprobar canal/socket y ruta de respuesta bajo esa identidad; politica explicita para contenido no soportado; liberar gate de codigo y runtime solo tras revision del alcance minimo. No hay aprobacion para dar de alta a nadie, rellenar permisos/cuotas reales o abrir gates. Envios y monitores generales para terceros siguen fuera del minimo; no son necesarios para cerrar el puente de consultas de texto.
 
 Validacion local del puente WhatsApp: el comando aislado de ejecucion local tiene techo120s y el runner completo con defaultNode (2CPU disponibles) lo supera por pruebas Renfe lentas. `DAVIS_TEST_CONCURRENCY=8 node tests/run_all.js` permite ejecutar TODAS las mismas suites en modo concurrencia8, sin filtros ni skips adicionales y manteniendo auditoria de formato/aislamiento del harness. Variable ausente conserva argumentos historicos, sin flag ni cambio de default. Se valida entero1..128; invalido falla cerrado antes del runner hijo. CI y puerta VPS invocan `node tests/run_all.js` sin esa variable: siguen default y no se modifican workflows/deploy ni sus puertas. No presentar modalidad8 como finalizacion del intento default que se corto por tiempo.
+
+## Actualizacion de despliegue (9 noviembre 2026)
+
+Los candidatos locales descritos arriba como "NO desplegado" (metering con
+`tenant_medicion_pendiente`, composicion autenticada con
+`tenant_herramientas`, y el puente de WhatsApp) se mergearon a `main` y
+estan desplegados en produccion desde el SHA
+`62193385c96aa6c313edc25caf3114b33280a192` (commits `4d20203`, `6c2f40e`,
+`c4f9089`). El despliegue no cambia el estado funcional: ambas compuertas
+siguen cerradas (`AISLAMIENTO_COMPLETO = false` en codigo,
+`DAVIS_TENANTS_ENABLED` sin definir), no hay altas ni identidades
+registradas, y todo mensaje externo conserva el comportamiento historico.
+Las limitaciones y exclusiones descritas arriba siguen vigentes.
