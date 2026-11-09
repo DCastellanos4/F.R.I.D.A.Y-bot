@@ -139,11 +139,25 @@ test('los puertos validan su contrato', () => {
 
 test('el adaptador de canal envia por el socket con la forma historica', async () => {
   const envios = [];
-  const sock = { sendMessage: async (jid, contenido, opciones) => { envios.push([jid, contenido, opciones]); } };
+  // Sesion abierta simulada: Baileys puebla sock.user tras connection=open.
+  const sock = { user: { id: '34600000000:55@s.whatsapp.net' }, sendMessage: async (jid, contenido, opciones) => { envios.push([jid, contenido, opciones]); } };
   const canal = crearWhatsAppChannelAdapter(sock);
   assert.equal(canal.canal, 'whatsapp');
   await canal.enviarTexto('jid-1', 'hola', { quoted: 'msg' });
   assert.deepEqual(envios, [['jid-1', { text: 'hola' }, { quoted: 'msg' }]]);
+});
+
+test('el adaptador de canal sin sesion abierta falla pre-envio verificado (nunca llega al socket)', async () => {
+  let llamadas = 0;
+  // Sin sock.user la sesion NO esta abierta (Baileys la puebla en connection=open):
+  // el mensaje no puede salir, fallo pre-envio verificado.
+  const sock = { sendMessage: async () => { llamadas += 1; } };
+  const canal = crearWhatsAppChannelAdapter(sock);
+  await assert.rejects(
+    canal.enviarTexto('jid-1', 'hola'),
+    (error) => error.esFalloPreEnvioVerificado === true && /sin sesion/.test(error.message)
+  );
+  assert.equal(llamadas, 0, 'pre-envio: sendMessage jamas invocado');
 });
 
 test('la ruta de persistencia es inyectable en guardar y buscar (base para SQLite)', async () => {

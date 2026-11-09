@@ -38,7 +38,7 @@ const bridge=crearPuenteWhatsAppTenants({tenantRepository:repo,limitesStore:lim,
 // Unico bypass del ensayo: omite gate, no identidad, RBAC, cuotas ni adapter.
 const ensayo={procesar:bridge.procesarEnAmbito};
 const msg=(jid,text='hola',extra={})=>({key:{remoteJid:jid,fromMe:false,id:'fixture-'+Math.random()},message:{conversation:text},messageTimestamp:1794229800,...extra});
-function socket(){const sent=[];return {sent,sendMessage:async(jid,payload)=>{sent.push({jid,payload});return {key:{id:'test-send'}};},readMessages:async()=>{},sendPresenceUpdate:async()=>{}};}
+function socket(){const sent=[];return {sent,user:{id:'34600000000:55@s.whatsapp.net'},sendMessage:async(jid,payload)=>{sent.push({jid,payload});return {key:{id:'test-send'}};},readMessages:async()=>{},sendPresenceUpdate:async()=>{}};}
 async function deliver(m,p=ensayo,deps={}){const sock=socket();await procesarMensajesEntrantes(sock,{type:'notify',messages:[m]},{puenteWhatsAppTenants:p,...deps});return sock.sent;}
 function requestTool(name,args={}){plan={name,arguments:args};cap=[];calls=0;}
 
