@@ -17,8 +17,11 @@ requieren una comprobacion del entorno antes de proponer comandos finales.
 | PII central | DAVIS_PII_PRELLM=1 | En proceso; DAVIS_PII_PERMITIR lista acotada opcional |
 | Traductor/entrevista | DAVIS_AUX_CHAT_COMPLETION=1 | Reparacion opt-in del proveedor central |
 
-El adaptador BullMQ existe pero NO es la cola elegida por la bandera del
-pipeline en este corte. Su variable DAVIS_REDIS_URL no activa ese wiring.
+El pipeline preparado elige la cola SQLite por defecto; con DAVIS_QUEUE=redis
+usa el puente de IDs BullMQ con SQLite como fuente unica y reclamos con token.
+DAVIS_REDIS_URL solo fija el destino loopback, no activa ese wiring por si sola.
+No se ha activado Redis en el servidor. Migracion 010, drenaje y limites:
+ver docs/rf01-queue-selector-and-bridge-scope.md.
 TEI sirve el reranker; los embeddings de este wiring se generan por Ollama.
 Ninguna tabla implica que esos servicios o modelos esten disponibles hoy.
 

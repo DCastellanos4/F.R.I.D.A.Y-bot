@@ -37,7 +37,7 @@ import { crearQdrantVectorStoreAdapter } from '../adapters/outbound/vectorstores
 import { crearSqliteFts5SparseAdapter } from '../adapters/outbound/retrieval/sqliteFts5SparseAdapter.js';
 import { crearHttpCrossEncoderReranker } from '../adapters/outbound/rerankers/httpCrossEncoderRerankerAdapter.js';
 import { esDocumentoSensibleRag, registrarBuscadorHibridoPorDefecto } from '../services/semanticMemoryService.js';
-import { crearPipelineAsincrono } from './asyncPipeline.js';
+import { crearPipelineAsincrono, validarSelectorCola } from './asyncPipeline.js';
 import { crearAuditLogService } from '../security/auditLogService.js';
 import { crearAnonimizadorPreLlm } from '../adapters/outbound/llm/piiPreLlmAdapter.js';
 
@@ -130,6 +130,7 @@ function crearPipelineDesdeEntorno({ procesar, overrides }) {
 }
 
 export function crearContenedor(overrides = {}) {
+  validarSelectorCola(); // antes de proveedores, persistencia, migraciones o workers
   let llmProvider = overrides.llmProvider ?? crearLLMServiceProviderAdapter();
   // RNF-04 PII PRE-LLM: con DAVIS_PII_PRELLM=1 todo texto hacia el LLM
   // cloud sale anonimizado y la respuesta se restaura en local (mapa por

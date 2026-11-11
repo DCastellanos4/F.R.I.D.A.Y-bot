@@ -301,6 +301,16 @@ export const MIGRACIONES = [
         PRIMARY KEY (tenant_id, ticket)
       );
     `
+  },
+  {
+    version: 10,
+    nombre: '010_outbox_claim_lease',
+    sql: `
+      ALTER TABLE outbox_events ADD COLUMN transporte TEXT NOT NULL DEFAULT 'sqlite';
+      ALTER TABLE outbox_events ADD COLUMN claim_token TEXT;
+      ALTER TABLE outbox_events ADD COLUMN lease_until TEXT;
+      CREATE INDEX idx_outbox_lease ON outbox_events(estado, lease_until);
+    `
   }
 ];
 

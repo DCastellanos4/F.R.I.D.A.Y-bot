@@ -22,6 +22,11 @@ del documento, no del codigo.
   checkpointInicial). Wiring local B1: contenedor instancia el pipeline
   con `DAVIS_ASYNC_PIPELINE=1` (ACK inmediato + alta en caliente del
   canal de entrega; whatsappBot registra el adaptador solo con ese env).
+  El corte LOCAL posterior agrega migracion 010 y puente ID-only elegido
+  con `DAVIS_QUEUE=redis`: token/lease SQLite cercan checkpoint, auditoria,
+  respuesta y cierre; incertidumbres sobreviven a multiples recuperaciones.
+  No hay Redis vivo/activacion/ensayo real. El default SQLite se conserva;
+  ver docs/rf01-queue-selector-and-bridge-scope.md para limites y drenaje.
 - **RF-02**: modulos SLM (delta revisado) + wiring en el clasificador
   conservando umbral 0.6 y cache; conversacion nivel-1 consumida en
   messageProcessor con guardias (confirmacion desnuda o pendiente siempre
@@ -119,7 +124,9 @@ del documento, no del codigo.
 
 ## Infraestructura pendiente (gratuita; se coordina por el canal, no la autoriza este documento)
 
-- Redis + `npm i bullmq ioredis` (carril BullMQ del RF-01).
+- Redis gratuito local, autenticacion/persistencia/configuracion revisadas
+  y ventana de migracion/drenaje (carril BullMQ preparado, no activado).
+  La presencia de dependencias en package.json no prueba el broker vivo.
 - Qdrant en Docker (bind 127.0.0.1, api-key), `ollama pull bge-m3`,
   TEI cpu + bge-reranker-base. Versiones/digests por fijar cuando se
   coordine la activacion por el canal.
