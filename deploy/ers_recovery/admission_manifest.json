@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "mode": "LOCAL_REHEARSAL_ONLY",
+  "productionAdmission": false,
+  "requiredGates": [
+    "source_revision_reviewed",
+    "remote_ancestry_reconciled",
+    "owner_effect_scope",
+    "deploy_actor_exclusion_shared_ofd",
+    "two_live_committed_holders",
+    "schema2_fresh_exact_process_baseline",
+    "daemon_socket_source_custody",
+    "effective_scheduler_watcher_constraints",
+    "interpreter_execution_binding",
+    "loaded_unit_source_and_invocation",
+    "exact_cgroup_containment_and_resource_admission",
+    "single_retained_recovery_route",
+    "whatsapp_log_pid_interval_binding",
+    "backup_scope_and_restore_limits",
+    "inflight_external_effect_reconciliation"
+  ],
+  "actions": ["STOP_PENDING", "VERIFY_STOP", "REHEARSAL", "START_PENDING", "VERIFY_START", "OBSERVE_STABILITY", "VERIFY_EXIT"],
+  "observationWindowSeconds": 75,
+  "maxObservationGapSeconds": 5,
+  "retry": false,
+  "automaticRestore": false,
+  "automaticDelete": false,
+  "automaticSave": false
+}
