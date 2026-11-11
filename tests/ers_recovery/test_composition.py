@@ -141,10 +141,29 @@ class Composition(unittest.TestCase):
         self.prepared();s=self.store.read();s['apps']['0']['baseline']['config']='other'
         with self.store.transaction():self.store.write(s)
         with self.assertRaises(InvalidState):self.session.stop_intent(0)
+    def test_snapshot_rollback_cannot_repeat_start_candidate(self):
+        self.prepared();self.session.stop_intent(0);snapshot=self.store.read()
+        self.assertEqual(self.start(),'SYNTHETIC_START_INTENT_ONLY')
+        with self.store.transaction():self.store.write(snapshot)
+        with self.assertRaisesRegex(InvalidState,'DIVERGED'):self.start()
+        with self.assertRaises(InvalidState):self.start()
+    def test_forged_prepared_without_ack_cannot_start(self):
+        forged=self.store.read();forged['phase']='LOCAL_PREPARED';forged['apps']['0']['intent']='STOP_PENDING'
+        with self.store.transaction():self.store.write(forged)
+        with self.assertRaisesRegex(InvalidState,'DIVERGED'):self.start()
+    def test_lock_chmod_insecure_blocks(self):
+        self.prepared();os.chmod(self.private/'journal.lock',0o666)
+        with self.assertRaisesRegex(InvalidState,'CUSTODY_CHANGED'):self.session.stop_intent(0)
+    def test_store_lock_fd_replaced_blocks(self):
+        self.prepared();target=self.d/'other';target.touch(mode=0o600)
+        fd=os.open(target,os.O_RDWR)
+        try:os.dup2(fd,self.store.lock_fd)
+        finally:os.close(fd)
+        with self.assertRaisesRegex(InvalidState,'CUSTODY_CHANGED'):self.session.stop_intent(0)
     def test_source_changed_blocks(self):
         self.prepared();s=self.store.read();s['source']='different'
         with self.store.transaction():self.store.write(s)
         with self.assertRaises(InvalidState):self.session.stop_intent(0)
-        self.assertEqual(self.store.read()['phase'],'GAP')
+        self.assertEqual(self.store.read()['phase'],'LOCAL_PREPARED')
 
 if __name__=='__main__':unittest.main()

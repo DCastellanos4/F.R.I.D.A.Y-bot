@@ -5,6 +5,7 @@ this journal. Caller supplies a private directory and source/config digests,
 never env, logs, tokens, message text or conversation data.
 """
 from contextlib import contextmanager
+import copy
 from dataclasses import asdict
 import fcntl
 import json
@@ -49,9 +50,13 @@ class Store:
     def _validate(self):
         d = os.lstat(self.directory)
         lock = os.stat('journal.lock', dir_fd=self.directory_fd, follow_symlinks=False)
+        own = os.fstat(self.lock_fd)
         if ((d.st_dev, d.st_ino) != self.directory_key or not stat.S_ISDIR(d.st_mode)
                 or d.st_uid != os.getuid() or stat.S_IMODE(d.st_mode) != 0o700
-                or (lock.st_dev, lock.st_ino) != self.lock_key or lock.st_nlink != 1):
+                or (lock.st_dev, lock.st_ino) != self.lock_key or lock.st_nlink != 1
+                or (own.st_dev, own.st_ino) != self.lock_key or own.st_nlink != 1
+                or any(not stat.S_ISREG(s.st_mode) or s.st_uid != os.getuid()
+                       or stat.S_IMODE(s.st_mode) != 0o600 for s in (lock, own))):
             raise InvalidState('JOURNAL_CUSTODY_CHANGED')
 
     @contextmanager
@@ -129,13 +134,16 @@ class Session:
             try: store.read()
             except FileNotFoundError: pass
             else: raise InvalidState('JOURNAL_EXISTS_NO_REPLAY_OR_ADOPTION')
-            store.write({'epoch': self.epoch, 'source': source, 'owner': self.owner,
-                         'phase': 'CREATED', 'apps': {str(a.app_id): {'baseline': asdict(a), 'intent': None} for a in apps},
-                         'productionAdmission': False})
+            initial = {'epoch': self.epoch, 'source': source, 'owner': self.owner,
+                       'phase': 'CREATED', 'apps': {str(a.app_id): {'baseline': asdict(a), 'intent': None} for a in apps},
+                       'productionAdmission': False}
+            store.write(initial)
+            self.committed = copy.deepcopy(initial)
 
     def _persist(self, state):
         try:
             self.store.write(state)
+            self.committed = copy.deepcopy(state)
         except BaseException:
             # fsync/replace may have landed even if their caller saw an error.
             # This live object cannot keep planning after ambiguous durability.
@@ -144,6 +152,9 @@ class Session:
 
     def _guard(self, state):
         if self.failed: raise InvalidState('SESSION_INVALIDATED')
+        if state != self.committed:
+            self.failed = True
+            raise InvalidState('JOURNAL_DIVERGED_FROM_LIVE_COMMITMENTS')
         try:
             current = self.lease.validate()
             if (identity() != self.owner or current['epoch'] != self.epoch

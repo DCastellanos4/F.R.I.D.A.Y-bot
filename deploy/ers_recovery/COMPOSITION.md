@@ -69,3 +69,27 @@ NOT prove power-loss durability or filesystem behavior under kernel failure.
 The next review is of these explicit local invariants, not a claim that the
 production maintenance window is ready. No previous harness is reconstructed.
 No CI, bot runtime, deployment workflow or installation configuration changes.
+
+## Focal journal correction
+
+The live Session keeps a deep copy of its last successfully persisted complete
+state. Every transition compares the read journal against that in-memory state,
+not just its epoch or a counter stored in JSON. Restoring an older STOP_PENDING
+snapshot after START_PENDING or forging LOCAL_PREPARED before ACK invalidates
+the live Session. Any persistence exception still invalidates the object even
+if replace may already have landed. A fresh object never adopts an old journal.
+This prevents replay within the controlled local API; it is not protection
+against an actor that can modify process memory, root, or power-loss rollback.
+
+Each journal transaction also revalidates pathname AND open-lock-descriptor
+identity, uid, regular-file mode, exact0600 and link count. The private directory
+is an additional custody boundary, not a reason to skip those checks.
+
+The unchanged lease primitive validates CURRENT flock/path/descriptor state.
+It cannot retrospectively detect an external LOCK_UN, intervening holder and
+relock of the same OFD, or external close followed by fd-number reuse for a new
+acquisition of the same inode. Only the controlled API, which never unlocks or
+reopens its lease reference, supports its continuity assumption. Exposing raw
+FDs to untrusted code defeats that assumption. More journal metadata cannot
+repair such an unobserved gap. No universal or tamper-proof historical custody
+is claimed here. Production integration remains unimplemented and unapproved.
