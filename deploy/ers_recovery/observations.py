@@ -35,6 +35,9 @@ def integer(value, low=0):
 CONFIG_FIELDS = ('name','pm_exec_path','pm_cwd','exec_interpreter','exec_mode',
                  'autorestart','watch','cron_restart','kill_timeout','listen_timeout',
                  'restart_delay','exp_backoff_restart_delay','max_restarts','max_memory_restart')
+REQUIRED_CONFIG_FIELDS = frozenset(CONFIG_FIELDS[:5])
+OPTIONAL_CONFIG_FIELDS = frozenset(CONFIG_FIELDS[5:])
+OBSERVATION_SCHEMA = 2
 
 
 @domain_errors
@@ -50,21 +53,30 @@ def process_record(raw, expected_id, expected_name):
     status=env.get('status')
     if status not in ('online','stopped','stopping','launching','errored'):
         raise Unverifiable('UNKNOWN_PM2_STATUS')
-    projected={}
+    projected={};presence={}
     for key in CONFIG_FIELDS:
-        if key not in env:raise Unverifiable('INCOMPLETE_OPERATIONAL_CONFIG')
+        if key not in env:
+            if key in REQUIRED_CONFIG_FIELDS:raise Unverifiable('INCOMPLETE_OPERATIONAL_CONFIG')
+            presence[key]='absent';continue
         value=env[key]
-        if value is not None and type(value) not in (str,int,bool):raise Unverifiable('UNEXPECTED_CONFIG_TYPE')
+        watch_array=(key=='watch' and type(value) is list and len(value)<=128
+                     and all(type(v) is str and len(v)<=4096 for v in value)
+                     and sum(len(v) for v in value)<=16384)
+        if value is not None and type(value) not in (str,int,bool) and not watch_array:raise Unverifiable('UNEXPECTED_CONFIG_TYPE')
         if isinstance(value,str) and len(value)>4096:raise Unverifiable('CONFIG_TOO_LONG')
-        projected[key]=value
-    for key in ('pm_exec_path','pm_cwd','exec_interpreter'):
+        presence[key]='null' if value is None else 'value'
+        projected[key]=value.copy() if watch_array else value
+    for key in ('pm_exec_path','pm_cwd'):
         if not isinstance(projected[key],str) or not projected[key].startswith('/'):
             raise Unverifiable('ABSOLUTE_CONFIG_PATH_REQUIRED')
+    interpreter=projected['exec_interpreter']
+    if type(interpreter) is not str or not (interpreter=='node' or interpreter.startswith('/')):
+        raise Unverifiable('UNSUPPORTED_INTERPRETER_LEXEME')
     if status=='online' and pid==0:raise Unverifiable('ONLINE_WITHOUT_PID')
-    return {'id':expected_id,'name':expected_name,'pid':pid,'status':status,
+    return {'observationSchema':OBSERVATION_SCHEMA,'id':expected_id,'name':expected_name,'pid':pid,'status':status,
             'restart_time':integer(env.get('restart_time')),'pm_uptime':integer(env.get('pm_uptime')),
-            'config':projected,
-            'configDigest':hashlib.sha256(json.dumps(projected,sort_keys=True).encode()).hexdigest()}
+            'config':projected,'configPresence':presence,
+            'configDigest':hashlib.sha256(json.dumps({'schema':OBSERVATION_SCHEMA,'values':projected,'presence':presence},sort_keys=True).encode()).hexdigest()}
 
 
 @domain_errors
@@ -202,6 +214,8 @@ def unit_custody(manager, proc_identity, proc_cgroup, *, expected_unit, expected
 
 @domain_errors
 def reconcile_observation(intent, baseline, current, *, original_absent, current_start):
+    if baseline.get('observationSchema')!=OBSERVATION_SCHEMA or current.get('observationSchema')!=OBSERVATION_SCHEMA:
+        return 'HOLD_OBSERVATION_SCHEMA'
     if (baseline['id'],baseline['configDigest'])!=(current['id'],current['configDigest']):
         return 'HOLD_CHANGED_RECORD'
     if current['status']=='online':

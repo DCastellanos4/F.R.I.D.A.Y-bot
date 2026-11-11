@@ -24,10 +24,12 @@ function project(rows, expected) {
     for (const f of fields) {
       // No missing field is filled from a stale ecosystem. Unavailable config
       // blocks this read's interpretation. No env/unknown field is copied.
-      if (!(f in e)) fail();
-      const v=e[f];if (v!==null && !['string','boolean','number'].includes(typeof v)) fail();
+      if (!(f in e)) {if(fields.indexOf(f)<5)fail();continue;}
+      const v=e[f];const watchArray=f==='watch'&&Array.isArray(v)&&v.length<=128&&v.every(x=>typeof x==='string'&&x.length<=4096)&&v.reduce((a,x)=>a+x.length,0)<=16384;
+      if (v!==null && !['string','boolean','number'].includes(typeof v)&&!watchArray) fail();
+      if(typeof v==='number'&&!Number.isSafeInteger(v))fail();
       if (typeof v==='string'&&v.length>4096)fail();
-      config[f]=v;
+      config[f]=watchArray?v.slice():v;
     }
     if (!Number.isSafeInteger(row.pid)||row.pid<0||!Number.isSafeInteger(e.restart_time)||e.restart_time<0||!Number.isSafeInteger(e.pm_uptime)||e.pm_uptime<0)fail();
     if (!['online','stopped','stopping','launching','errored'].includes(e.status))fail();

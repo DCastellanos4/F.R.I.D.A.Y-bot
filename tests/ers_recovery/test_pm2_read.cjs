@@ -8,6 +8,17 @@ assert(selected[0].processStart);
 assert.throws(()=>project([row(0),row(0)],{0:'api',1:'wa'}));
 assert.throws(()=>project([row(0)],{0:'api',1:'wa'}));
 const bad=row(0);bad.pm2_env.status='other';assert.throws(()=>project([bad,row(1)],{0:'api',1:'wa'}));
-const incomplete=row(0);delete incomplete.pm2_env.watch;assert.throws(()=>project([incomplete,row(1)],{0:'api',1:'wa'}));
+const incomplete=row(0);delete incomplete.pm2_env.pm_cwd;assert.throws(()=>project([incomplete,row(1)],{0:'api',1:'wa'}));
 const stopped=row(0);stopped.pid=0;stopped.pm2_env.status='stopped';assert.equal(project([stopped,row(1)],{0:'api',1:'wa'})[0].processStart,null);
 console.log('6 projection probes PASS; no real PM2 transport or daemon used');
+
+const optional=['autorestart','watch','cron_restart','kill_timeout','listen_timeout','restart_delay','exp_backoff_restart_delay','max_restarts','max_memory_restart'];
+for(const key of optional){
+ const a=row(0);delete a.pm2_env[key];const out=project([a,row(1)],{0:'api',1:'wa'});assert(!Object.hasOwn(out[0].pm2_env,key));
+ const b=row(0);b.pm2_env[key]=null;assert.strictEqual(project([b,row(1)],{0:'api',1:'wa'})[0].pm2_env[key],null);
+}
+const array=row(0);array.pm2_env.watch=['src','public'];const arrayOut=project([array,row(1)],{0:'api',1:'wa'});array.pm2_env.watch.push('changed');assert.deepEqual(arrayOut[0].pm2_env.watch,['src','public']);
+for(const [key,value] of [['watch',[{}]],['watch',Array(129).fill('x')],['cron_restart',['src']],['restart_delay',1.5]]){
+ const a=row(0);a.pm2_env[key]=value;assert.throws(()=>project([a,row(1)],{0:'api',1:'wa'}));
+}
+console.log('9 optional omission/null pairs + bounded watch/rejected arrays/fractional counters PASS; missing never becomes null');

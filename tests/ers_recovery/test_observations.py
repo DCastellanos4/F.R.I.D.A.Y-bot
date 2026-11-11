@@ -22,7 +22,7 @@ class Projection(unittest.TestCase):
         r=self.raw();r['pid']=0
         with self.assertRaises(Unverifiable):process_record(r,0,'api')
     def test_missing_config_hold(self):
-        r=self.raw();del r['pm2_env']['watch']
+        r=self.raw();del r['pm2_env']['pm_cwd']
         with self.assertRaises(Unverifiable):process_record(r,0,'api')
     def test_projection_composes_with_sampled_health_not_rpc_green(self):
         records=project_processes([self.raw(0),self.raw(1)],{0:'api',1:'wa'})
@@ -133,9 +133,51 @@ class Unit(unittest.TestCase):
         m=self.manager();del m['ControlGroup']
         with self.assertRaises(Unverifiable):self.verify(m)
     def test_missing_reconcile_field_domain_error(self):
-        with self.assertRaises(Unverifiable):reconcile_observation('STOP_PENDING',{}, {},original_absent=True,current_start=0)
+        with self.assertRaises(Unverifiable):reconcile_observation('STOP_PENDING',{'observationSchema':2}, {'observationSchema':2},original_absent=True,current_start=0)
     def test_not_running(self):
         m=self.manager();m['SubState']='exited'
         with self.assertRaises(Unverifiable):self.verify(m)
 
 if __name__=='__main__':unittest.main()
+
+class OptionalContract(unittest.TestCase):
+    def raw(self):return Projection().raw()
+    def record(self,r):return process_record(r,0,'api')
+    def test_all_nine_absent_preserved_without_default(self):
+        r=self.raw()
+        for k in OPTIONAL_CONFIG_FIELDS:del r['pm2_env'][k]
+        o=self.record(r)
+        self.assertEqual(sum(v=='absent' for v in o['configPresence'].values()),9)
+        for k in OPTIONAL_CONFIG_FIELDS:self.assertNotIn(k,o['config'])
+    def test_every_optional_absent_null_value_different_digest(self):
+        for k in OPTIONAL_CONFIG_FIELDS:
+            with self.subTest(field=k):
+                a=self.raw();del a['pm2_env'][k];a=self.record(a)
+                b=self.raw();b['pm2_env'][k]=None;b=self.record(b)
+                c=self.raw();c['pm2_env'][k]=1;c=self.record(c)
+                self.assertEqual(a['configPresence'][k],'absent');self.assertEqual(b['configPresence'][k],'null');self.assertEqual(c['configPresence'][k],'value')
+                self.assertEqual(len({x['configDigest'] for x in (a,b,c)}),3)
+                a['start']=9
+                self.assertEqual(reconcile_observation('STOP_PENDING',a,b,original_absent=False,current_start=9),'HOLD_CHANGED_RECORD')
+    def test_every_required_missing_fails(self):
+        for k in REQUIRED_CONFIG_FIELDS:
+            r=self.raw();del r['pm2_env'][k]
+            with self.subTest(field=k),self.assertRaises(Unverifiable):self.record(r)
+    def test_node_alias_is_raw_not_resolved(self):
+        r=self.raw();r['pm2_env']['exec_interpreter']='node';o=self.record(r)
+        self.assertEqual(o['config']['exec_interpreter'],'node')
+        p=self.record(self.raw());self.assertNotEqual(o['configDigest'],p['configDigest'])
+    def test_other_unresolved_interpreter_fails(self):
+        r=self.raw();r['pm2_env']['exec_interpreter']='custom-node'
+        with self.assertRaises(Unverifiable):self.record(r)
+    def test_bounded_watch_array_and_private_copy(self):
+        r=self.raw();r['pm2_env']['watch']=['src','public'];o=self.record(r)
+        self.assertEqual(o['config']['watch'],['src','public'])
+        r['pm2_env']['watch'].append('changed');self.assertEqual(o['config']['watch'],['src','public'])
+    def test_watch_array_not_general_array_permission(self):
+        for field,value in [('watch',[{}]),('watch',['x']*129),('cron_restart',['src'])]:
+            r=self.raw();r['pm2_env'][field]=value
+            with self.subTest(field=field),self.assertRaises(Unverifiable):self.record(r)
+    def test_prior_schema_never_compares_equal(self):
+        r=self.record(self.raw());b=copy.deepcopy(r);b['observationSchema']=1
+        self.assertEqual(reconcile_observation('STOP_PENDING',b,r,original_absent=False,current_start=1),'HOLD_OBSERVATION_SCHEMA')
