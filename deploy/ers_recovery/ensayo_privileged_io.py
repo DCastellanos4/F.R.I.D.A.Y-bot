@@ -177,7 +177,14 @@ class FixedRunner:
     name,value=line.split('=',1)
     if name not in self.properties or name in result or len(value)>4096:raise ContractHold('MANAGER_PROJECTION_SCHEMA')
     result[name]=value
-   if set(result)!=set(self.properties):raise ContractHold('MANAGER_PROJECTION_MISSING')
+   expected=set(self.properties);base=expected-{'ExecStart','ExecStartPre'}
+   if result.get('LoadState')=='not-found':
+    # systemd249 does not attach Service execution properties to an unloaded
+    # unit object. Absence is accepted only with this complete no-adoption
+    # projection. Never fill absent Exec properties with an invented default.
+    absent={'Id':unit,'ActiveState':'inactive','SubState':'dead','MainPID':'0','ControlPID':'0','InvocationID':'','ControlGroup':'','FragmentPath':'','DropInPaths':'','NeedDaemonReload':'no'}
+    if not base<=set(result)<=expected or any(result.get(k)!=v for k,v in absent.items()) or any(result.get(k,'')!='' for k in ('ExecStart','ExecStartPre')):raise ContractHold('MANAGER_NOT_FOUND_CUSTODY')
+   elif set(result)!=expected:raise ContractHold('MANAGER_PROJECTION_MISSING')
    return result
   finally:
    sel.close()

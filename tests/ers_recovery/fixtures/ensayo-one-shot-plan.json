@@ -214,7 +214,7 @@
     "ensayo_prestart_gate.py": "bef15e57b39b4ae3645aa66cc592a52eacca45bbe0575f5761012ffe46704cde",
     "ensayo_principal_bootstrap.py": "967e82588ce7599b786186031d60edacb0fb7baa6a23d39ca92925b2e002e3fa",
     "ensayo_principal_retire.py": "bbd5b811174807272cf875c85f1ddcd6ef99f2a2300d0151ae3dd752c734734b",
-    "ensayo_privileged_io.py": "12ba9568725b1e38464d91f3942c426ba1733912228371d6e991500329c00203",
+    "ensayo_privileged_io.py": "f45e215453f16ef9e9984ab6266495e81140eec163cfde3cff0c0bb4abcd1d55",
     "ensayo_retirement.py": "40ba68cd7142973ede401d95f9fba5eaba394acfdf5e320814b4086942ce2474",
     "ensayo_root_custodian.py": "b45cc0c6dd21593d272a133c2f7e7b5f6fc123d1fd099db943ea60f38e2dfa01",
     "ensayo_root_install.py": "d9a3a221ebe88e4becd683d17d2a4785b96d2c8a9c298d868be7721e0dd27b3f",
