@@ -60,14 +60,31 @@ export function crearWorkerAgente({ cola, procesar, outboxStore, auditoria = nul
     // (nunca se rompe la respuesta al usuario) pero el trabajo se entrega
     // declarando la degradacion, no simulando durabilidad.
     const fallosCheckpoint = [];
+    let fallosAuditoriaResultado = 0;
     // RNF-04: cada accion con efectos se audita UNA vez por trabajo, en el
     // momento de su marca durable (antes de ejecutarse). La respuesta de
-    // la herramienta no es visible en esta costura: queda declarado como
-    // limite (args solamente) en docs/ers-integracion-estado.md.
+    // la herramienta llega por una segunda costura post-wrapper. La marca
+    // previa y el resultado son filas distintas, no una confirmacion de efecto.
     const accionesAuditadas = new Set();
     const opciones = {
       ...(p.opciones && typeof p.opciones === 'object' ? p.opciones : {}),
       checkpointInicial: ultimo ? ultimo.estado : null,
+      // Costura interna post-wrapper: audita cada invocacion observada, no
+      // deduplica dos llamadas reales iguales. La marca previa sigue intacta.
+      onResultadoHerramienta: ({ herramienta, args, estado, respuesta }) => {
+        if (!auditoria) return;
+        try {
+          if (!['retorno', 'error', 'acceso_denegado'].includes(estado)) throw new TypeError('Estado de auditoria no soportado.');
+          auditoria.registrar({
+            tenantId: trabajo.tenantId || 'propietario', herramienta, args,
+            respuesta: { fase: 'post_wrapper', estado, valor: respuesta }
+          });
+        } catch {
+          // Sin mensajes privados en la respuesta ni reintento del efecto.
+          fallosAuditoriaResultado += 1;
+          fallosCheckpoint.push('auditoria_resultado');
+        }
+      },
       onCheckpointRonda: (ronda, estado) => {
         try {
           outboxStore.guardarCheckpoint(trabajo.id, ronda, estado);
@@ -99,6 +116,9 @@ export function crearWorkerAgente({ cola, procesar, outboxStore, auditoria = nul
       destinatario: inbound.userId,
       payload: {
         texto: typeof respuesta === 'string' ? respuesta : String(respuesta ?? ''),
+        ...(fallosAuditoriaResultado > 0
+          ? { auditoriaResultados: 'degradada', fallosAuditoriaResultados: fallosAuditoriaResultado }
+          : {}),
         ...(fallosCheckpoint.length > 0
           ? { durabilidadCheckpoints: 'degradada', fallosCheckpoint: fallosCheckpoint.length }
           : {})

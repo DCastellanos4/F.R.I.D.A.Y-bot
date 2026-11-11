@@ -43,10 +43,23 @@ del documento, no del codigo.
 
 ## Brechas declaradas (no confundir con cumplimiento)
 
-- La auditoria del worker registra la MARCA durable de cada accion con
-  efectos (herramienta + args anonimizados): la RESPUESTA de la
-  herramienta no es visible en esa costura y queda fuera (limite
-  declarado; cerrarlo requiere una costura post-ejecucion en el agente).
+- La auditoria del worker conserva la MARCA durable antes de las acciones
+  con efectos y agrega una fila post-wrapper con hash de la respuesta
+  anonimizada. El nuevo hook usa el nombre del catalogo o `desconocida`.
+  El contenido hasheado incluye fase y estado (`retorno`, `error` o
+  `acceso_denegado`); no hay columnas nuevas de estado ni texto en claro.
+  Un retorno no prueba el efecto externo. El error usa una clase fija, no
+  el texto de la excepcion. Fallos de auditoria del resultado se declaran
+  en los metadatos de la respuesta, sin reintentar la herramienta.
+  Limites: solo invocaciones que llegan a ejecutarHerramientaJarvis con
+  el hook del worker. Guardias previas, dedup/checkpoint bloqueado,
+  herramientas anidadas fuera del wrapper y ejecuciones fuera del worker
+  no quedan cubiertas por este hook. La auditoria previa de intenciones
+  mantiene su contrato historico; no se convierte en prueba de ejecucion.
+  No hay garantia de auditoria completa: una muerte entre el resultado y
+  la fila deja la intencion sin resultado. No se reconstruye ni reejecuta.
+  Sigue siendo cadena SHA256, no firma ni inmutabilidad. Preparacion local
+  detallada en docs/rnf04-audit-result-hook.md, sin activacion en servidor.
 - RNF-04 PII PRE-LLM: proteccion central en `llmService.chatCompletion`
   activa con `DAVIS_PII_PRELLM=1`. TODA llamada pasa por la envolvente,
   incluidos los imports directos anteriores a la construccion del
