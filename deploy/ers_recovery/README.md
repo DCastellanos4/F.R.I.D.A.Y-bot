@@ -26,6 +26,12 @@ process identity, restart counter, launch timestamp, advancing uptime, listener
 ownership and connection evidence. It cannot certify authenticated API
 functionality, message delivery, or unobserved time between samples.
 
+The current delta requires strictly increasing process age and bounds cumulative
+clock drift against the FIRST sample (1000ms total allowance, not per-sample
+credit). ACK ancillary reception uses MSG_CMSG_CLOEXEC before validation.
+Existing-file opens use O_NONBLOCK, so an unexpected FIFO cannot hang before
+the regular-file check. No production timeout guarantee follows from this.
+
 Tests use synthetic files and independent local processes. Run explicitly:
 
     PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/ers_recovery -v

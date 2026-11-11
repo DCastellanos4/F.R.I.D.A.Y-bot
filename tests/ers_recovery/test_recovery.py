@@ -1,3 +1,4 @@
+import array
 import fcntl
 import json
 import os
@@ -11,7 +12,7 @@ import unittest
 
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT))
-from deploy.ers_recovery.lease import Lease, UnsafeLease, identity
+from deploy.ers_recovery.lease import Lease, UnsafeLease, identity, receive_record
 from deploy.ers_recovery.policy import App, recovery, Stability, Health as ProcessHealth
 
 WORKER='''
@@ -118,6 +119,29 @@ sys.stdin.readline()
         self.p.rename(self.d/'old');self.p.touch()
         with self.assertRaises(UnsafeLease):self.lease.validate()
         self.assertFalse(self.busy())
+    def test_fifo_no_writer_rejected_without_blocking(self):
+        fifo=self.d/'fifo';os.mkfifo(fifo)
+        code="from deploy.ers_recovery.lease import Lease;import sys;Lease.acquire_existing(sys.argv[1])"
+        p=subprocess.run([sys.executable,'-c',code,str(fifo)],cwd=ROOT,capture_output=True,text=True,timeout=2)
+        self.assertNotEqual(p.returncode,0);self.assertIn('UNSAFE_LOCK_FILE',p.stderr)
+    def test_ack_descriptor_is_cloexec_before_rejection(self):
+        # Observe flags at the earliest Python-visible receiver boundary,
+        # BEFORE validation closes the unexpected ancillary descriptor.
+        a,b=socket.socketpair(socket.AF_UNIX,socket.SOCK_SEQPACKET)
+        class Inspect:
+            def recvmsg(inner,*args):
+                packet=a.recvmsg(*args)
+                for level,kind,data in packet[1]:
+                    if level==socket.SOL_SOCKET and kind==socket.SCM_RIGHTS:
+                        fds=array.array('i');fds.frombytes(data)
+                        for fd in fds:self.assertFalse(os.get_inheritable(fd))
+                return packet
+        try:
+            b.sendmsg([b'{}'],[(socket.SOL_SOCKET,socket.SCM_RIGHTS,array.array('i',[self.lease.fd]))])
+            before=len(os.listdir('/proc/self/fd'))
+            with self.assertRaises(UnsafeLease):receive_record(Inspect())
+            self.assertEqual(before,len(os.listdir('/proc/self/fd')))
+        finally:a.close();b.close()
     def test_symlink_rejected(self):
         p=self.d/'link';p.symlink_to(self.p)
         with self.assertRaises(OSError):Lease.acquire_existing(p)
@@ -174,6 +198,28 @@ class Health(unittest.TestCase):
     def test_frozen_uptime_rejected(self):
         s=self.observer();self.sample(s,0)
         self.assertTrue(s.sample(5,self.api,self.wa,self.http,api_listener_owned=True,wa_connection_confirmed=True).startswith('HOLD'))
+    def at_age(self,s,t,age):
+        return s.sample(t,ProcessHealth(1,2,0,1000,age),ProcessHealth(3,4,0,1000,age),self.http,api_listener_owned=True,wa_connection_confirmed=True)
+    def test_frozen_each_second_rejected(self):
+        s=self.observer();self.at_age(s,0,100000)
+        self.assertTrue(self.at_age(s,1,100000).startswith('HOLD'))
+    def test_frozen_subsecond_rejected(self):
+        s=self.observer();self.at_age(s,0,100000)
+        self.assertTrue(self.at_age(s,.1,100000).startswith('HOLD'))
+    def test_retrograde_age_rejected(self):
+        s=self.observer();self.at_age(s,0,100000)
+        self.assertTrue(self.at_age(s,1,99999).startswith('HOLD'))
+    def test_slow_drift_cannot_accumulate_tolerance(self):
+        s=self.observer();self.at_age(s,0,100000)
+        for t in range(1,10):self.assertEqual(self.at_age(s,t,100000+t*900),'OBSERVING')
+        self.assertTrue(self.at_age(s,11,109900).startswith('HOLD'))
+    def test_subsecond_real_advance_passes(self):
+        s=self.observer()
+        for n in range(750):self.assertEqual(self.at_age(s,n/10,100000+n*100),'OBSERVING')
+        self.assertEqual(self.at_age(s,75,175000),'OPERATIONAL_EQUIVALENCE_SAMPLED')
+    def test_monotonic_reversal_rejected(self):
+        s=self.observer();self.at_age(s,10,100000)
+        self.assertTrue(self.at_age(s,9,101000).startswith('HOLD'))
     def test_short_window_rejected(self):
         with self.assertRaises(ValueError):Stability(self.http,self.api,self.wa,window=74)
     def test_unknown_http_rejected(self):

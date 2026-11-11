@@ -67,6 +67,7 @@ observation attempt permanently; starting a new attempt is a caller decision.
             raise ValueError('INVALID_PROCESS_BASELINE')
         self.expected = (baseline_api.signature(), baseline_wa.signature())
         self.previous = (baseline_api, baseline_wa)
+        self.initial = None
         self.window, self.max_gap = window, max_gap
         self.first = self.last = None
         self.failed = False
@@ -80,12 +81,22 @@ observation attempt permanently; starting a new attempt is a caller decision.
         if self.last is not None:
             elapsed_ms = (at - self.last) * 1000
             for current, prior in zip((api, wa), self.previous):
+                if current.uptime_ms <= prior.uptime_ms:
+                    bad = True
                 if abs((current.uptime_ms - prior.uptime_ms) - elapsed_ms) > 1000:
+                    bad = True
+            total_ms = (at - self.first) * 1000
+            for current, initial in zip((api, wa), self.initial):
+                # One bounded measurement allowance for the whole attempt,
+                # never a fresh allowance at every sample.
+                if abs((current.uptime_ms - initial.uptime_ms) - total_ms) > 1000:
                     bad = True
         if bad:
             self.failed = True
             return 'HOLD_OBSERVATION_FAILED'
-        if self.first is None: self.first = at
+        if self.first is None:
+            self.first = at
+            self.initial = (api, wa)
         self.last = at
         self.previous = (api, wa)
         if at - self.first >= self.window and min(api.uptime_ms, wa.uptime_ms) < self.window * 1000:

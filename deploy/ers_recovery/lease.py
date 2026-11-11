@@ -41,7 +41,7 @@ def record(channel, value):
 
 
 def receive_record(channel):
-    data, ancillary, flags, _ = channel.recvmsg(4096, socket.CMSG_SPACE(16))
+    data, ancillary, flags, _ = channel.recvmsg(4096, socket.CMSG_SPACE(16), socket.MSG_CMSG_CLOEXEC)
     # Close unsolicited descriptors, including records rejected before JSON parsing.
     for level, kind, payload in ancillary:
         if level == socket.SOL_SOCKET and kind == socket.SCM_RIGHTS:
@@ -65,7 +65,7 @@ class Lease:
     @classmethod
     def acquire_existing(cls, path):
         # Creating or repairing the production lock is outside this primitive.
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK)
         try:
             before = os.lstat(path)
             if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
