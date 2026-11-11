@@ -11,6 +11,7 @@ from .ensayo_privileged_io import RootIO
 from .ensayo_principal_bootstrap import PrincipalBootstrap
 from .ensayo_root_install import Installer
 from .ensayo_intervention import render_control_units
+from .ensayo_retirement import EXECUTOR_NAMES
 CONTROL={'ensayo_privileged_io.py','ensayo_manager_collector.py','ensayo_root_journal.py','ensayo_root_custodian.py','ensayo_scope_fd.py','ensayo_scope_handoff.py','ensayo_runtime_cleanup.py','ensayo_root_install.py','ensayo_control_program.py'}
 
 class SeedJournal:
@@ -34,7 +35,7 @@ class SeedJournal:
   return [c.load_json(v) for v in b.splitlines()]
  def close(self):os.close(self.fd)
 
-def execute_prepared_bundle(m,holder_bytes,control_bytes,*,account_disposition,seed_factory=SeedJournal,principal_factory=PrincipalBootstrap,io_factory=RootIO):
+def execute_prepared_bundle(m,holder_bytes,control_bytes,*,retirement_bytes,account_disposition,seed_factory=SeedJournal,principal_factory=PrincipalBootstrap,io_factory=RootIO):
  """The trusted root operator must bind this exact code+inputs to the approved
  intervention before calling. An agent-created bundle is not that approval.
  All material is validated before creating the single external seed journal.
@@ -43,6 +44,9 @@ def execute_prepared_bundle(m,holder_bytes,control_bytes,*,account_disposition,s
  for name,b in holder_bytes.items():
   if type(b) is not bytes or len(b)>1048576 or hashlib.sha256(b).hexdigest()!=m['sourceFiles'][name]:raise c.ContractHold('BOOTSTRAP_HOLDER_PIN')
  if any(type(b) is not bytes or len(b)>1048576 for b in control_bytes.values()) or account_disposition not in ('REMOVE_IF_EXACT_UNUSED','RETAIN_EXPLICIT_OWNER_ACCEPTED'):raise c.ContractHold('BOOTSTRAP_MATERIAL_OR_ACCOUNT_DECISION')
+ c.exact(retirement_bytes,EXECUTOR_NAMES,'BOOTSTRAP_RETIREMENT_EXECUTOR_SET')
+ if any(type(b) is not bytes or len(b)>1048576 for b in retirement_bytes.values()) or any(retirement_bytes[n]!=holder_bytes[n] for n in c.STAGING_SOURCES) or any(retirement_bytes[n]!=control_bytes[n] for n in set(retirement_bytes)&set(control_bytes)):raise c.ContractHold('BOOTSTRAP_RETIREMENT_SOURCE_PARITY')
+ retirement_pins={n:hashlib.sha256(b).hexdigest() for n,b in retirement_bytes.items()};retirement_root='/opt/ers-retirement/'+c.digest(retirement_pins)
  seed=seed_factory(m);io=io_factory(m);i=m['intervention'];created=[]
  def put(path,b,*,mode=0o444,uid=0,gid=0,directory=False):
   if io.snapshot(path) is not None:raise c.ContractHold('BOOTSTRAP_NO_REPLACE')
@@ -58,6 +62,17 @@ def execute_prepared_bundle(m,holder_bytes,control_bytes,*,account_disposition,s
    if existing is None:put(parent,None,mode=0o755,directory=True)
    elif existing['uid']!=0 or existing['gid']!=0 or existing['mode']!=0o755 or existing['type']!=stat.S_IFDIR:raise c.ContractHold('BOOTSTRAP_PARENT_CUSTODY')
    else:seed.append({'op':'EXISTING_PARENT_NOT_OWNED','path':parent,'key':existing})
+  # External executor survives account/control retirement. Fixed reviewed public
+  # bytes only; explicit separate residual, never imported from deletion targets.
+  if hasattr(io,'allow'):io.allow.update({'/opt/ers-retirement',retirement_root}|{retirement_root+'/'+n for n in retirement_bytes})
+  parent=io.snapshot('/opt/ers-retirement')
+  if parent is None:
+   seed.append({'op':'RETIRE_EXECUTOR_SHARED_INTENT','path':'/opt/ers-retirement'});key=io.create_directory('/opt/ers-retirement',uid=0,gid=0,mode=0o755);seed.append({'op':'RETIRE_EXECUTOR_SHARED_CREATED','path':'/opt/ers-retirement','key':key})
+  elif parent['type']!=stat.S_IFDIR or parent['uid']!=0 or parent['gid']!=0 or parent['mode']!=0o755:raise c.ContractHold('BOOTSTRAP_RETIRE_EXECUTOR_PARENT')
+  if io.snapshot(retirement_root) is not None:raise c.ContractHold('BOOTSTRAP_RETIRE_EXECUTOR_NO_ADOPTION')
+  seed.append({'op':'RETIRE_EXECUTOR_INTENT','path':retirement_root});key=io.create_directory(retirement_root,uid=0,gid=0,mode=0o755);seed.append({'op':'RETIRE_EXECUTOR_CREATED','path':retirement_root,'key':key})
+  for name,b in sorted(retirement_bytes.items()):
+   path=retirement_root+'/'+name;seed.append({'op':'RETIRE_EXECUTOR_INTENT','path':path});key=io.create(path,b,uid=0,gid=0,mode=0o444);seed.append({'op':'RETIRE_EXECUTOR_CREATED','path':path,'key':key})
   # Final roots absent before first account mutation.
   for p in (m['sourceRoot'],m['configRoot'],m['runtimeRoot'],i['controlRoot'],i['canaryRoot'],i['gateRoot']):
    if io.snapshot(p) is not None:raise c.ContractHold('BOOTSTRAP_FINAL_ROOT_COLLISION')
@@ -82,5 +97,12 @@ def execute_prepared_bundle(m,holder_bytes,control_bytes,*,account_disposition,s
   data=b''.join(c.encode(r)+b'\n' for r in seed.rows());path=i['controlRoot']+'/lifecycle.jsonl'
   if io.snapshot(path) is not None:raise c.ContractHold('BOOTSTRAP_LIFECYCLE_COLLISION')
   key=io.create(path,data,uid=0,gid=0,mode=0o600);seed.append({'op':'LIFECYCLE_SEALED','path':path,'key':key})
-  return {'status':'ROOT_FILES_AND_ACCOUNT_PREPARED_NOT_STARTED','seedJournal':str(seed.path),'productionAdmission':False,'accountDisposition':account_disposition,'next':'CAPACITY_RECHECK_GLOBAL_RELOAD_AND_START_REQUIRE_APPROVED_SCOPE'}
+  seed_path=str(seed.path)
+  if hasattr(io,'allow'):io.allow.add(seed_path)
+  seed_original=io.snapshot(seed_path,limit=131072) if isinstance(io,RootIO) else io.snapshot(seed_path)
+  if seed_original is None:raise c.ContractHold('BOOTSTRAP_CLOSED_SEED_RECEIPT_REQUIRED')
+  if isinstance(seed,SeedJournal):
+   seed.check()
+   if (seed_original['dev'],seed_original['ino'])!=seed.key:raise c.ContractHold('BOOTSTRAP_SEED_ORIGINAL_FD_BINDING')
+  return {'retirementExecutorRoot':retirement_root,'retirementExecutorPins':retirement_pins,'seedOriginal':seed_original,'status':'ROOT_FILES_AND_ACCOUNT_PREPARED_NOT_STARTED','seedJournal':str(seed.path),'productionAdmission':False,'accountDisposition':account_disposition,'next':'CAPACITY_RECHECK_GLOBAL_RELOAD_AND_START_REQUIRE_APPROVED_SCOPE'}
  finally:seed.close()

@@ -14,7 +14,9 @@ from deploy.ers_recovery.ensayo_finalizer import Finalizer
 
 class MemoryIO:
  def __init__(self):self.objects={};self.effects=[];self.fail=None;self.nextino=10
- def snapshot(self,p):return copy.deepcopy(self.objects.get(p))
+ def snapshot(self,p):
+  if p=='/LOCAL_SYNTHETIC_SEED':return {'fixture':'FAKE_SEED_NOT_ROOT'}
+  return copy.deepcopy(self.objects.get(p))
  def make(self,p,b,uid,gid,mode,kind):
   if p in self.objects:raise FileExistsError()
   if self.fail==p:raise RuntimeError('SYNTHETIC_CRASH_AFTER_INTENT')
@@ -49,7 +51,7 @@ class Seed(Journal):
 class BundleTests(unittest.TestCase):
  def fixture(self):
   m=manifest();m['groups']=[m['gid']];sources={n:(ROOT/n).read_bytes() for n in c.STAGING_SOURCES};controls={n:(ROOT/n).read_bytes() for n in bootstrap.CONTROL};io=MemoryIO();seed=Seed(m);nss=NSS(m)
-  call=lambda **kw:bootstrap.execute_prepared_bundle(m,sources,controls,account_disposition='REMOVE_IF_EXACT_UNUSED',seed_factory=lambda m:seed,principal_factory=lambda m,j:PrincipalBootstrap(m,j,nss=nss,execute=nss.execute),io_factory=lambda m:io,**kw)
+  call=lambda **kw:bootstrap.execute_prepared_bundle(m,sources,controls,retirement_bytes={n:(ROOT/n).read_bytes() for n in bootstrap.EXECUTOR_NAMES},account_disposition='REMOVE_IF_EXACT_UNUSED',seed_factory=lambda m:seed,principal_factory=lambda m,j:PrincipalBootstrap(m,j,nss=nss,execute=nss.execute),io_factory=lambda m:io,**kw)
   return m,sources,controls,io,seed,nss,call
  def test_complete_bootstrap_pins_configs_journal_no_starts_or_timer(self):
   m,s,controls,io,j,nss,call=self.fixture();result=call();self.assertEqual(result['status'],'ROOT_FILES_AND_ACCOUNT_PREPARED_NOT_STARTED');self.assertTrue(j.closed);self.assertEqual(len(nss.commands),2)

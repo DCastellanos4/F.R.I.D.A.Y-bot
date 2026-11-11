@@ -111,3 +111,5 @@ check is inconsistent with that auth gate and is not copied as validation.
 ## Concrete privileged preparation (LOCAL only)
 
 See [ENSAYO_PRIVILEGED.md](ENSAYO_PRIVILEGED.md) for exact entrypoints, gate-only scope custody, independent pre-release cleanup FD handoff, proposed bounds, external finalizer and unresolved OS/retention gates. Code and fake-syscall tests are not approval to execute root or admit production.
+
+[ENSAYO_RETIREMENT.md](ENSAYO_RETIREMENT.md) adds the LOCAL exact control/seed freeze, immutable ticket, external audit journal and no-retry retirement route. It requires separate owner authority and actual follow-through; no HOST deletion or schedule is created by preparation.

@@ -62,3 +62,13 @@ class Finalizer:
   else:raise c.ContractHold('ROOT_FINALIZER_ACCOUNT_DECISION_MISSING')
   self.manager.invoke('daemon-reload')
   result={'status':'ROOT_FINALIZER_CLOSED_WITH_EXPLICIT_CONTROL_RETENTION','controlRetained':sorted(retain),'retentionSecondsProposed':i['retention']['seconds'],'account':account,'productionAdmission':False};self.j.append({'op':'ROOT_FINALIZER_COMPLETE','result':result});return result
+
+ def finish_and_freeze(self,retirement,*,seed_original,not_before,executor_pins):
+  """External operator route. Journal must be closed before freezing its bytes.
+  Failure leaves residuals/HOLD, never reruns finish or deletes evidence.
+  """
+  retirement.prepare(self.j.rows(),seed_original=seed_original,not_before=not_before,executor_pins=executor_pins,journal=self.j)
+  result=self.finish()
+  rows,lifecycle_original=self.j.seal()
+  frozen=retirement.freeze(rows,seed_original=seed_original,lifecycle_original=lifecycle_original,not_before=not_before,executor_pins=executor_pins)
+  return {'finalizer':result,'retirement':frozen,'status':'FINALIZED_TICKET_PENDING_OWNER_AUTHORITY_NO_SCHEDULE'}

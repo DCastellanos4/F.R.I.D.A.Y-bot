@@ -38,7 +38,7 @@ The account/group name is proposed `ers-ensayo`, non-login, no home creation, no
 
 Disposition is a required explicit execution input: remove the exact original unused account/group, or retain under the owner's explicit decision. It is not a boolean manufactured by a fixture. Userdel/groupdel have no force/home-removal flags, and their refusal leaves a journaled HOLD. Group/account reuse, extra members or unexpected NSS state block retirement.
 
-Control files, mutable lifecycle, shared parents created by bootstrap and the external seed remain explicit residuals. The proposal says24h retention but this delta does not schedule or authorize destruction at24h. A reviewed exact retention-closeout route and follow-through are still required before any operational plan can promise that removal. This does not modify the existing unrelated ciphertext retention task.
+Control files, mutable lifecycle, shared parents created by bootstrap and the external seed remain explicit residuals. See [ENSAYO_RETIREMENT.md](ENSAYO_RETIREMENT.md) for the new LOCAL freeze/ticket/external-operator retirement route and follow-through. It does not schedule or authorize destruction at24h. Audit records, external executor and shared parents remain separately disclosed. This does not modify the existing unrelated ciphertext retention task.
 
 ## Local evidence and remaining gates
 
@@ -46,4 +46,4 @@ Tests inject syscall/NSS/manager boundaries, exercise actual nofollow/no-replace
 
 The semantic transaction fixture is separately updated to model an exact gate-only reservation. Its simulated timer is historical test machinery, not the concrete operational route. It does not stand in for the programs above.
 
-Not yet proved: actual systemd249 property formatting and lifecycle, cgroup FD behavior across real stop/removal, service mount behavior, actual capacity/headroom and selected numeric IDs, loaded sandbox limits, kernel deny/path/socket/proc/capability sentinels, continuity of original shared OFD/flock, both-custodians-dead filesystem recovery and complete timed control-evidence retirement. The current concrete code remains LOCAL review preparation, not operative-ready or safe-to-deploy evidence. No next OS window is implied by a test PASS.
+Not yet proved: actual systemd249 property formatting and lifecycle, cgroup FD behavior across real stop/removal, service mount behavior, actual capacity/headroom and selected numeric IDs, loaded sandbox limits, kernel deny/path/socket/proc/capability sentinels, continuity of original shared OFD/flock, both-custodians-dead filesystem recovery and actual authorized timed control-evidence retirement. The LOCAL retirement route is prepared separately in ENSAYO_RETIREMENT.md. The current concrete code remains LOCAL review preparation, not operative-ready or safe-to-deploy evidence. No next OS window is implied by a test PASS.
