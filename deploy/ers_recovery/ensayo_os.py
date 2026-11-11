@@ -5,7 +5,7 @@ mapping with a distinct evidence class; it cannot attest root or OS containment.
 import hashlib,json,os,re,stat
 from pathlib import Path
 from .unit_contract import digest,encode,ContractHold,ROLES,SOURCES,DENIED
-STAGING_SOURCES=set(SOURCES)|{'ensayo_os.py','ensayo_os_worker.py','ensayo_os_fixture.py'}
+STAGING_SOURCES=set(SOURCES)|{'ensayo_os.py','ensayo_os_worker.py','ensayo_os_fixture.py','ensayo_intervention.py'}
 LIMIT=32768
 HEX=lambda n,v:type(v) is str and re.fullmatch('[a-f0-9]{'+str(n)+'}',v) is not None
 
@@ -15,8 +15,8 @@ def exact(value,keys,label):
 def intpos(v):return type(v) is int and v>0
 
 def validate_staging(m):
- exact(m,{'schema','mode','productionAdmission','epoch','sourceRoot','sourceFiles','python','uid','gid','groups','resources','deniedPaths','configRoot','runtimeRoot','paths','units','configs','limits'},'STAGING_EXACT_MANIFEST_REQUIRED')
- if type(m['schema']) is not int or m['schema']!=1 or m['mode']!='ENSAYO_OS_NO_BOT_EFFECTS' or m['productionAdmission'] is not False:reject('STAGING_MODE')
+ exact(m,{'schema','mode','productionAdmission','epoch','sourceRoot','sourceFiles','python','uid','gid','groups','resources','deniedPaths','configRoot','runtimeRoot','paths','units','configs','limits','intervention'},'STAGING_EXACT_MANIFEST_REQUIRED')
+ if type(m['schema']) is not int or m['schema']!=2 or m['mode']!='ENSAYO_OS_NO_BOT_EFFECTS' or m['productionAdmission'] is not False:reject('STAGING_MODE')
  if not HEX(16,m['epoch']):reject('STAGING_EPOCH')
  if type(m['sourceFiles']) is not dict or set(m['sourceFiles'])!=STAGING_SOURCES or any(not HEX(64,h) for h in m['sourceFiles'].values()):reject('STAGING_SOURCE_SET')
  if m['sourceRoot']!='/opt/ers/'+digest(m['sourceFiles']):reject('STAGING_SOURCE_ROOT_DIGEST')
@@ -31,15 +31,17 @@ def validate_staging(m):
  if any(type(m[k]) is not dict or set(m[k])!=set(ROLES) for k in ('units','configs','resources')):reject('STAGING_ROLES')
  for role in ROLES:
   if m['units'][role]!='ers-ensayo-'+role+'-'+m['epoch']+'.service' or m['configs'][role]!=m['configRoot']+'/'+role+'.json':reject('STAGING_ROLE_PATHS')
-  r=m['resources'][role];exact(r,{'memoryMaxBytes','tasksMax','provenance'},'STAGING_RESOURCE_SHAPE')
-  if any(not intpos(r[k]) for k in ('memoryMaxBytes','tasksMax')) or r['provenance']!='UNAPPROVED_SYNTHETIC_PROPOSAL':reject('STAGING_RESOURCE_PROPOSAL_ONLY')
+  from .ensayo_intervention import budget
+  budget(m['resources'][role])
+ from .ensayo_intervention import validate as validate_intervention
+ validate_intervention(m)
  return m
 
 def render_staging(m):
  validate_staging(m);sources={}
  for role in ROLES:
   r=m['resources'][role]
-  sources[role]='\n'.join(['[Unit]','Description=ERS isolated no-bot staging '+role,'[Service]','Type=simple','User='+str(m['uid']),'Group='+str(m['gid']),'SupplementaryGroups='+' '.join(map(str,m['groups'])),'ExecStart='+m['python']['command']+' -I '+m['sourceRoot']+'/ensayo_os_worker.py --config '+m['configs'][role],'Restart=no','KillMode=control-group','OOMPolicy=stop','MemoryMax='+str(r['memoryMaxBytes']),'TasksMax='+str(r['tasksMax']),'RuntimeDirectory=ers-ensayo-'+m['epoch'],'RuntimeDirectoryMode=0700','RuntimeDirectoryPreserve=yes','UMask=0077','NoNewPrivileges=yes','ProtectSystem=strict','ProtectHome=yes','PrivateTmp=yes','PrivateNetwork=yes','PrivateDevices=yes','RestrictSUIDSGID=yes','LockPersonality=yes','CapabilityBoundingSet=','AmbientCapabilities=','RestrictAddressFamilies=AF_UNIX','InaccessiblePaths='+' '.join(m['deniedPaths']),'ReadOnlyPaths='+m['configRoot']+' '+m['sourceRoot'],'ReadWritePaths='+m['runtimeRoot'],'StandardOutput=null','StandardError=null',''])
+  sources[role]='\n'.join(['[Unit]','Description=ERS isolated no-bot staging '+role,'[Service]','Type=simple','User='+str(m['uid']),'Group='+str(m['gid']),'SupplementaryGroups='+' '.join(map(str,m['groups'])),'ExecStart='+m['python']['command']+' -I '+m['sourceRoot']+'/ensayo_os_worker.py --config '+m['configs'][role],'Restart=no','KillMode=control-group','OOMPolicy=stop','MemoryMax='+str(r['memoryMaxBytes']),'MemorySwapMax=0','CPUQuota='+str(r['cpuQuotaPercent'])+'%','TasksMax='+str(r['tasksMax']),'RuntimeDirectory=ers-ensayo-'+m['epoch'],'RuntimeDirectoryMode=0700','RuntimeDirectoryPreserve=yes','UMask=0077','NoNewPrivileges=yes','ProtectSystem=strict','ProtectHome=yes','PrivateTmp=yes','PrivateNetwork=yes','PrivateDevices=yes','RestrictSUIDSGID=yes','LockPersonality=yes','CapabilityBoundingSet=','AmbientCapabilities=','RestrictAddressFamilies=AF_UNIX','InaccessiblePaths='+' '.join(m['deniedPaths']+[m['intervention']['canaryRoot']]),'ReadOnlyPaths='+m['configRoot']+' '+m['sourceRoot'],'ReadWritePaths='+m['runtimeRoot'],'StandardOutput=null','StandardError=null',''])
  return {'mode':m['mode'],'productionAdmission':False,'manifestDigest':digest(m),'sources':sources,'hashes':{k:hashlib.sha256(v.encode()).hexdigest() for k,v in sources.items()},'readiness':'PREPARED_NOT_INSTALLED_NOT_KERNEL_VERIFIED','kernelContainment':'UNVERIFIED','effectAdapter':'ABSENT'}
 
 def validate_config(cfg,*,path):
@@ -189,7 +191,7 @@ def match_staging(m,records):
  proposal=render_staging(m);exact(records,ROLES,'STAGING_MATCH_ROLES');pids=[];invs=[];locks=[]
  for role in ROLES:
   row=records[role];exact(row,{'receipt','manager','process','fd','unitFileHash'},'STAGING_MATCH_SHAPE');r=validate_receipt(m,role,row['receipt']);manager=row['manager'];p=row['process'];fd=row['fd'];unit=m['units'][role]
-  expected={'Id':unit,'MainPID':r['process']['pid'],'InvocationID':r['invocation'],'ControlGroup':'/system.slice/'+unit,'FragmentPath':'/etc/systemd/system/'+unit,'DropInPaths':[],'NeedDaemonReload':False,'User':m['uid'],'Group':m['gid'],'SupplementaryGroups':m['groups'],'MemoryMax':m['resources'][role]['memoryMaxBytes'],'TasksMax':m['resources'][role]['tasksMax'],'ActiveState':'active','SubState':'running','Restart':'no','PartOf':[],'BindsTo':[]}
+  expected={'Id':unit,'MainPID':r['process']['pid'],'InvocationID':r['invocation'],'ControlGroup':'/system.slice/'+unit,'FragmentPath':'/etc/systemd/system/'+unit,'DropInPaths':[],'NeedDaemonReload':False,'User':m['uid'],'Group':m['gid'],'SupplementaryGroups':m['groups'],'MemoryMax':m['resources'][role]['memoryMaxBytes'],'TasksMax':m['resources'][role]['tasksMax'],'CPUQuotaPercent':m['resources'][role]['cpuQuotaPercent'],'MemorySwapMax':0,'InaccessiblePaths':m['deniedPaths']+[m['intervention']['canaryRoot']],'ActiveState':'active','SubState':'running','Restart':'no','PartOf':[],'BindsTo':[]}
   if manager!=expected or row['unitFileHash']!=proposal['hashes'][role]:reject('STAGING_MATCH_MANAGER')
   exact(p,{'identity','exe','uid','gid','groups','cgroup'},'STAGING_MATCH_PROCESS')
   if p['identity']!=r['process'] or p['exe']!=[m['python']['dev'],m['python']['ino']] or (p['uid'],p['gid'],p['groups'])!=(m['uid'],m['gid'],m['groups']) or p['cgroup']!='0::'+manager['ControlGroup']+'\n' or r['cgroup']!=p['cgroup']:reject('STAGING_MATCH_PROCESS')

@@ -21,7 +21,7 @@ class Harness:
 class Executors(unittest.TestCase):
  def test_actual_install_supervisor_collector_exact_cleanup(self):
   with Harness() as h:
-   inv=h.install();self.assertEqual(len(inv),27);out=h.run();self.assertFalse(out['productionAdmission']);self.assertEqual(out['kernelContainment'],'UNVERIFIED');self.assertEqual(out['roles']['controller']['manager'],'NOT_PRESENT_LOCAL_FIXTURE_NO_SYSTEMD');self.assertNotEqual(out['roles']['controller']['identity']['pid'],out['roles']['watchdog']['identity']['pid']);self.assertLessEqual(out['reads'],80)
+   inv=h.install();self.assertEqual(len(inv),28);out=h.run();self.assertFalse(out['productionAdmission']);self.assertEqual(out['kernelContainment'],'UNVERIFIED');self.assertEqual(out['roles']['controller']['manager'],'NOT_PRESENT_LOCAL_FIXTURE_NO_SYSTEMD');self.assertNotEqual(out['roles']['controller']['identity']['pid'],out['roles']['watchdog']['identity']['pid']);self.assertLessEqual(out['reads'],80)
    result=h.cleanup();self.assertEqual(result['status'],'EXACT_FIXTURE_CLEANED');self.assertFalse(h.target.exists());self.assertTrue((Path(h.control.name)/'inventory.jsonl').exists())
  def test_install_exclusive_no_replace(self):
   with Harness() as h:
