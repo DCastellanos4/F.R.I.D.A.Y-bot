@@ -1,0 +1,256 @@
+{
+  "allocationPlan": {
+    "allocation": "NATIVE_SHADOW_SYSTEM_NO_NUMERIC_SELECTION",
+    "manifestTemplate": {
+      "configRoot": "/etc/ers-ensayo/87171f42b35cd442",
+      "configs": {
+        "controller": "/etc/ers-ensayo/87171f42b35cd442/controller.json",
+        "watchdog": "/etc/ers-ensayo/87171f42b35cd442/watchdog.json"
+      },
+      "deniedPaths": [
+        "/home/ubuntu/jarvis-estado",
+        "/home/ubuntu/.pm2",
+        "/home/ubuntu/backups"
+      ],
+      "epoch": "87171f42b35cd442",
+      "intervention": {
+        "accountDisposition": "OWNER_DECISION_REQUIRED_NO_SILENT_RESIDUAL",
+        "budgets": {
+          "cleanup": {
+            "cpuQuotaPercent": 10,
+            "memoryMaxBytes": 33554432,
+            "memorySwapMaxBytes": 0,
+            "provenance": "UNAPPROVED_PROPOSAL_NOT_CAPACITY_EVIDENCE",
+            "tasksMax": 8
+          },
+          "supervisor": {
+            "cpuQuotaPercent": 10,
+            "memoryMaxBytes": 33554432,
+            "memorySwapMaxBytes": 0,
+            "provenance": "UNAPPROVED_PROPOSAL_NOT_CAPACITY_EVIDENCE",
+            "tasksMax": 8
+          }
+        },
+        "canaryRoot": "/var/lib/ers-ensayo-deny-87171f42b35cd442",
+        "cleanupAuthority": "PROPOSED_TERMINATE_ALL_DESCENDANTS_OF_PRIOR_GATE_ONLY_EXCLUSIVE_CUSTODIED_SCOPES_NOT_ORIGINAL_PID_ONLY",
+        "cleanupUnit": "ers-ensayo-cleanup-87171f42b35cd442.service",
+        "controlRoot": "/var/lib/ers-ensayo-control/87171f42b35cd442",
+        "daemonReloadScope": "GLOBAL_MANAGER_RELOAD_REQUIRES_EXPLICIT_APPROVAL",
+        "gateRoot": "/run/ers-ensayo-gates-87171f42b35cd442",
+        "headroom": {
+          "memoryAvailableMinBytes": 536870912,
+          "parentPidsFreeMin": 128,
+          "status": "PROPOSED_NOT_MEASURED_NOT_APPROVED"
+        },
+        "principal": {
+          "group": "ers-ensayo",
+          "home": false,
+          "login": false,
+          "selection": "UNAPPROVED_RESERVE_FREE_SYSTEM_IDS_BEFORE_FINAL_MANIFEST",
+          "user": "ers-ensayo"
+        },
+        "reservationStage": "ONLY_EXACT_CUSTODIED_PRESTART_GATE_NO_HOLDER",
+        "retention": {
+          "seconds": 86400,
+          "status": "PROPOSED_NOT_APPROVED"
+        },
+        "status": "PROPOSAL_NO_EXECUTION_AUTHORITY",
+        "supervisorUnit": "ers-ensayo-supervisor-87171f42b35cd442.service",
+        "timing": {
+          "cleanupDeadlineSeconds": 60,
+          "cleanupRuntimeSeconds": 70,
+          "handshakeSeconds": 10,
+          "validationSeconds": 30
+        }
+      },
+      "limits": {
+        "configBytes": 32768,
+        "deadlineSeconds": 10,
+        "receiptBytes": 4096,
+        "runtimeBytes": 131072,
+        "runtimeEntries": 8,
+        "sourceBytes": 1048576
+      },
+      "mode": "ENSAYO_OS_NO_BOT_EFFECTS",
+      "paths": {
+        "controllerReceipt": "/run/ers-ensayo-87171f42b35cd442/controller.receipt.json",
+        "journal": "/run/ers-ensayo-87171f42b35cd442/journal.json",
+        "journalLock": "/run/ers-ensayo-87171f42b35cd442/journal.lock",
+        "lock": "/run/ers-ensayo-87171f42b35cd442/ensayo.lock",
+        "socket": "/run/ers-ensayo-87171f42b35cd442/holders.sock",
+        "watchdogReceipt": "/run/ers-ensayo-87171f42b35cd442/watchdog.receipt.json"
+      },
+      "productionAdmission": false,
+      "python": {
+        "command": "/usr/bin/python3",
+        "dev": 2049,
+        "ino": 1869,
+        "resolved": "/usr/bin/python3.10",
+        "sha256": "06dbbe8641183e6db09f8540e7e69c9507304ee469dd9992cc5d20a13466aa3b",
+        "size": 5668008
+      },
+      "resources": {
+        "controller": {
+          "cpuQuotaPercent": 20,
+          "memoryMaxBytes": 33554432,
+          "memorySwapMaxBytes": 0,
+          "provenance": "UNAPPROVED_PROPOSAL_NOT_CAPACITY_EVIDENCE",
+          "tasksMax": 16
+        },
+        "watchdog": {
+          "cpuQuotaPercent": 20,
+          "memoryMaxBytes": 33554432,
+          "memorySwapMaxBytes": 0,
+          "provenance": "UNAPPROVED_PROPOSAL_NOT_CAPACITY_EVIDENCE",
+          "tasksMax": 16
+        }
+      },
+      "runtimeRoot": "/run/ers-ensayo-87171f42b35cd442",
+      "schema": 2,
+      "sourceFiles": {
+        "bootstrap_worker.py": "e9c987731588a1dea551beefb980c9b0ffa9a8a0e94c6d7fd09c4ca9bec87005",
+        "bounded_http.py": "1b3739325654a2f1498faee03f54a4cf52f2682a7513eb17d2cd747d04208687",
+        "bounded_rpc.py": "3c76c8e8d9732aea63ef524c28c2033a5bb5df064f2a1272a5d6ce19a2928a71",
+        "bounded_unit.py": "215a84b34a2981543b2eaa9e87cd71eb38a29e4f74045f2dbd35c9afe366b0ac",
+        "campaign.py": "25ba96df32aac52d5173631f9d99e5b945b654350b10cda8f37ef74a1e8046ba",
+        "composition.py": "9d273dbcfb0daa724eebd1da34617381b16b4a79f8198a9f3cab5fa71fd5e359",
+        "ensayo_intervention.py": "df2d04e4162d92d4cbf121e298a6b756f83f2883160e65f2bf4c7a1f1e29cf8c",
+        "ensayo_os.py": "0e6ee9679907d7533222ad3b24131bd74a63cdb3db01ab7a3f7ea0863e7eaf4e",
+        "ensayo_os_fixture.py": "4d70cf4f7c86da4b5a2561b7ef6b25d68d3dc17501d9d948b596e168a71b428b",
+        "ensayo_os_worker.py": "0d358630a3b217738fcc835275bd9281734e9bcafcdc5c561e63b485ed1cfb2e",
+        "ensayo_prestart_gate.py": "bef15e57b39b4ae3645aa66cc592a52eacca45bbe0575f5761012ffe46704cde",
+        "lease.py": "1fafa18d1b78dc14447581d73972ccbaaa36308e10c84b309b6917a6271f3794",
+        "local_runner.py": "9a427754785573c24a5fb67e350292a90234d3b6a59bbcbaf4824f0c6fc523d5",
+        "local_unit_launcher.py": "419eab610233edfa4fec88e503cb731044d5c1f4263c71fdad13268327c16cd3",
+        "observations.py": "17f4c77bd888047eb15d33d06039a1de6daf64a66ea5b16424095ce3b1b11442",
+        "paired.py": "abed9aa64cdcab133a7240f249d0522850ad31fa1e55ba27a4a831e87c314dd4",
+        "policy.py": "12ef2c10b5ac667707fc5b5584cb4fa1a5afad22d592edb0de7fb4f8f7145ea7",
+        "unit_contract.py": "dc33296cbe2695fb9b892e069a6443582f3b230154d89ecd4e693411271513d1",
+        "unit_read.py": "e25831d0b7aae33251c60354c5d43ae6a175d40829c12f80063a980e308e0b49"
+      },
+      "sourceRoot": "/opt/ers/3c2625eb50d40ee3f2715195281e12fb5998b552613b50ad461e5571e95054c0",
+      "units": {
+        "controller": "ers-ensayo-controller-87171f42b35cd442.service",
+        "watchdog": "ers-ensayo-watchdog-87171f42b35cd442.service"
+      }
+    }
+  },
+  "binaryPins": {
+    "/usr/bin/python3.10": {
+      "dev": 2049,
+      "ino": 1869,
+      "sha256": "06dbbe8641183e6db09f8540e7e69c9507304ee469dd9992cc5d20a13466aa3b",
+      "size": 5668008
+    },
+    "/usr/bin/systemctl": {
+      "dev": 2049,
+      "ino": 72978,
+      "sha256": "2ca45b3450676bc11573d34ebdcc04f3c5317b0e0527f2fcd52e2f41947924a4",
+      "size": 1104160
+    },
+    "/usr/sbin/groupadd": {
+      "dev": 2049,
+      "ino": 2504,
+      "sha256": "3a4caa293f67940ea3a4a7b062ade823edb97fbf0a31c12b001deb29c9ebfd08",
+      "size": 63920
+    },
+    "/usr/sbin/groupdel": {
+      "dev": 2049,
+      "ino": 2505,
+      "sha256": "36cb0b000822988aac09e9a4edb2d1f25dfa21dd0eb11d3009fb245922f781ad",
+      "size": 59640
+    },
+    "/usr/sbin/useradd": {
+      "dev": 2049,
+      "ino": 2596,
+      "sha256": "4e225ea2cf6d63dbf107c66a1b227f704b48e3f18edab2d235f3a2f3d8196a54",
+      "size": 126152
+    },
+    "/usr/sbin/userdel": {
+      "dev": 2049,
+      "ino": 2597,
+      "sha256": "f85191db89f7a55e03f6de732f495192a1e026f102e03e9000c5c21db23ef363",
+      "size": 80256
+    }
+  },
+  "budgetTotals": {
+    "cpuQuotaPercent": 60,
+    "memoryMaxBytes": 134217728,
+    "memorySwapMaxBytes": 0,
+    "services": 4,
+    "tasksMax": 48
+  },
+  "caps": {
+    "accountCommandSeconds": 2,
+    "binaryPassBytesMax": 100663296,
+    "binaryPassesMax": 5,
+    "externalManagerCommandsMax": 192,
+    "managerCommandSeconds": 2,
+    "materialFileBytes": 1048576,
+    "materialTotalBytes": 12582912,
+    "pollMillis": 1000,
+    "preFinalizeAllowanceSeconds": 120,
+    "utilityCpuCap": "NOT_CGROUP_LIMITED",
+    "utilityMemoryCap": "NOT_CGROUP_LIMITED",
+    "utilityTaskCap": "NOT_CGROUP_LIMITED",
+    "waitSeconds": 90
+  },
+  "materialPins": {
+    "bootstrap_worker.py": "e9c987731588a1dea551beefb980c9b0ffa9a8a0e94c6d7fd09c4ca9bec87005",
+    "bounded_http.py": "1b3739325654a2f1498faee03f54a4cf52f2682a7513eb17d2cd747d04208687",
+    "bounded_rpc.py": "3c76c8e8d9732aea63ef524c28c2033a5bb5df064f2a1272a5d6ce19a2928a71",
+    "bounded_unit.py": "215a84b34a2981543b2eaa9e87cd71eb38a29e4f74045f2dbd35c9afe366b0ac",
+    "campaign.py": "25ba96df32aac52d5173631f9d99e5b945b654350b10cda8f37ef74a1e8046ba",
+    "composition.py": "9d273dbcfb0daa724eebd1da34617381b16b4a79f8198a9f3cab5fa71fd5e359",
+    "ensayo_bootstrap.py": "7c20febac88d50e59a2b2ebc50b69866be3854654c02d7f0d240f486515b2212",
+    "ensayo_control_program.py": "fd0c8859df83e9d871ef5ab12d15e6874516e5a31efd2711d06ae4b131d0fab9",
+    "ensayo_finalizer.py": "5f6b600cbf33e57554909be7a6615a9b8ec080f5908adbd092dd707ebbc0904e",
+    "ensayo_intervention.py": "df2d04e4162d92d4cbf121e298a6b756f83f2883160e65f2bf4c7a1f1e29cf8c",
+    "ensayo_manager_collector.py": "5fa36bc547504d0fffd636c642a34fd023d6e99beb649e1b86f30acc449e6511",
+    "ensayo_one_shot.py": "94e1401533a7271bca0387c3c45e1a67d45136d414d1b0428d2b6cc43411935c",
+    "ensayo_os.py": "0e6ee9679907d7533222ad3b24131bd74a63cdb3db01ab7a3f7ea0863e7eaf4e",
+    "ensayo_os_fixture.py": "4d70cf4f7c86da4b5a2561b7ef6b25d68d3dc17501d9d948b596e168a71b428b",
+    "ensayo_os_worker.py": "0d358630a3b217738fcc835275bd9281734e9bcafcdc5c561e63b485ed1cfb2e",
+    "ensayo_prestart_gate.py": "bef15e57b39b4ae3645aa66cc592a52eacca45bbe0575f5761012ffe46704cde",
+    "ensayo_principal_bootstrap.py": "967e82588ce7599b786186031d60edacb0fb7baa6a23d39ca92925b2e002e3fa",
+    "ensayo_principal_retire.py": "bbd5b811174807272cf875c85f1ddcd6ef99f2a2300d0151ae3dd752c734734b",
+    "ensayo_privileged_io.py": "12ba9568725b1e38464d91f3942c426ba1733912228371d6e991500329c00203",
+    "ensayo_retirement.py": "40ba68cd7142973ede401d95f9fba5eaba394acfdf5e320814b4086942ce2474",
+    "ensayo_root_custodian.py": "b45cc0c6dd21593d272a133c2f7e7b5f6fc123d1fd099db943ea60f38e2dfa01",
+    "ensayo_root_install.py": "d9a3a221ebe88e4becd683d17d2a4785b96d2c8a9c298d868be7721e0dd27b3f",
+    "ensayo_root_journal.py": "6a0b83c57b56e23843d339102d8a9914a50acb1d93d628636a926d86b7a7584e",
+    "ensayo_runtime_cleanup.py": "16dd846e245e00459360e5945407659cc3ed947bbb85889b9ceffc8edb7ef0af",
+    "ensayo_scope_fd.py": "b15ee39c8262d70b47d12a5869934807e86296adfa7f70e2051cb249a66fbc04",
+    "ensayo_scope_handoff.py": "5b9e09cc3b79c5c91bcaee9bb4db905f6686c4f91aff278a5ffb7cabb92eda4f",
+    "ensayo_start_controller.py": "2a41bf1b16e1f81399331dfe50f3b0756a3175ea50e75ba10fd9e511c8d6cb84",
+    "ensayo_system_allocation.py": "7c11d3d48cc251ea328052e2e2f1ae361aad8f585cca530ecf53ee3ebfc34178",
+    "lease.py": "1fafa18d1b78dc14447581d73972ccbaaa36308e10c84b309b6917a6271f3794",
+    "local_runner.py": "9a427754785573c24a5fb67e350292a90234d3b6a59bbcbaf4824f0c6fc523d5",
+    "local_unit_launcher.py": "419eab610233edfa4fec88e503cb731044d5c1f4263c71fdad13268327c16cd3",
+    "observations.py": "17f4c77bd888047eb15d33d06039a1de6daf64a66ea5b16424095ce3b1b11442",
+    "paired.py": "abed9aa64cdcab133a7240f249d0522850ad31fa1e55ba27a4a831e87c314dd4",
+    "policy.py": "12ef2c10b5ac667707fc5b5584cb4fa1a5afad22d592edb0de7fb4f8f7145ea7",
+    "unit_contract.py": "dc33296cbe2695fb9b892e069a6443582f3b230154d89ecd4e693411271513d1",
+    "unit_read.py": "e25831d0b7aae33251c60354c5d43ae6a175d40829c12f80063a980e308e0b49"
+  },
+  "policy": {
+    "controlSeedMinSeconds": 86400,
+    "executorAuditSharedParents": "RETAIN_INDEFINITELY_UNTIL_SEPARATE_SPECIFIC_REQUEST_AND_REVIEW",
+    "existingSqliteBackupRetention": "UNCHANGED",
+    "followup": "ONE_STATE_REVIEW_AND_PRIVATE_NOTICE_NO_DELETE",
+    "nativeAccountDatabaseBackupsAuditCaches": "SYSTEM_SIDE_EFFECTS_NOT_PURGED",
+    "retire": "SEPARATE_FUTURE_OWNER_APPROVAL_OF_EXACT_TICKET"
+  },
+  "productionAdmission": false,
+  "schema": 1,
+  "scope": "ONE_ISOLATED_NO_BOT_NATIVE_ACCOUNT_TWO_GLOBAL_RELOADS_EXCLUSIVE_SCOPE_ALL_DESCENDANTS_EXACT_CLOSEOUT",
+  "status": "PENDING_AUTHORITY",
+  "target": {
+    "account": "ubuntu",
+    "address": "51.170.48.166",
+    "hostKeyPublicFile": "/etc/ssh/ssh_host_ed25519_key.pub",
+    "hostKeySha256": "SHA256:cPziJJ/oUNY7Q/fBXdCPvv0hueD4i1IPbqHKe9DtJuM",
+    "hostKeyType": "ssh-ed25519",
+    "transport": "EXTERNAL_OPERATOR_PINNED_SSH_NOT_IMPLEMENTED_HERE"
+  }
+}
