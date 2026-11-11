@@ -41,7 +41,7 @@ try{
   const f=fixture({[file]:"throw Error('SHOULD_NOT_EXECUTE')",[child]:'module.exports=1'});f.manifest.files[child].sha256='0'.repeat(64);
   assert.throws(()=>closedLoader(f.manifest),/CLOSURE_UNVERIFIABLE/);assert.equal(f.closed(),2);
  });
- for(const override of [{uid:1001},{mode:0o666},{nlink:2},{isSymbolicLink:()=>true}]){
+ for(const override of [{uid:42420},{mode:0o666},{nlink:2},{isSymbolicLink:()=>true}]){
   test('custody rejection '+JSON.stringify(override),()=>{const f=fixture({[file]:'module.exports=1'},override);assert.throws(()=>closedLoader(f.manifest),/CLOSURE_UNVERIFIABLE/);});
  }
  test('path escape rejected',()=>{const f=fixture({'../bad.js':'module.exports=1'});assert.throws(()=>closedLoader(f.manifest),/CLOSURE_UNVERIFIABLE/);});
