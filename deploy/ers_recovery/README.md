@@ -107,3 +107,7 @@ The source's API auth gate precedes /api/salud. An anonymous 401 Unauthorized
 or 503 disabled classification is operational comparison only, never a 200
 functional health test. The source's own configured-token anonymous deployment
 check is inconsistent with that auth gate and is not copied as validation.
+
+## Concrete privileged preparation (LOCAL only)
+
+See [ENSAYO_PRIVILEGED.md](ENSAYO_PRIVILEGED.md) for exact entrypoints, gate-only scope custody, independent pre-release cleanup FD handoff, proposed bounds, external finalizer and unresolved OS/retention gates. Code and fake-syscall tests are not approval to execute root or admit production.

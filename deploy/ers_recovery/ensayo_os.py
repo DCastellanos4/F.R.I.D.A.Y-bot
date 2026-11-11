@@ -5,7 +5,7 @@ mapping with a distinct evidence class; it cannot attest root or OS containment.
 import hashlib,json,os,re,stat
 from pathlib import Path
 from .unit_contract import digest,encode,ContractHold,ROLES,SOURCES,DENIED
-STAGING_SOURCES=set(SOURCES)|{'ensayo_os.py','ensayo_os_worker.py','ensayo_os_fixture.py','ensayo_intervention.py'}
+STAGING_SOURCES=set(SOURCES)|{'ensayo_os.py','ensayo_os_worker.py','ensayo_os_fixture.py','ensayo_intervention.py','ensayo_prestart_gate.py'}
 LIMIT=32768
 HEX=lambda n,v:type(v) is str and re.fullmatch('[a-f0-9]{'+str(n)+'}',v) is not None
 
@@ -41,7 +41,7 @@ def render_staging(m):
  validate_staging(m);sources={}
  for role in ROLES:
   r=m['resources'][role]
-  sources[role]='\n'.join(['[Unit]','Description=ERS isolated no-bot staging '+role,'[Service]','Type=simple','User='+str(m['uid']),'Group='+str(m['gid']),'SupplementaryGroups='+' '.join(map(str,m['groups'])),'ExecStart='+m['python']['command']+' -I '+m['sourceRoot']+'/ensayo_os_worker.py --config '+m['configs'][role],'Restart=no','KillMode=control-group','OOMPolicy=stop','MemoryMax='+str(r['memoryMaxBytes']),'MemorySwapMax=0','CPUQuota='+str(r['cpuQuotaPercent'])+'%','TasksMax='+str(r['tasksMax']),'RuntimeDirectory=ers-ensayo-'+m['epoch'],'RuntimeDirectoryMode=0700','RuntimeDirectoryPreserve=yes','UMask=0077','NoNewPrivileges=yes','ProtectSystem=strict','ProtectHome=yes','PrivateTmp=yes','PrivateNetwork=yes','PrivateDevices=yes','RestrictSUIDSGID=yes','LockPersonality=yes','CapabilityBoundingSet=','AmbientCapabilities=','RestrictAddressFamilies=AF_UNIX','InaccessiblePaths='+' '.join(m['deniedPaths']+[m['intervention']['canaryRoot']]),'ReadOnlyPaths='+m['configRoot']+' '+m['sourceRoot'],'ReadWritePaths='+m['runtimeRoot'],'StandardOutput=null','StandardError=null',''])
+  sources[role]='\n'.join(['[Unit]','Description=ERS isolated no-bot staging '+role,'[Service]','Type=simple','User='+str(m['uid']),'Group='+str(m['gid']),'SupplementaryGroups='+' '.join(map(str,m['groups'])),'ExecStartPre='+m['python']['command']+' -I '+m['sourceRoot']+'/ensayo_prestart_gate.py --config '+m['configs'][role],'TimeoutStartSec=12','RuntimeMaxSec=30','ExecStart='+m['python']['command']+' -I '+m['sourceRoot']+'/ensayo_os_worker.py --config '+m['configs'][role],'Restart=no','KillMode=control-group','OOMPolicy=stop','MemoryMax='+str(r['memoryMaxBytes']),'MemorySwapMax=0','CPUQuota='+str(r['cpuQuotaPercent'])+'%','TasksMax='+str(r['tasksMax']),'RuntimeDirectory=ers-ensayo-'+m['epoch'],'RuntimeDirectoryMode=0700','RuntimeDirectoryPreserve=yes','UMask=0077','NoNewPrivileges=yes','ProtectSystem=strict','ProtectHome=yes','PrivateTmp=yes','PrivateNetwork=yes','PrivateDevices=yes','RestrictSUIDSGID=yes','LockPersonality=yes','CapabilityBoundingSet=','AmbientCapabilities=','RestrictAddressFamilies=AF_UNIX','InaccessiblePaths='+' '.join(m['deniedPaths']+[m['intervention']['canaryRoot']]),'ReadOnlyPaths='+m['configRoot']+' '+m['sourceRoot'],'ReadWritePaths='+m['runtimeRoot'],'StandardOutput=null','StandardError=null',''])
  return {'mode':m['mode'],'productionAdmission':False,'manifestDigest':digest(m),'sources':sources,'hashes':{k:hashlib.sha256(v.encode()).hexdigest() for k,v in sources.items()},'readiness':'PREPARED_NOT_INSTALLED_NOT_KERNEL_VERIFIED','kernelContainment':'UNVERIFIED','effectAdapter':'ABSENT'}
 
 def validate_config(cfg,*,path):

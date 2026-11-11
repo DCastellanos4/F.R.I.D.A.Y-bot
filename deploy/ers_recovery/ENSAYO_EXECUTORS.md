@@ -1,3 +1,5 @@
+> Historical layer record. Current concrete preparation and limits: [ENSAYO_PRIVILEGED.md](ENSAYO_PRIVILEGED.md). Statements below about absent root executors or empty reservation scopes describe the earlier layer, not the current gate-only implementation.
+
 # LOCAL fixture executors, not an OS installer
 
 Delta over 15a27c24. `ensayo_fixture_executor.py` adds an exclusive mapped-fixture installer, external append/fsync inventory, external supervisor with an absolute monotonic deadline, pidfd-based termination of its original child processes, bounded independent local /proc collector and exact cleanup. The six v2 lifecycle regressions include both live holders omitted via [], only one supplied after capture, duplicate/substitute/mismatched child, pending spawn, partial reaped spawn and never-spawned cleanup. No canonical HOST /etc,/opt,/run installation, account/group changes, systemd calls or PM2 exists. The original 17 worker source pins are unchanged: this orchestrator stays outside the holder source directory and does not widen LOCAL guards.

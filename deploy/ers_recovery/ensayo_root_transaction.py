@@ -1,5 +1,5 @@
 """Root-intervention transaction semantics exercised through a mapped fixture.
-No production/root transport exists here. Simulated manager/account/kernel facts
+This is a semantic fixture, not the concrete backend in ensayo_root_custodian.py. Simulated manager/account/kernel facts
 are named as such and never become OS admission. No subprocess, SSH or systemctl.
 """
 import hashlib,os,secrets,stat,time
@@ -24,7 +24,7 @@ class FixtureRootBackend:
   if (s.st_dev,s.st_ino)!=self.rootkey or self.root.resolve()!=self.root:c.reject('ROOTFIXTURE_ROOT_DRIFT')
  def allowed(self):
   m=self.m;i=m['intervention']
-  return {m['sourceRoot'],m['configRoot'],m['runtimeRoot'],i['controlRoot'],i['canaryRoot']}|{m['sourceRoot']+'/'+n for n in c.STAGING_SOURCES}|set(m['configs'].values())|set(m['paths'].values())|{'/etc/systemd/system/'+m['units'][r] for r in c.ROLES}|{'/etc/systemd/system/'+i[k] for k in ('supervisorUnit','cleanupUnit')}|{'/etc/systemd/system/ers-ensayo-cleanup-'+m['epoch']+'.timer'}|{i['controlRoot']+'/'+n for n in ('supervisor.py','cleanup.py','supervisor.json','cleanup.json')}|{i['canaryRoot']+'/'+n for n in ('public.txt','channel.sock')}
+  return {m['sourceRoot'],m['configRoot'],m['runtimeRoot'],i['controlRoot'],i['canaryRoot']}|{m['sourceRoot']+'/'+n for n in c.STAGING_SOURCES}|set(m['configs'].values())|set(m['paths'].values())|{'/etc/systemd/system/'+m['units'][r] for r in c.ROLES}|{'/etc/systemd/system/'+i[k] for k in ('supervisorUnit','cleanupUnit')}|{'/etc/systemd/system/ers-ensayo-cleanup-'+m['epoch']+'.timer'}|{i['controlRoot']+'/'+n for n in ('supervisor.py','cleanup.py','ensayo_control_program.py','supervisor.json','cleanup.json')}|{i['canaryRoot']+'/'+n for n in ('public.txt','channel.sock')}
  def name(self,path):
   if path not in self.allowed():c.reject('ROOTFIXTURE_PATH_NOT_CLOSED')
   return hashlib.sha256(path.encode()).hexdigest()
@@ -66,7 +66,8 @@ class FixtureRootBackend:
  def reserve_scope(self,role):
   if role not in c.ROLES or role in self.scopes or self.m['units'][role] in self.units:c.reject('ROOTFIXTURE_SCOPE_NO_ADOPT')
   scope={'role':role,'unit':self.m['units'][role],'path':'/system.slice/'+self.m['units'][role],'key':[27,20000+len(self.scopes)],'nonce':secrets.token_hex(32),'owner':0,'delegated':False,'sourceDigest':c.digest(self.m['sourceFiles']),'class':CLASS}
-  self.scopes[role]={'reservation':scope,'members':[]};self.calls.append(('reserve_empty_exclusive_scope',role));return dict(scope)
+  self.nextpid+=1;gate={'pid':self.nextpid,'start':str(self.clock+99),'boot':'b'*8+'-'+'b'*4+'-'+'b'*4+'-'+'b'*4+'-'+'b'*12};scope.update(gateIdentity=gate,gateInvocation=format(self.nextpid,'032x'),reservationStage=self.m['intervention']['reservationStage'])
+  self.scopes[role]={'reservation':scope,'members':[{'identity':gate,'invocation':scope['gateInvocation'],'uid':self.m['uid'],'scopeNonce':scope['nonce'],'origin':'EXCLUSIVE_FIXTURE_SPAWN_LINEAGE','original':False,'gate':True}]};self.calls.append(('reserve_exact_prestart_gate_scope',role));return dict(scope)
  def scope_census(self,reservation):
   role=reservation['role'];scope=self.scopes.get(role)
   if scope is None or scope['reservation']!=reservation or reservation['owner']!=0 or reservation['delegated'] is not False:c.reject('ROOTFIXTURE_SCOPE_CUSTODY_DRIFT')
@@ -80,7 +81,12 @@ class FixtureRootBackend:
   # New proposed authority is explicit: all descendants in this exact owned scope.
   for member in members:
    unit=self.units.get(reservation['unit'])
+   if member.get('gate') and (member['identity']!=reservation['gateIdentity'] or member['invocation']!=reservation['gateInvocation'] or unit is not None):c.reject('ROOTFIXTURE_GATE_DRIFT')
    if member.get('original') and (unit is None or unit['identity']!=member['identity'] or unit['invocation']!=member['invocation'] or unit['cgroupKey']!=reservation['key']):c.reject('ROOTFIXTURE_SCOPE_MANAGER_DRIFT')
+  return members
+ def require_gate_only(self,reservation):
+  members=self.scope_complete_check(reservation)
+  if len(members)!=1 or members[0].get('gate') is not True or reservation['reservationStage']!=self.m['intervention']['reservationStage']:c.reject('ROOTFIXTURE_SCOPE_ONLY_EXACT_GATE')
   return members
  def stop_scope(self,reservation):
   members=self.scope_complete_check(reservation)
@@ -93,8 +99,8 @@ class FixtureRootBackend:
   if unit in self.units:c.reject('ROOTFIXTURE_NO_RESTART')
   if role not in self.scopes:c.reject('ROOTFIXTURE_DURABLE_SCOPE_REQUIRED')
   reservation=self.scopes[role]['reservation']
-  if self.scope_census(reservation):c.reject('ROOTFIXTURE_SCOPE_MUST_BE_EMPTY')
-  self.nextpid+=1;identity={'pid':self.nextpid,'start':str(self.clock+100),'boot':'b'*8+'-'+'b'*4+'-'+'b'*4+'-'+'b'*4+'-'+'b'*12};value={'unit':unit,'role':role,'identity':identity,'invocation':format(self.nextpid,'032x'),'cgroup':'/system.slice/'+unit,'cgroupKey':reservation['key'],'active':True,'class':CLASS};self.units[unit]=value;self.scopes[role]['members'].append({'identity':identity,'invocation':value['invocation'],'uid':self.m['uid'],'scopeNonce':reservation['nonce'],'origin':'EXCLUSIVE_FIXTURE_SPAWN_LINEAGE','original':True});self.calls.append(('start',unit));return dict(value)
+  self.require_gate_only(reservation)
+  self.nextpid+=1;identity={'pid':self.nextpid,'start':str(self.clock+100),'boot':'b'*8+'-'+'b'*4+'-'+'b'*4+'-'+'b'*4+'-'+'b'*12};value={'unit':unit,'role':role,'identity':identity,'invocation':format(self.nextpid,'032x'),'cgroup':'/system.slice/'+unit,'cgroupKey':reservation['key'],'active':True,'class':CLASS};self.units[unit]=value;self.scopes[role]['members']=[];self.scopes[role]['members'].append({'identity':identity,'invocation':value['invocation'],'uid':self.m['uid'],'scopeNonce':reservation['nonce'],'origin':'EXCLUSIVE_FIXTURE_SPAWN_LINEAGE','original':True});self.calls.append(('start',unit));return dict(value)
  def stop_exact(self,original):
   current=self.units.get(original['unit'])
   if current!=original:c.reject('ROOTFIXTURE_UNIT_IDENTITY_DRIFT')
@@ -154,7 +160,7 @@ class RootTransactionFixture:
   c.exact(control_programs,{'supervisor','cleanup'},'ROOTFIXTURE_CONTROL_SOURCE_SET')
   if any(type(v) is not bytes or len(v)>1048576 for v in control_programs.values()):c.reject('ROOTFIXTURE_CONTROL_SOURCE_BYTES')
   if self.reconcile():c.reject('ROOTFIXTURE_INSTALL_NO_RETRY')
-  pins={role:{'path':i['controlRoot']+'/'+role+'.py','sha256':hashlib.sha256(v).hexdigest()} for role,v in control_programs.items()};control=render_control_units(m,pins['supervisor'],pins['cleanup'])
+  pins={role:{'path':i['controlRoot']+'/ensayo_control_program.py','sha256':hashlib.sha256(v).hexdigest()} for role,v in control_programs.items()};control=render_control_units(m,pins['supervisor'],pins['cleanup'])
   # Capacities are explicit fixture inputs, never claimed from HOST/preflight.
   self.mutate('ACCOUNT_DECISION','ers-ensayo',lambda:{'disposition':account_disposition,'class':CLASS})
   self.mutate('RESERVE','ers-ensayo',self.b.reserve_fixture_principal)
@@ -163,7 +169,7 @@ class RootTransactionFixture:
   for root,uid,gid,mode in [(m['sourceRoot'],0,0,0o755),(m['configRoot'],0,m['gid'],0o750),(m['runtimeRoot'],m['uid'],m['gid'],0o700),(i['controlRoot'],0,0,0o700),(i['canaryRoot'],0,0,0o755)]:put(root,b'',uid,gid,mode,'directory')
   for n,data in sorted(sources.items()):put(m['sourceRoot']+'/'+n,data)
   for role in c.ROLES:put(m['configs'][role],c.encode({'manifest':m,'role':role,'token':'0'*64}),group=m['gid'],mode=0o440)
-  for role,data in control_programs.items():put(pins[role]['path'],data,mode=0o400)
+  put(i['controlRoot']+'/ensayo_control_program.py',c.encode({r:hashlib.sha256(b).hexdigest() for r,b in control_programs.items()}),mode=0o400)
   for role,text in c.render_staging(m)['sources'].items():put('/etc/systemd/system/'+m['units'][role],text.encode())
   for role,text in control['units'].items():put('/etc/systemd/system/'+i[role+'Unit'],text.encode())
   timerpath='/etc/systemd/system/ers-ensayo-cleanup-'+m['epoch']+'.timer';put(timerpath,control['cleanupTimer'].encode());put(i['canaryRoot']+'/public.txt',b'ERS_PUBLIC_CANARY_V1\n');put(i['canaryRoot']+'/channel.sock',b'',kind='socket')
@@ -180,9 +186,10 @@ class RootTransactionFixture:
   if set(reservations)!=set(c.ROLES):c.reject('ROOTFIXTURE_EXACT_RESERVATIONS_REQUIRED')
   # All-or-hold admission before the first durable START intent.
   for role in c.ROLES:
-   if self.b.scope_complete_check(reservations[role]) or reservations[role]['sourceDigest']!=c.digest(m['sourceFiles']):c.reject('ROOTFIXTURE_SCOPE_NOT_EMPTY_OR_SOURCE')
+   self.b.require_gate_only(reservations[role])
+   if reservations[role]['sourceDigest']!=c.digest(m['sourceFiles']):c.reject('ROOTFIXTURE_SCOPE_SOURCE')
   for role in c.ROLES:
-   if self.b.scope_complete_check(reservations[role]):c.reject('ROOTFIXTURE_SCOPE_MUST_BE_EMPTY')
+   self.b.require_gate_only(reservations[role])
    self.mutate('START',role,lambda r=role:self.b.start(m['units'][r],r),crash=crash)
   originals={r['target']:r['result'] for r in self.reconcile() if r['action']=='START'}
   if set(originals)!=set(c.ROLES):c.reject('ROOTFIXTURE_ORIGINAL_SET')
@@ -194,7 +201,7 @@ class RootTransactionFixture:
   done,pending=self.reconcile(allow_pending=True)
   reservations={r['target']:r['result'] for r in done if r['action']=='RESERVE_SCOPE'}
   if pending is not None:
-   # Only uncertain START can be reconciled via a previously durable empty scope.
+   # Only uncertain START can be reconciled via a previously durable exact gate-only scope.
    # No guessed PID or adoption of unknown units; no rerun of START.
    role=pending['target']
    if pending['action']!='START' or role not in reservations or set(reservations)!=set(c.ROLES):c.reject('ROOTFIXTURE_UNCERTAIN_NONSTART_HOLD')

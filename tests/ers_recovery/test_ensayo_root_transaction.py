@@ -29,8 +29,8 @@ class Contract(unittest.TestCase):
    for consumer in (c.validate_staging,c.render_staging,c.staging_launch_plan,lambda v:c.match_staging(v,{})):
     with self.assertRaises(c.ContractHold):consumer(x)
  def test_supervisor_cleanup_budget_timing_and_global_reload_not_scoped(self):
-  m=manifest();i=m['intervention'];pins={r:{'path':i['controlRoot']+'/'+r+'.py','sha256':'a'*64} for r in ('supervisor','cleanup')};o=policy.render_control_units(m,pins['supervisor'],pins['cleanup'])
-  self.assertIn('RuntimeMaxSec=60',o['units']['supervisor']);self.assertIn('RuntimeMaxSec=10',o['units']['cleanup']);self.assertIn('MemoryMax=33554432',o['units']['supervisor']);self.assertIn('CPUQuota=10%',o['units']['cleanup']);self.assertIn('OnActiveSec=60s',o['cleanupTimer']);self.assertIn(i['cleanupUnit'],o['cleanupTimer']);self.assertEqual(o['rootExecution'],'NOT_IMPLEMENTED_NO_HOST_BACKEND');self.assertEqual(i['daemonReloadScope'],'GLOBAL_MANAGER_RELOAD_REQUIRES_EXPLICIT_APPROVAL')
+  m=manifest();i=m['intervention'];pins={r:{'path':i['controlRoot']+'/ensayo_control_program.py','sha256':'a'*64} for r in ('supervisor','cleanup')};o=policy.render_control_units(m,pins['supervisor'],pins['cleanup'])
+  self.assertIn('RuntimeMaxSec=60',o['units']['supervisor']);self.assertIn('RuntimeMaxSec=70',o['units']['cleanup']);self.assertIn('MemoryMax=33554432',o['units']['supervisor']);self.assertIn('CPUQuota=10%',o['units']['cleanup']);self.assertIn('OnActiveSec=60s',o['cleanupTimer']);self.assertIn(i['cleanupUnit'],o['cleanupTimer']);self.assertEqual(o['rootExecution'],'LOCAL_CONCRETE_BACKEND_NOT_HOST_VALIDATED');self.assertEqual(i['daemonReloadScope'],'GLOBAL_MANAGER_RELOAD_REQUIRES_EXPLICIT_APPROVAL')
  def test_manager_match_checks_cpu_swap_and_canary(self):
   m=manifest()
   for k,v in [('CPUQuotaPercent',90),('MemorySwapMax',1024),('InaccessiblePaths',[])]:
@@ -125,9 +125,9 @@ class Transactions(unittest.TestCase):
    h.install();text=(Path(h.control.name)/'inventory.jsonl').read_text();self.assertNotIn('token',text);self.assertNotIn('0000000000000000000000000000000000000000000000000000000000000000',text);self.assertIn('SIMULATED_GLOBAL_DAEMON_RELOAD',text)
 
 class ScopeReservationRegression(unittest.TestCase):
- def test_prior_reservation_is_durable_and_empty_before_start(self):
+ def test_prior_reservation_is_durable_gate_only_before_holder_start(self):
   with Harness() as h:
-   h.install();done=h.t.reconcile();res=[r for r in done if r['action']=='RESERVE_SCOPE'];self.assertEqual(len(res),2);self.assertTrue(all(not h.b.scope_census(r['result']) for r in res));self.assertFalse(h.b.units)
+   h.install();done=h.t.reconcile();res=[r for r in done if r['action']=='RESERVE_SCOPE'];self.assertEqual(len(res),2);self.assertTrue(all(len(h.b.require_gate_only(r['result']))==1 for r in res));self.assertFalse(h.b.units)
    h.t.start_and_validate(h.capacity());actions=[r['action'] for r in h.t.reconcile()];self.assertLess(max(i for i,a in enumerate(actions) if a=='RESERVE_SCOPE'),actions.index('START'))
  def test_scope_nonce_inode_owner_reuse_rejected(self):
   for field,value in [('nonce','a'*64),('key',[27,999]),('owner',1000),('delegated',True)]:

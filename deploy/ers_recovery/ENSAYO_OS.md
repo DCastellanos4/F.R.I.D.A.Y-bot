@@ -1,3 +1,5 @@
+> Historical layer record. Current concrete preparation and limits: [ENSAYO_PRIVILEGED.md](ENSAYO_PRIVILEGED.md). Statements below about absent root executors or empty reservation scopes describe the earlier layer, not the current gate-only implementation.
+
 # ENSAYO_OS: prepared, not installed or kernel-verified
 
 Base: `26fd840dedef142e8ce2ec8b7a5a916492d2eb39`. This delta adds a separate no-bot-effects contract. It does not alter `unit_contract.py`, `bootstrap_worker.py`, or `local_unit_launcher.py` and does not widen their LOCAL namespace.
