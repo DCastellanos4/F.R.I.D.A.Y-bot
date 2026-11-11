@@ -1,6 +1,6 @@
 # RF-01: puente outbox SQLite a BullMQ, preparacion LOCAL
 
-Base bffd396665b6faf17f4ae899ce7472f1c8776eb1. Este corte implementa las costuras del puente para revision y pruebas LOCAL con broker inyectado. No hay conexion a Redis real, instalaciones, servidor, modelos, despliegue, activacion ni cambios del ensayo aparcado. No es certificacion RF-01 completo ni exactly-once externo.
+Base del puente 91fe50d737cf6ac363b8cd03b39827415887f5aa. Se han validado las costuras LOCAL tanto con broker inyectado como con Redis 7.2.7 real y procesos Node separados, siempre con entradas sinteticas. No se ha conectado al Redis de produccion, instalado un servicio del sistema, llamado a un modelo real, desplegado, activado ni cambiado el ensayo aparcado. No es certificacion RF-01 completo ni exactly-once externo. La ejecucion y sus limites se documentan en rf01-real-redis-validation.md.
 
 ## Camino implementado
 
@@ -20,7 +20,7 @@ Base bffd396665b6faf17f4ae899ce7472f1c8776eb1. Este corte implementa las costura
 
 El adaptador anterior enviaba el trabajo completo, generaba otro ID, configuraba backoff linear y no modificaba el outbox al completar. Se limita ahora al protocolo de ID, con jobId estable, attempts=1 y concurrencia 1 por worker. Se mantiene carga perezosa. El cargador inyectable permite probarlo sin Redis. Un fallo inicial de carga conserva la intencion de consumir y la publicacion posterior intenta reconstruir el transporte. La carrera cerrar/cargar no crea una cola tardia. Las notificaciones se validan tambien al consumir y el job.id debe coincidir con data.id.
 
-El destino admitido por este codigo es redis:// de loopback (127.0.0.1, localhost o ::1). No solicita credenciales ni configura autenticacion, TLS, persistencia o servicio. La cola usa el comportamiento nativo de conexion/reconexion de BullMQ; no se afirma disponibilidad del broker vivo. Los detalles operacionales deben revisarse antes de activar. El contenedor actual permanece sin flags activos.
+El destino admitido por este codigo es redis:// de loopback (127.0.0.1, localhost o ::1). No solicita credenciales ni configura autenticacion, TLS, persistencia o servicio. La cola usa el comportamiento nativo de conexion/reconexion de BullMQ; la prueba aislada no afirma disponibilidad del broker de produccion. Los detalles operacionales deben revisarse antes de activar. El contenedor actual permanece sin flags activos.
 
 ## Limites no resueltos por estos cambios
 
@@ -34,11 +34,11 @@ El destino admitido por este codigo es redis:// de loopback (127.0.0.1, localhos
 
 ## Activacion y decisiones pendientes
 
-El codigo LOCAL no necesita una nueva decision de usuario para escribir estas costuras dentro de implementar ERS. La activacion si requiere otra ventana aprobada y revision del destino/broker gratuito/autenticacion/persistencia/capacidad, configuracion efectiva, backup, migracion y recuperacion. No se ha abierto esa ventana, pedido secretos, iniciado Redis o retomado el ensayo.
+El codigo LOCAL no necesita una nueva decision de usuario para escribir estas costuras dentro de implementar ERS. La activacion si requiere otra ventana aprobada y revision del destino/broker gratuito/autenticacion/persistencia/capacidad, configuracion efectiva, backup, migracion y recuperacion. No se ha abierto esa ventana de produccion, pedido secretos ni retomado el ensayo. Solo se ha iniciado Redis temporal aislado LOCAL para validar con datos sinteticos.
 
 Para pasar de SQLite historico a redis: los eventos anteriores permanecen en transporte sqlite. Debe decidirse y verificar una estrategia de drenaje con productores/workers parados de forma controlada, sin volver a publicar trabajos inciertos como nuevos. Este codigo no migra ni adopta pendientes antiguos por inferencia. Tampoco vacia una cola al quitar el flag. Son condiciones de operacion, no un motivo para declarar activacion completa ahora.
 
-Validacion real pendiente: cliente/broker vivo, recuperacion ante caida real de procesos y Redis, carga/latencia, concurrencia y servicio de canal. Las pruebas sinteticas acreditan las transiciones implementadas, no esos resultados.
+Validado LOCAL con broker real: E2E, perdidas reales de Redis y procesos, reclamacion tras caida, no replay incierto, guardia contra worker obsoleto, dos procesos sobre 200 trabajos y backoff de negocio. Pendientes: configuracion y disponibilidad de produccion, carga sostenida representativa, latencia del canal vivo, ventanas de migracion/drenaje y recuperacion operativa. La recuperacion por BullMQ stalled no es inmediata: se observaron 60.395s y 90.412s; no se garantiza un RTO maximo. Los timeouts de 15s y 75s fallaron y se conservan como evidencia, no como certificados de perdida de trabajo.
 
 ## Fuentes
 
