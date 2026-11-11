@@ -161,3 +161,12 @@ class ConnectedReturn(unittest.TestCase):
         self.prepared_stop();self.assertIn('error',self.ask(self.donor,'RETURN_ACK2'))
         self.assertEqual(self.ask(self.receiver,'LIVE')['result']['live']['apps']['0']['intent'],'START_PENDING')
         self.assertIn('error',self.ask(self.donor,'RETURN0'))
+
+    def test_integrated_runner_two_live_original_holders_and_real_stability(self):
+        self.enrolled()
+        data={str(i):{'app':{'app_id':i,'config':'api-sha' if i==0 else 'wa-sha','pid':0,'start':0,'status':'stopped'},'sameDaemon':True,'sameRelease':True,'originalAbsent':True} for i in (0,1)}
+        for role in ('donor','receiver'):(self.j/('synthetic-observation-'+role+'.json')).write_text(json.dumps(data))
+        result=self.ask(self.donor,'RUNNER_SEQUENCE')
+        self.assertEqual(result['result']['phase'],'LOCAL_COMPLETE_NO_PRODUCTION_EFFECTS',result)
+        self.assertFalse(result['result']['productionAdmission']);self.assertEqual(len(result['result']['actions']),7)
+        remote=self.ask(self.receiver,'LIVE')['result'];self.assertEqual([v['intent'] for v in remote['live']['apps'].values()],['START_PENDING','START_PENDING']);self.assertTrue(self.busy())

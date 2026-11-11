@@ -25,7 +25,8 @@ else:
     print(json.dumps(identity()),flush=True)
     lease=Lease.accept(c,remote,lockpath,config['epoch'])
 def return_observer(app_id):
-    return json.loads((Path(directory)/('synthetic-observation-'+role+'.json')).read_text())
+    value=json.loads((Path(directory)/('synthetic-observation-'+role+'.json')).read_text())
+    return value[str(app_id)] if 'app' not in value else value
 pair=Pair(store,lease,c,remote,source_digest(),apps,donor=role=='donor',return_observer=return_observer)
 print('READY',flush=True)
 monitor=True
@@ -46,6 +47,22 @@ try:
         if not command:break
         try:
             if command=='ENROLL':result=pair.enroll()
+            elif command=='RUNNER_SEQUENCE':
+                from deploy.ers_recovery.local_runner import LocalRunner
+                from deploy.ers_recovery.campaign import GATES
+                from deploy.ers_recovery.policy import Health
+                import copy
+                baseline={i:{'observationSchema':2,'id':i,'name':'api' if i==0 else 'wa','pid':100+i,'start':str(10+i),'status':'online','configDigest':'api-sha' if i==0 else 'wa-sha','restart_time':0,'pm_uptime':100000} for i in (0,1)}
+                runner=LocalRunner(pair,baseline,{k:True for k in GATES},at=0)
+                for i,t in ((0,1),(1,2)):
+                    runner.stop_candidate(i,at=t);r=copy.deepcopy(baseline[i]);r.update(pid=0,status='stopped');runner.observe_stop(r,at=t+.1,original_absent=True)
+                runner.rehearsal_candidate(at=3);runner.observe_rehearsal(at=4,no_real_effects=True)
+                for i,t in ((0,5),(1,6)):
+                    runner.return_candidate(i,at=t);r=copy.deepcopy(baseline[i]);r.update(pid=1000+i);runner.observe_return(r,at=t+.1,start=str(50+i))
+                def h(i,t):return Health(1000+i,50+i,0,100000,100000+int(t*1000))
+                runner.begin_stability((401,'Unauthorized'),h(0,7),h(1,7),at=7)
+                for t in range(7,83,5):runner.stability_sample(t,h(0,t),h(1,t),(401,'Unauthorized'),listener_owned=True,wa_connected=True)
+                result=runner.verify_exit(at=83,reconciled=True)
             elif command=='RETURN_COMMIT_CHANGED':
                 original=store.write
                 def changed_after_write(state):
