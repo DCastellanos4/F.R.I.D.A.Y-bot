@@ -1,6 +1,7 @@
 """Direct existing-daemon read boundary. No PM2 CLI/client or mutation interface."""
 import json
 import math
+import re
 from pathlib import Path
 import subprocess
 
@@ -31,7 +32,10 @@ def bounded_rpc(config, *, node='/usr/bin/node', deadline=7):
             version=data['version']
             if type(version) is not str or len(version)>32:raise ValueError()
             for row in data['selected']:
-                selected[row['pm2_env']['pm_id']]['start']=row['processStart']
+                start=row['processStart']
+                if not (start is None or (type(start) is str and re.fullmatch(r'[0-9]+',start))):raise ValueError()
+                if (row['pid']>0)!=(start is not None):raise ValueError()
+                selected[row['pm2_env']['pm_id']]['start']=start
             return {'version':version,'selected':selected}
         except (KeyError,ValueError,TypeError):raise Unverifiable('RPC_PROTOCOL_UNVERIFIABLE') from None
     finally:

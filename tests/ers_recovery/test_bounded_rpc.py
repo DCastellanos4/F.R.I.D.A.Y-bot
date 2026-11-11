@@ -12,6 +12,28 @@ class RPCBoundary(unittest.TestCase):
         with self.assertRaises(Unverifiable):bounded_rpc({},node='/bin/sh')
     def test_large_config_rejected(self):
         with self.assertRaises(Unverifiable):bounded_rpc({'x':'x'*17000})
+    def test_bad_stdout_fails_closed(self):
+        import json
+        def run(out):
+            class Process:
+                returncode=0
+                def communicate(inner,*a,**kw):return out,None
+                def poll(inner):return 0
+            with patch('deploy.ers_recovery.bounded_rpc.subprocess.Popen',return_value=Process()):
+                with self.assertRaises(Unverifiable):bounded_rpc({'expected':{'0':'a','1':'b'}})
+        for out in [b'x'*32769,b'{broken',b'{"version":"7.1.1","selected":[]}']:
+            with self.subTest(outlen=len(out)):run(out)
+    def test_start_type_and_reprojection(self):
+        import json
+        # Pure projection is mocked here to isolate the new stdout-start boundary.
+        for bad in [123,True,{},[],"1a","",None]:
+            out=json.dumps({'version':'7.1.1','selected':[{'pid':1,'pm2_env':{'pm_id':0},'processStart':bad}]}).encode()
+            class Process:
+                returncode=0
+                def communicate(inner,*a,**kw):return out,None
+                def poll(inner):return 0
+            with self.subTest(start=bad),patch('deploy.ers_recovery.bounded_rpc.subprocess.Popen',return_value=Process()),patch('deploy.ers_recovery.bounded_rpc.project_processes',return_value={0:{}}):
+                with self.assertRaisesRegex(Unverifiable,'RPC_PROTOCOL'):bounded_rpc({'expected':{'0':'a','1':'b'}})
     def test_wall_timeout_kills_exact_child(self):
         import subprocess
         class Process:
