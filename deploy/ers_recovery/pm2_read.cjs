@@ -3,6 +3,8 @@
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const path = require('node:path');
+const {closedLoader}=require('./closed_loader.cjs');
+const closureManifest=require('./closure_manifest.json');
 function fail() { throw new Error('PM2_READ_UNVERIFIABLE'); }
 function start(pid) {
   if(!Number.isSafeInteger(pid)||pid<=0)fail();
@@ -51,8 +53,9 @@ async function collect(config) {
     }
   }
   custody();
-  const axon=require(path.join(config.root,modules[0]));
-  const rpc=require(path.join(config.root,modules[1]));
+  const loader=closedLoader(closureManifest);
+  const axon=loader.load(modules[0]);
+  const rpc=loader.load(modules[1]);
   const request=axon.socket('req');const client=new rpc.Client(request);
   return await new Promise((resolve,reject)=>{
     let settled=false;
