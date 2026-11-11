@@ -91,6 +91,15 @@ class Marker(unittest.TestCase):
     def test_quoted_marker_not_evidence(self):
         self.append(b'user says D.A.V.I.S. CONECTADO Y EN LINEA\n')
         self.assertFalse(marker_events(self.p,self.mark)['connected'])
+    def test_crlf_marker_rejected(self):
+        self.append(b'D.A.V.I.S. CONECTADO Y EN LINEA\r\n')
+        with self.assertRaises(Unverifiable):marker_events(self.p,self.mark)
+    def test_cr_suffix_rejected(self):
+        self.append(b'D.A.V.I.S. CONECTADO Y EN LINEA\r\nignored\n')
+        with self.assertRaises(Unverifiable):marker_events(self.p,self.mark)
+    def test_symlink_is_domain_error(self):
+        link=self.p.with_suffix('.link');link.symlink_to(self.p)
+        with self.assertRaises(Unverifiable):mark_log(link)
     def test_rotation_hold(self):
         self.p.rename(self.p.with_suffix('.old'));self.p.write_bytes(b'D.A.V.I.S. CONECTADO Y EN LINEA\n')
         with self.assertRaises(Unverifiable):marker_events(self.p,self.mark)
@@ -106,7 +115,7 @@ class Marker(unittest.TestCase):
 
 class Unit(unittest.TestCase):
     def manager(self):return dict(Id='synthetic.service',LoadState='loaded',ActiveState='active',SubState='running',MainPID=100,InvocationID='a'*32,ControlGroup='/synthetic',SourceDigest='code-sha')
-    def verify(self,m):return unit_custody(m,dict(pid=100,start='9',boot='syntheticboot'),'0::/synthetic\n',expected_unit='synthetic.service',expected_source='code-sha')
+    def verify(self,m):return unit_custody(m,dict(pid=100,start='9',boot='syntheticboot'),'0::/synthetic\n',expected_unit='synthetic.service',expected_source='code-sha',expected_cgroup='/synthetic')
     def test_exact_unit(self):self.assertEqual(self.verify(self.manager())['invocation'],'a'*32)
     def test_changed_mainpid(self):
         m=self.manager();m['MainPID']=101
@@ -117,6 +126,14 @@ class Unit(unittest.TestCase):
     def test_child_cgroup_not_exact(self):
         m=self.manager();m['ControlGroup']='/synthetic/child'
         with self.assertRaises(Unverifiable):self.verify(m)
+    def test_root_cgroup_rejected(self):
+        m=self.manager();m['ControlGroup']='/'
+        with self.assertRaises(Unverifiable):unit_custody(m,dict(pid=100,start='9',boot='synthetic'),'0::/\n',expected_unit='synthetic.service',expected_source='code-sha',expected_cgroup='/')
+    def test_missing_unit_field_domain_error(self):
+        m=self.manager();del m['ControlGroup']
+        with self.assertRaises(Unverifiable):self.verify(m)
+    def test_missing_reconcile_field_domain_error(self):
+        with self.assertRaises(Unverifiable):reconcile_observation('STOP_PENDING',{}, {},original_absent=True,current_start=0)
     def test_not_running(self):
         m=self.manager();m['SubState']='exited'
         with self.assertRaises(Unverifiable):self.verify(m)

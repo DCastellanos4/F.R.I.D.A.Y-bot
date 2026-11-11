@@ -86,3 +86,13 @@ Local tests cover projected synthetic PM2 payloads, real temporary log deltas,
 a real loopback HTTP server and synthetic exact unit evidence. They do not test
 production PM2/HTTP/log writers, systemd containment or the retained start path.
 No inherited test count proves these new adapters or readiness.
+
+## Focal normalization correction
+
+Log records split ONLY at LF. CR anywhere in a delta is rejected rather than
+normalizing CRLF/CR into accepted markers. unit_custody requires an explicit
+expected non-root exact cgroup in addition to manager/proc agreement. It still
+does not attest that a dict originated with the manager. Public observation
+helpers translate missing fields, type errors and ordinary filesystem failures
+(including symlink ELOOP) into Unverifiable without raw exception contents.
+An independent global deadline remains required for the HTTP collector.

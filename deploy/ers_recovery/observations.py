@@ -10,10 +10,21 @@ import os
 import re
 import stat
 from dataclasses import dataclass
+from functools import wraps
 
 
 class Unverifiable(RuntimeError):
     pass
+
+
+def domain_errors(fn):
+    @wraps(fn)
+    def wrapped(*args, **kwargs):
+        try:return fn(*args, **kwargs)
+        except Unverifiable:raise
+        except (OSError, KeyError, TypeError, ValueError, AttributeError, IndexError):
+            raise Unverifiable('OBSERVATION_UNVERIFIABLE') from None
+    return wrapped
 
 
 def integer(value, low=0):
@@ -26,6 +37,7 @@ CONFIG_FIELDS = ('name','pm_exec_path','pm_cwd','exec_interpreter','exec_mode',
                  'restart_delay','exp_backoff_restart_delay','max_restarts','max_memory_restart')
 
 
+@domain_errors
 def process_record(raw, expected_id, expected_name):
     # getMonitorData returns the full process/env. Project IN MEMORY, do not
     # stringify/hash/log its env or include it in errors or journal.
@@ -55,6 +67,7 @@ def process_record(raw, expected_id, expected_name):
             'configDigest':hashlib.sha256(json.dumps(projected,sort_keys=True).encode()).hexdigest()}
 
 
+@domain_errors
 def project_processes(payload, expected):
     if type(payload) is not list or len(payload)!=len(expected) or len(expected)!=2:
         raise Unverifiable('EXACT_PROCESS_SET_REQUIRED')
@@ -68,6 +81,7 @@ def project_processes(payload, expected):
     return found
 
 
+@domain_errors
 def classify_http(status, body):
     if type(status) is not int or type(body) is not bytes or len(body)>1024:raise Unverifiable('HTTP_BODY_UNBOUNDED')
     try:
@@ -89,6 +103,7 @@ def classify_http(status, body):
     raise Unverifiable('HTTP_RESPONSE_NOT_EXPECTED_CLASS')
 
 
+@domain_errors
 def anonymous_http(port, timeout=2):
     integer(port,1)
     if port>65535 or not 0<timeout<=5:raise Unverifiable('BAD_HTTP_LIMITS')
@@ -119,12 +134,14 @@ def _regular(path):
     except BaseException:os.close(fd);raise
 
 
+@domain_errors
 def mark_log(path):
     fd,s=_regular(path)
     try:return FileMark(s.st_dev,s.st_ino,s.st_size)
     finally:os.close(fd)
 
 
+@domain_errors
 def marker_events(path, before, *, limit=262144):
     # Only a previously observed inode is supported. Rotation, truncation or
     # excess bytes are uncertainty, never permission to read a whole log.
@@ -146,7 +163,8 @@ def marker_events(path, before, *, limit=262144):
         if not boundary:raise Unverifiable('LOG_BASELINE_PARTIAL_LINE')
         if data and not data.endswith(b'\n'):raise Unverifiable('LOG_DELTA_PARTIAL_LINE')
         events=[]
-        for line in data.splitlines():
+        if b'\r' in data:raise Unverifiable('LOG_CR_NOT_SUPPORTED')
+        for line in data.split(b'\n'):
             # Exact source console output, not markers quoted inside user text.
             # Timestamp-prefixed/wrapped logs require a separately reviewed
             # normalization adapter; do not guess stripping arbitrary prefixes.
@@ -161,7 +179,8 @@ def marker_events(path, before, *, limit=262144):
     finally:os.close(fd)
 
 
-def unit_custody(manager, proc_identity, proc_cgroup, *, expected_unit, expected_source):
+@domain_errors
+def unit_custody(manager, proc_identity, proc_cgroup, *, expected_unit, expected_source, expected_cgroup):
     # manager is a deliberately projected systemctl show result, not arbitrary
     # event text or the process's self-asserted environment.
     required={'Id','LoadState','ActiveState','SubState','MainPID','InvocationID','ControlGroup','SourceDigest'}
@@ -170,13 +189,18 @@ def unit_custody(manager, proc_identity, proc_cgroup, *, expected_unit, expected
     if manager['ActiveState']!='active' or manager['SubState']!='running':raise Unverifiable('UNIT_NOT_RUNNING')
     if integer(manager['MainPID'],1)!=proc_identity['pid'] or not re.fullmatch('[a-f0-9]{32}',manager['InvocationID']):
         raise Unverifiable('UNIT_PROCESS_IDENTITY_MISMATCH')
-    if manager['SourceDigest']!=expected_source or not manager['ControlGroup'].startswith('/'):
+    if (not isinstance(expected_cgroup,str) or expected_cgroup=='/'
+            or not expected_cgroup.startswith('/') or '//' in expected_cgroup
+            or any(part in ('.','..') for part in expected_cgroup.split('/'))
+            or manager['ControlGroup']!=expected_cgroup
+            or manager['SourceDigest']!=expected_source):
         raise Unverifiable('UNIT_SOURCE_OR_GROUP_MISMATCH')
     if proc_cgroup != '0::'+manager['ControlGroup']+'\n':raise Unverifiable('PROCESS_NOT_EXACT_UNIT_CGROUP')
     return {'unit':expected_unit,'invocation':manager['InvocationID'],'process':proc_identity.copy(),
             'cgroup':manager['ControlGroup'],'source':expected_source}
 
 
+@domain_errors
 def reconcile_observation(intent, baseline, current, *, original_absent, current_start):
     if (baseline['id'],baseline['configDigest'])!=(current['id'],current['configDigest']):
         return 'HOLD_CHANGED_RECORD'
