@@ -26,7 +26,8 @@ class RootJournal:
   self.check();before=os.fstat(self.fd);b=os.pread(self.fd,131073,0)
   if len(b)>131072 or len(b)!=before.st_size or c.file_key(before)!=c.file_key(os.fstat(self.fd)) or not b.endswith(b'\n'):raise c.ContractHold('ROOT_CONTROL_JOURNAL_PARTIAL')
   rows=[c.load_json(v) for v in b.splitlines()]
-  if not rows or rows[0]!={'op':'ROOT_CONTROL_BEGIN','manifestDigest':c.digest(self.m)} or len(rows)>384:raise c.ContractHold('ROOT_CONTROL_JOURNAL_BINDING')
+  c.validate_journal_origin(self.m,rows)
+  if len(rows)>384:raise c.ContractHold('ROOT_CONTROL_JOURNAL_BINDING')
   return rows
  def seal(self):
   self.check();os.fsync(self.fd);rows=self.rows()

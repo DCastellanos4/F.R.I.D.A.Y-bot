@@ -19,7 +19,7 @@ def manager_unit(unit, *, deadline=3):
         raise Unverifiable('FIXED_ERS_UNIT_NAME_REQUIRED')
     if type(deadline) not in (int,float) or not math.isfinite(deadline) or not .1<=deadline<=5:
         raise Unverifiable('BAD_UNIT_READ_DEADLINE')
-    command=['/usr/bin/systemctl','show','--no-pager','--property='+','.join(PROPERTIES),'--',unit]
+    command=['/usr/bin/systemctl','show','--all','--no-pager','--property='+','.join(PROPERTIES),'--',unit]
     p=subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,
                        env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','SYSTEMD_PAGER':''},close_fds=True)
     try:

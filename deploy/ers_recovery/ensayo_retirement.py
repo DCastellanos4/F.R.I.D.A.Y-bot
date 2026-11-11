@@ -127,7 +127,8 @@ class Retirement:
   if not callable(getattr(journal,'seal',None)) or len(rows)>256 or len(data)>98304:raise c.ContractHold('RETIRE_FINALIZER_SEAL_OR_LOG_CAPACITY')
   if self.io.snapshot(self.p['seed'])!=seed_original or seed_original.get('type')!=stat.S_IFREG or seed_original.get('uid')!=0 or seed_original.get('gid')!=0 or seed_original.get('mode')!=0o600 or seed_original.get('nlink')!=1:raise c.ContractHold('RETIRE_ORIGINAL_SEED')
   b=self.io.read_exact(self.p['seed'],seed_original);seedrows=[c.load_json(v) for v in b.splitlines()]
-  if not b.endswith(b'\n') or not seedrows or seedrows[0]!={'op':'ROOT_CONTROL_BEGIN','manifestDigest':c.digest(self.m)} or seedrows[-1].get('op')!='LIFECYCLE_SEALED':raise c.ContractHold('RETIRE_SEED_BINDING')
+  if not b.endswith(b'\n') or not seedrows or seedrows[-1].get('op')!='LIFECYCLE_SEALED':raise c.ContractHold('RETIRE_SEED_BINDING')
+  c.validate_journal_origin(self.m,seedrows)
   return {'status':'PRE_FINALIZER_INPUTS_CUSTODY_CHECKED_NOT_ATOMIC','notAuthority':True}
  def freeze(self,rows,*,seed_original,lifecycle_original,not_before,executor_pins):
   """Called only AFTER Finalizer completion, lifecycle fsync/close and seed close.
@@ -159,7 +160,8 @@ class Retirement:
   if not lifecycle.endswith(b'\n') or parsed!=rows:raise c.ContractHold('RETIRE_CLOSED_LIFECYCLE_BINDING')
   if self.io.snapshot(self.p['seed'])!=seed_original or seed_original.get('type')!=stat.S_IFREG or seed_original.get('uid')!=0 or seed_original.get('gid')!=0 or seed_original.get('mode')!=0o600 or seed_original.get('nlink')!=1:raise c.ContractHold('RETIRE_ORIGINAL_SEED')
   seedrows=[c.load_json(line) for line in self.io.read_exact(self.p['seed'],seed_original).splitlines()]
-  if not seedrows or seedrows[0]!={'op':'ROOT_CONTROL_BEGIN','manifestDigest':c.digest(self.m)} or seedrows[-1].get('op')!='LIFECYCLE_SEALED':raise c.ContractHold('RETIRE_SEED_BINDING')
+  if not seedrows or seedrows[-1].get('op')!='LIFECYCLE_SEALED':raise c.ContractHold('RETIRE_SEED_BINDING')
+  c.validate_journal_origin(self.m,seedrows)
   inventory[self.p['seed']]=seed_original
   ticket={'schema':1,'status':'PROPOSED_PENDING_OWNER_AUTHORITY_NO_SCHEDULE','manifestDigest':c.digest(self.m),'epoch':self.m['epoch'],'notBeforeUnixProposed':not_before,'executorPins':executor_pins,'actors':actors,'principal':principal,'accountDisposition':decision,'inventory':inventory,'executorRootRetained':'/opt/ers-retirement/'+c.digest(executor_pins),'auditResiduals':[self.p['ticket'],self.p['closeout']],'sharedParentsRetained':['/opt/ers','/etc/ers-ensayo','/var/lib/ers-ensayo-control',self.p['shared']]}
   # Recheck entire frozen set before even creating external audit directories.

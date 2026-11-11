@@ -17,10 +17,13 @@ CONTROL={'ensayo_privileged_io.py','ensayo_manager_collector.py','ensayo_root_jo
 class SeedJournal:
  def __init__(self,m):
   if os.geteuid()!=0:raise c.ContractHold('BOOTSTRAP_ROOT_REQUIRED')
-  self.m=c.validate_staging(m);self.path=Path('/var/lib')/('ers-ensayo-bootstrap-'+m['epoch']+'.jsonl');c.ancestors(self.path.parent,0);self.fd=os.open(self.path,os.O_CREAT|os.O_EXCL|os.O_RDWR|os.O_APPEND|os.O_NOFOLLOW|os.O_CLOEXEC,0o600);s=os.fstat(self.fd);self.key=(s.st_dev,s.st_ino);parent=os.open(self.path.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC)
+  self.m=c.validate_staging(m);self._open(m['epoch'],{'op':'ROOT_CONTROL_BEGIN','manifestDigest':c.digest(m)})
+ def _open(self,epoch,begin):
+  if os.geteuid()!=0 or not c.HEX(16,epoch):raise c.ContractHold('BOOTSTRAP_ROOT_EPOCH_REQUIRED')
+  self.path=Path('/var/lib')/('ers-ensayo-bootstrap-'+epoch+'.jsonl');c.ancestors(self.path.parent,0);self.fd=os.open(self.path,os.O_CREAT|os.O_EXCL|os.O_RDWR|os.O_APPEND|os.O_NOFOLLOW|os.O_CLOEXEC,0o600);s=os.fstat(self.fd);self.key=(s.st_dev,s.st_ino);parent=os.open(self.path.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC)
   try:os.fsync(parent)
   finally:os.close(parent)
-  self.append({'op':'ROOT_CONTROL_BEGIN','manifestDigest':c.digest(m)})
+  self.append(begin)
  def check(self):
   s=os.fstat(self.fd);name=self.path.lstat()
   if (s.st_dev,s.st_ino)!=self.key or c.file_key(s)!=c.file_key(name) or s.st_uid!=0 or s.st_nlink!=1 or stat.S_IMODE(s.st_mode)!=0o600 or s.st_size>131072:raise c.ContractHold('BOOTSTRAP_SEED_CUSTODY')
@@ -35,7 +38,7 @@ class SeedJournal:
   return [c.load_json(v) for v in b.splitlines()]
  def close(self):os.close(self.fd)
 
-def execute_prepared_bundle(m,holder_bytes,control_bytes,*,retirement_bytes,account_disposition,seed_factory=SeedJournal,principal_factory=PrincipalBootstrap,io_factory=RootIO):
+def execute_prepared_bundle(m,holder_bytes,control_bytes,*,retirement_bytes,account_disposition,seed_factory=SeedJournal,principal_factory=PrincipalBootstrap,io_factory=RootIO,allocation=None):
  """The trusted root operator must bind this exact code+inputs to the approved
  intervention before calling. An agent-created bundle is not that approval.
  All material is validated before creating the single external seed journal.
@@ -47,7 +50,14 @@ def execute_prepared_bundle(m,holder_bytes,control_bytes,*,retirement_bytes,acco
  c.exact(retirement_bytes,EXECUTOR_NAMES,'BOOTSTRAP_RETIREMENT_EXECUTOR_SET')
  if any(type(b) is not bytes or len(b)>1048576 for b in retirement_bytes.values()) or any(retirement_bytes[n]!=holder_bytes[n] for n in c.STAGING_SOURCES) or any(retirement_bytes[n]!=control_bytes[n] for n in set(retirement_bytes)&set(control_bytes)):raise c.ContractHold('BOOTSTRAP_RETIREMENT_SOURCE_PARITY')
  retirement_pins={n:hashlib.sha256(b).hexdigest() for n,b in retirement_bytes.items()};retirement_root='/opt/ers-retirement/'+c.digest(retirement_pins)
- seed=seed_factory(m);io=io_factory(m);i=m['intervention'];created=[]
+ if allocation is None:seed=seed_factory(m)
+ else:
+  from .ensayo_system_allocation import Allocation
+  if type(allocation) is not Allocation:raise c.ContractHold('BOOTSTRAP_ORIGINAL_ALLOCATION_OBJECT')
+  seed=allocation.claim(m)
+ try:io=io_factory(m)
+ except BaseException:seed.close();raise
+ i=m['intervention'];created=[]
  def put(path,b,*,mode=0o444,uid=0,gid=0,directory=False):
   if io.snapshot(path) is not None:raise c.ContractHold('BOOTSTRAP_NO_REPLACE')
   seed.append({'op':'INSTALL_INTENT','path':path,'kind':'directory' if directory else 'file'})
@@ -73,10 +83,11 @@ def execute_prepared_bundle(m,holder_bytes,control_bytes,*,retirement_bytes,acco
   seed.append({'op':'RETIRE_EXECUTOR_INTENT','path':retirement_root});key=io.create_directory(retirement_root,uid=0,gid=0,mode=0o755);seed.append({'op':'RETIRE_EXECUTOR_CREATED','path':retirement_root,'key':key})
   for name,b in sorted(retirement_bytes.items()):
    path=retirement_root+'/'+name;seed.append({'op':'RETIRE_EXECUTOR_INTENT','path':path});key=io.create(path,b,uid=0,gid=0,mode=0o444);seed.append({'op':'RETIRE_EXECUTOR_CREATED','path':path,'key':key})
-  # Final roots absent before first account mutation.
+  # Final roots absent before legacy account mutation or consuming the
+  # separately allocated, frozen original principal. No name adoption.
   for p in (m['sourceRoot'],m['configRoot'],m['runtimeRoot'],i['controlRoot'],i['canaryRoot'],i['gateRoot']):
    if io.snapshot(p) is not None:raise c.ContractHold('BOOTSTRAP_FINAL_ROOT_COLLISION')
-  receipt=principal_factory(m,seed).reserve();receipt_digest=c.digest(receipt)
+  receipt=principal_factory(m,seed).reserve() if allocation is None else allocation.confirm(m);receipt_digest=c.digest(receipt)
   put(i['controlRoot'],None,mode=0o700,directory=True)
   # Holder install uses the same original principal receipt from this journal.
   # Its no-second-attempt check distinguishes HOLDER_INSTALL from bootstrap ops.

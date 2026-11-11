@@ -229,3 +229,30 @@ def cleanup_plan(m,inventory,current,*,original_holders,death_observations):
   exact(key,{'dev','ino','kind','sha256','uid','gid','mode','nlink'},'STAGING_CLEANUP_IDENTITY')
   if any(type(key[k]) is not int or key[k]<0 for k in ('dev','ino','uid','gid','mode','nlink')) or key['kind'] not in ('file','directory','socket') or (key['kind']=='file' and not HEX(64,key['sha256'])) or (key['kind']!='file' and key['sha256'] is not None) or current[path]!=key:reject('STAGING_CLEANUP_DRIFT')
  return {'status':'EXACT_CLEANUP_PLAN_ONLY','productionAdmission':False,'removeFiles':[p for p in sorted(inventory) if inventory[p]['kind']!='directory'],'removeEmptyDirectories':sorted((p for p in inventory if inventory[p]['kind']=='directory'),key=lambda p:(-p.count('/'),p)),'recursive':False,'externalExecutorRequired':True,'remainingUnknownEntries':'HOLD_NOT_DELETE'}
+
+def validate_journal_origin(m,rows):
+ """One frozen numeric identity, including the exact native-allocation prefix.
+ Shared by root lifecycle and external seed retirement; no reader treats a
+ pre-freeze account intent as installation/start authority.
+ """
+ validate_staging(m)
+ begin={'op':'ROOT_CONTROL_BEGIN','manifestDigest':digest(m)}
+ if type(rows) is not list or not rows or any(type(r) is not dict for r in rows) or [r for r in rows if r.get('op')=='ROOT_CONTROL_BEGIN']!=[begin]:reject('JOURNAL_ONE_FROZEN_CONTROL_ORIGIN')
+ if rows[0]==begin:
+  if any(r.get('op') in ('ROOT_ALLOCATION_BEGIN','ALLOCATION_MANIFEST_FROZEN') or r.get('allocation')=='SYSTEM' for r in rows):reject('JOURNAL_ALLOCATION_CANNOT_BYPASS_FREEZE')
+  return
+ template={k:v for k,v in m.items() if k not in ('uid','gid','groups')}
+ plan={'allocation':'NATIVE_SHADOW_SYSTEM_NO_NUMERIC_SELECTION','manifestTemplate':template}
+ uid=m['uid'];gid=m['gid'];name='ers-ensayo'
+ receipt={'op':'PRINCIPAL_RESERVED','user':name,'group':name,'uid':uid,'gid':gid,'home':'/nonexistent','shell':'/usr/sbin/nologin','groups':[gid]}
+ if len(rows)<8 or m['groups']!=[gid]:reject('JOURNAL_ALLOCATION_PREFIX')
+ g=rows[2].get('nss');u=rows[4].get('nss')
+ if type(g) is not list or len(g)!=4 or g[0]!=name or g[1] not in ('x','!','*','!!') or g[2:]!=[gid,[]]:reject('JOURNAL_ALLOCATION_GROUP_RECEIPT')
+ if type(u) is not list or len(u)!=7 or u[0]!=name or u[1] not in ('x','!','*','!!') or u[4]!='' or u[2:4]!=[uid,gid] or u[5:]!=['/nonexistent','/usr/sbin/nologin']:reject('JOURNAL_ALLOCATION_USER_RECEIPT')
+ expected=[{'op':'ROOT_ALLOCATION_BEGIN','planDigest':digest(plan)},
+ {'op':'PRINCIPAL_GROUP_INTENT','name':name,'allocation':'SYSTEM'},
+ {'op':'PRINCIPAL_GROUP_CREATED','name':name,'gid':gid,'nss':g},
+ {'op':'PRINCIPAL_USER_INTENT','name':name,'gid':gid,'allocation':'SYSTEM'},
+ {'op':'PRINCIPAL_USER_CREATED','name':name,'uid':uid,'gid':gid,'nss':u},receipt,
+ {'op':'ALLOCATION_MANIFEST_FROZEN','manifestDigest':digest(m),'receiptDigest':digest(receipt),'planDigest':digest(plan)},begin]
+ if rows[:8]!=expected or any(len([r for r in rows if r.get('op')==op])!=1 for op in ('ROOT_ALLOCATION_BEGIN','ALLOCATION_MANIFEST_FROZEN','PRINCIPAL_RESERVED','PRINCIPAL_GROUP_CREATED','PRINCIPAL_USER_CREATED')):reject('JOURNAL_ALLOCATION_FREEZE_CHAIN')

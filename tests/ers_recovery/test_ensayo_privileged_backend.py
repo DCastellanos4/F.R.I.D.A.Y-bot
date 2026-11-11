@@ -74,6 +74,15 @@ class PrivilegedIOTests(unittest.TestCase):
   r,calls=self.runner('pass')
   with patch.object(r,'binary_custody',side_effect=c.ContractHold('PIN')),self.assertRaises(c.ContractHold):r.invoke('start',r.m['units']['controller'])
   self.assertEqual(calls,[])
+ def test_manager_show_all_preserves_249_empty_properties(self):
+  values={k:'' for k in FixedRunner.properties};values.update(Id=manifest()['units']['controller'],LoadState='loaded',ActiveState='active',SubState='running')
+  r,calls=self.runner('import json;print('+repr('\n'.join(k+'='+v for k,v in values.items()))+')')
+  with patch.object(r,'binary_custody',return_value={}):out=r.invoke('show',r.m['units']['controller'])
+  self.assertEqual(out,values);self.assertIn('--all',calls[0][0]);self.assertEqual(out['DropInPaths'],'');self.assertEqual(out['ControlGroup'],'')
+ def test_show_all_still_rejects_missing_249_property(self):
+  r,calls=self.runner('print('+repr('\n'.join(k+'=' for k in FixedRunner.properties if k!='DropInPaths'))+')')
+  with patch.object(r,'binary_custody',return_value={}),self.assertRaises(c.ContractHold):r.invoke('show',r.m['units']['controller'])
+  self.assertEqual(len(calls),1)
  def test_manager_exact_show_projection_not_raw(self):
   r,calls=self.runner("print('PRIVATE=SECRET')")
   with patch.object(r,'binary_custody',return_value={}),self.assertRaises(c.ContractHold) as error:r.invoke('show',r.m['units']['controller'])

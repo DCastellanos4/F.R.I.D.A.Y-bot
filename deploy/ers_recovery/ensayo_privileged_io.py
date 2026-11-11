@@ -154,7 +154,7 @@ class FixedRunner:
  def invoke(self,verb,unit=None):
   if verb not in ('show','start','stop','daemon-reload') or (verb!='daemon-reload' and unit not in self.units) or (verb=='daemon-reload' and unit is not None):raise ContractHold('MANAGER_COMMAND_NOT_ALLOWED')
   argv=['/usr/bin/systemctl','--system','--no-pager','--no-ask-password']
-  if verb=='show':argv+=['show','--property='+','.join(self.properties),unit]
+  if verb=='show':argv+=['show','--all','--property='+','.join(self.properties),unit]
   elif verb=='daemon-reload':argv+=['daemon-reload']
   else:argv+=([verb,'--no-block',unit] if verb=='start' else [verb,unit])
   pin=self.binary_custody();p=self.spawn(argv,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,env={'PATH':'/usr/bin:/bin','LANG':'C','LC_ALL':'C','SYSTEMD_COLORS':'0'},cwd='/',close_fds=True,start_new_session=True)

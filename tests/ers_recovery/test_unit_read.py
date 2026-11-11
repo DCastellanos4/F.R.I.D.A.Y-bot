@@ -23,7 +23,7 @@ class UnitRead(unittest.TestCase):
  def test_exact_manager_properties_only_no_exec_or_env(self):
   r,c=self.run_manager(self.encode(record()));self.assertEqual(r,record())
   args,kw=c[0];self.assertEqual(args[0][0:2],['/usr/bin/systemctl','show']);self.assertEqual(args[0][-2:],['--',UNIT])
-  self.assertNotIn('Environment',args[0][3]);self.assertNotIn('ExecStart',args[0][3]);self.assertTrue(kw['close_fds']);self.assertEqual(set(kw['env']),{'PATH','LANG','SYSTEMD_PAGER'})
+  self.assertIn('--all',args[0]);self.assertEqual(r['DropInPaths'],'');self.assertEqual(r['PartOf'],'');projection=next(v for v in args[0] if v.startswith('--property='));self.assertNotIn('Environment',projection);self.assertNotIn('ExecStart',projection);self.assertTrue(kw['close_fds']);self.assertEqual(set(kw['env']),{'PATH','LANG','SYSTEMD_PAGER'})
  def test_unknown_or_missing_or_duplicate_properties_fail(self):
   r=record()
   for body in [self.encode(r)+b'Environment=secret\n',self.encode({k:v for k,v in r.items() if k!='Id'}),self.encode(r)+b'Id='+UNIT.encode()+b'\n',b'x'*16385]:
