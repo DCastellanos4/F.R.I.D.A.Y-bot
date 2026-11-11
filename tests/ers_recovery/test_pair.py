@@ -106,3 +106,58 @@ class PairedProcesses(unittest.TestCase):
         self.assertIn('error',self.ask(self.receiver,'GONE'));self.assertFalse(self.busy())
 
 if __name__=='__main__':unittest.main()
+
+
+class ConnectedReturn(unittest.TestCase):
+    setUp=PairedProcesses.setUp
+    launch=PairedProcesses.launch
+    tearDown=PairedProcesses.tearDown
+    ask=PairedProcesses.ask
+    enrolled=PairedProcesses.enrolled
+    busy=PairedProcesses.busy
+    def observation(self,role,*,absent=True,status='stopped',config='api-sha',pid=0):
+        value={'app':{'app_id':0,'config':config,'pid':pid,'start':0,'status':status},'sameDaemon':True,'sameRelease':True,'originalAbsent':absent}
+        (self.j/('synthetic-observation-'+role+'.json')).write_text(json.dumps(value))
+    def prepared_stop(self):
+        self.enrolled();self.assertEqual(self.ask(self.donor,'STOP0')['result'],'SYNTHETIC_STOP_INTENT_ONLY')
+        self.observation('donor');self.observation('receiver')
+    def test_two_live_independent_observers_commit_start_candidate(self):
+        self.prepared_stop();self.assertEqual(self.ask(self.donor,'RETURN0')['result'],'SYNTHETIC_CONNECTED_START_INTENT_ONLY')
+        self.assertEqual(self.ask(self.receiver,'LIVE')['result']['live']['apps']['0']['intent'],'START_PENDING')
+        self.assertIsNone(self.ask(self.receiver,'LIVE')['result']['pending']);self.assertTrue(self.busy())
+        self.assertIn('error',self.ask(self.donor,'RETURN0'))
+    def test_independent_receiver_disagrees_blocks_candidate(self):
+        self.prepared_stop();self.observation('receiver',absent=False)
+        self.assertIn('error',self.ask(self.donor,'RETURN0'))
+        self.assertTrue(self.ask(self.donor,'LIVE').get('error') or self.ask(self.donor,'LIVE')['result']['failed'])
+        self.assertEqual(self.ask(self.receiver,'LIVE')['result']['live']['apps']['0']['intent'],'STOP_PENDING')
+    def test_donor_uncertain_does_not_even_prepare_start(self):
+        self.prepared_stop();self.observation('donor',status='errored')
+        self.assertIn('error',self.ask(self.donor,'RETURN0'))
+        self.assertEqual(self.ask(self.receiver,'LIVE')['result']['live']['apps']['0']['intent'],'STOP_PENDING')
+    def test_donor_cannot_return_unstopped_other_app(self):
+        self.prepared_stop();self.assertIn('error',self.ask(self.donor,'RETURN1'))
+    def test_fresh_process_cannot_adopt_return_from_json(self):
+        self.prepared_stop();self.ask(self.donor,'RETURN0');self.donor.kill();self.donor.wait(timeout=3)
+        self.assertEqual(self.ask(self.receiver,'GONE')['result'],'LOCAL_SURVIVOR_ORIGINAL_REFERENCE')
+        self.assertEqual(self.ask(self.receiver,'START0')['result'],'HOLD_START_OUTCOME_UNCERTAIN')
+    def test_missing_independent_observation_holds(self):
+        self.prepared_stop();(self.j/'synthetic-observation-receiver.json').unlink()
+        self.assertIn('error',self.ask(self.donor,'RETURN0'))
+    def test_baseline_config_change_holds(self):
+        self.prepared_stop();self.observation('receiver',config='changed')
+        self.assertIn('error',self.ask(self.donor,'RETURN0'))
+
+    def test_changed_receiver_observation_before_commit_blocks(self):
+        self.prepared_stop();self.assertIn('error',self.ask(self.donor,'RETURN_COMMIT_CHANGED'))
+        remote=self.ask(self.receiver,'LIVE')['result'];self.assertTrue(remote['failed']);self.assertIsNotNone(remote['pending'])
+        self.assertEqual(remote['live']['apps']['0']['intent'],'STOP_PENDING')
+    def test_prepare_ack_loss_no_candidate_and_pending_receiver(self):
+        self.prepared_stop();self.assertIn('error',self.ask(self.donor,'RETURN_ACK1'))
+        self.assertIsNotNone(self.ask(self.receiver,'LIVE')['result']['pending'])
+        self.donor.kill();self.donor.wait(timeout=3)
+        self.assertIn('error',self.ask(self.receiver,'GONE'))
+    def test_commit_ack_loss_never_returns_candidate_or_retries(self):
+        self.prepared_stop();self.assertIn('error',self.ask(self.donor,'RETURN_ACK2'))
+        self.assertEqual(self.ask(self.receiver,'LIVE')['result']['live']['apps']['0']['intent'],'START_PENDING')
+        self.assertIn('error',self.ask(self.donor,'RETURN0'))

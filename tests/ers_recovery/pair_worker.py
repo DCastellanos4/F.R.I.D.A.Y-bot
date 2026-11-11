@@ -24,7 +24,9 @@ else:
     c=socket.socket(socket.AF_UNIX,socket.SOCK_SEQPACKET);c.settimeout(2);c.connect(sockpath)
     print(json.dumps(identity()),flush=True)
     lease=Lease.accept(c,remote,lockpath,config['epoch'])
-pair=Pair(store,lease,c,remote,source_digest(),apps,donor=role=='donor')
+def return_observer(app_id):
+    return json.loads((Path(directory)/('synthetic-observation-'+role+'.json')).read_text())
+pair=Pair(store,lease,c,remote,source_digest(),apps,donor=role=='donor',return_observer=return_observer)
 print('READY',flush=True)
 monitor=True
 try:
@@ -44,6 +46,27 @@ try:
         if not command:break
         try:
             if command=='ENROLL':result=pair.enroll()
+            elif command=='RETURN_COMMIT_CHANGED':
+                original=store.write
+                def changed_after_write(state):
+                    original(state)
+                    observation=Path(directory)/'synthetic-observation-receiver.json'
+                    value=json.loads(observation.read_text());value['originalAbsent']=False;observation.write_text(json.dumps(value))
+                store.write=changed_after_write
+                try:result=pair.connected_start_intent(0)
+                finally:store.write=original
+            elif command.startswith('RETURN_ACK'):
+                import deploy.ers_recovery.paired as paired
+                original=paired.receive_record;calls=[0];which=int(command[-1])
+                def lost_return(channel):
+                    result=original(channel);calls[0]+=1
+                    if calls[0]==which:raise TimeoutError('synthetic return ACK loss')
+                    return result
+                paired.receive_record=lost_return
+                try:result=pair.connected_start_intent(0)
+                finally:paired.receive_record=original
+            elif command.startswith('RETURN'):
+                result=pair.connected_start_intent(int(command[6:]))
             elif command.startswith('STOP'):result=pair.stop_intent(int(command[4:]))
             elif command.startswith('FAULT_ACK'):
                 import deploy.ers_recovery.paired as paired

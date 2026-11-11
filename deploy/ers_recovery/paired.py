@@ -37,7 +37,7 @@ def observed_process(pid):
 
 
 class Pair:
-    def __init__(self, store, lease, channel, expected_peer, expected_source, apps, *, donor):
+    def __init__(self, store, lease, channel, expected_peer, expected_source, apps, *, donor, return_observer=None):
         self.store, self.lease, self.channel = store, lease, channel
         self.owner = observed_process(os.getpid())
         self.remote = observed_process(expected_peer['pid'])
@@ -54,6 +54,8 @@ class Pair:
         self.live = self.pending = None
         self.initialized = False
         self.disconnected = False
+        self.return_observer=return_observer
+        self.pending_return=None
         peer(channel, expected_peer)
 
     def own(self):
@@ -112,12 +114,14 @@ class Pair:
         if self.live is None or self.store.read() != self.live:
             self.failed = True;raise InvalidState('JOURNAL_NOT_LIVE_REPLICA')
 
-    def _transition(self, following):
+    def _transition(self, following, *, return_evidence=None):
         self._check_journal()
         # Both live copies consume the proposal before persistence. An uncertain
         # prepare/commit invalidates the sender, and receiver retains pending.
         self.pending = copy.deepcopy(following)
-        result = self._request({'op': 'PREPARE', 'prior': digest(self.live), 'state': following})
+        proposal={'op':'PREPARE','prior':digest(self.live),'state':following}
+        if return_evidence is not None:proposal['returnEvidence']=return_evidence
+        result = self._request(proposal)
         if result.get('state') != digest(following):
             self.failed = True;raise InvalidState('PREPARE_ACK_MISMATCH')
         self._persist(following)
@@ -139,6 +143,46 @@ class Pair:
         except BaseException:
             self.failed=True;raise
         return 'SYNTHETIC_STOP_INTENT_ONLY'
+
+    def _return_evidence(self, app_id):
+        # The observer is a future independent read adapter, NOT a journal input.
+        # This prepared-only extension is exercised with synthetic local reads.
+        if self.return_observer is None:raise InvalidState('RETURN_OBSERVER_REQUIRED')
+        evidence=self.return_observer(app_id)
+        if (type(evidence) is not dict or set(evidence)!={'app','sameDaemon','sameRelease','originalAbsent'}
+                or any(type(evidence[k]) is not bool for k in ('sameDaemon','sameRelease','originalAbsent'))
+                or type(evidence['app']) is not dict
+                or set(evidence['app'])!={'app_id','config','pid','start','status'}):
+            raise InvalidState('RETURN_OBSERVATION_INVALID')
+        now=App(**evidence['app'])
+        baseline=self.baselines[str(app_id)]['baseline']
+        if (type(now.app_id) is not int or now.app_id!=app_id or type(now.pid) is not int
+                or now.pid<0 or type(now.start) is not int or now.start<0
+                or type(now.config) is not str or type(now.status) is not str):
+            raise InvalidState('RETURN_OBSERVATION_INVALID')
+        result=recovery(App(**baseline),now,'STOP_PENDING',continuous_lease=True,
+                        same_daemon=evidence['sameDaemon'],same_release=evidence['sameRelease'],
+                        original_absent=evidence['originalAbsent'])
+        if result!='ELIGIBLE_RETAINED_START_NOT_EXECUTED':raise InvalidState('RETURN_PRECONDITION_UNCERTAIN')
+        return copy.deepcopy(evidence)
+
+    def connected_start_intent(self, app_id):
+        # A start candidate with both original holders alive. No PM2 effect.
+        if not self.donor or self.disconnected:raise InvalidState('CONNECTED_DONOR_REQUIRED')
+        try:
+            with self.store.transaction():
+                self._check_journal()
+                if self.live['phase']!='LOCAL_PAIRED':raise InvalidState('PAIR_NOT_READY')
+                state=copy.deepcopy(self.live);app=state['apps'][str(app_id)]
+                if app['intent']!='STOP_PENDING':raise InvalidState('STOP_INTENT_REQUIRED_NO_RETRY')
+                evidence=self._return_evidence(app_id)
+                app['intent']='START_PENDING';state['revision']+=1
+                self._transition(state,return_evidence=evidence)
+                # This is a final point-in-time read, not an atomic syscall/effect.
+                # Production still needs immediate serialized revalidation.
+                if self._return_evidence(app_id)!=evidence:raise InvalidState('RETURN_CHANGED_AFTER_COMMIT')
+        except BaseException:self.failed=True;raise
+        return 'SYNTHETIC_CONNECTED_START_INTENT_ONLY'
 
     def service_once(self):
         """Receiver reactor step. Timeout/parse/identity errors poison the replica."""
@@ -179,14 +223,26 @@ class Pair:
                     changes=[key for key in expected['apps'] if state['apps'][key]!=expected['apps'][key]]
                     if len(changes)!=1:raise InvalidState('ONE_STOP_INTENT_REQUIRED')
                     key=changes[0]
-                    if expected['apps'][key]['intent'] is not None:raise InvalidState('INTENT_ALREADY_CONSUMED')
-                    expected['apps'][key]['intent']='STOP_PENDING'
+                    prior_intent=expected['apps'][key]['intent']
+                    if prior_intent is None:
+                        if 'returnEvidence' in request:raise InvalidState('UNEXPECTED_RETURN_EVIDENCE')
+                        expected['apps'][key]['intent']='STOP_PENDING'
+                    elif prior_intent=='STOP_PENDING':
+                        evidence=self._return_evidence(int(key))
+                        if request.get('returnEvidence')!=evidence:raise InvalidState('INDEPENDENT_RETURN_OBSERVATION_MISMATCH')
+                        self.pending_return=(int(key),evidence)
+                        expected['apps'][key]['intent']='START_PENDING'
+                    else:raise InvalidState('INTENT_ALREADY_CONSUMED')
                 if state!=expected:raise InvalidState('UNSUPPORTED_TRANSITION')
                 self.pending=copy.deepcopy(state)
             elif op=='COMMIT':
                 if self.pending is None or request['state']!=digest(self.pending) or self.store.read()!=self.pending:
                     raise InvalidState('COMMIT_NOT_DURABLE_OR_NOT_PENDING')
+                if self.pending_return is not None:
+                    app_id,evidence=self.pending_return
+                    if self._return_evidence(app_id)!=evidence:raise InvalidState('RETURN_CHANGED_BEFORE_COMMIT')
                 self.live,self.pending=self.pending,None
+                self.pending_return=None
             elif op=='CENSUS':
                 self._check_journal()
             else:raise InvalidState('UNKNOWN_OPERATION')
