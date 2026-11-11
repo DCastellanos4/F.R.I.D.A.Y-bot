@@ -76,13 +76,13 @@ test('3 procesos arrancan a la vez sobre la misma DB WAL: 002 se aplica una sola
       assert.ok(x.r && x.r.ok, `ronda ${ronda}: sin error de migracion (${x.r && x.r.error})`);
     }
     const aplicadas = res.flatMap((x) => x.r.aplicadasAhora);
-    assert.deepEqual([...aplicadas].sort(), [2, 3, 4, 5, 6, 7, 8], `ronda ${ronda}: 002 a 008 aplicadas exactamente una vez en total (${aplicadas})`);
+    assert.deepEqual([...aplicadas].sort(), [2, 3, 4, 5, 6, 7, 8, 9], `ronda ${ronda}: 002 a 008 aplicadas exactamente una vez en total (${aplicadas})`);
     const db = new Database(ruta);
     assert.equal(db.prepare('SELECT count(*) c FROM memorias').get().c, 300, 'sin perdida de memorias');
     assert.equal(db.prepare("SELECT count(*) c FROM memorias WHERE tenant_id = 'propietario'").get().c, 300);
     assert.deepEqual(db.prepare('SELECT categoria, limite FROM finanzas_presupuestos ORDER BY categoria').all(), [{ categoria: 'cafe', limite: 50 }, { categoria: 'ocio', limite: 80 }]);
     assert.equal(db.prepare('SELECT count(*) c FROM finanzas_config').get().c, 2);
-    assert.deepEqual(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all().map((v) => v.version), [1, 2, 3, 4, 5, 6, 7, 8]);
+    assert.deepEqual(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all().map((v) => v.version), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
     assert.equal(db.pragma('integrity_check', { simple: true }), 'ok');
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
     db.close();

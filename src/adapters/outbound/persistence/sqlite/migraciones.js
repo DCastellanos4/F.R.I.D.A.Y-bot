@@ -280,6 +280,27 @@ export const MIGRACIONES = [
     sql: `
       ALTER TABLE channel_responses ADD COLUMN enviando_en TEXT;
     `
+  },
+  {
+    // Registro durable de conciliaciones de medicion pendiente (protocolo
+    // documentado en docs/tenancy.md): "registrar prueba de conciliacion
+    // sin contenido privado". ADITIVA. La escribe el CLI de administracion
+    // en la misma transaccion que confirma el ticket.
+    version: 9,
+    nombre: '009_medicion_conciliada',
+    sql: `
+      CREATE TABLE tenant_medicion_conciliada (
+        tenant_id TEXT NOT NULL REFERENCES tenants(id),
+        ticket TEXT NOT NULL,
+        dia TEXT NOT NULL,
+        modelo TEXT NOT NULL,
+        entrada INTEGER NOT NULL,
+        salida INTEGER NOT NULL,
+        evidencia TEXT NOT NULL,
+        conciliada_en TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, ticket)
+      );
+    `
   }
 ];
 

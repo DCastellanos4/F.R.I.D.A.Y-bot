@@ -40,16 +40,6 @@ async function cargarClienteOllama(host) {
   return new mod.Ollama({ host });
 }
 
-function conLimiteDeTiempo(promesa, ms, etiqueta) {
-  let temporizador;
-  const limite = new Promise((_, reject) => {
-    temporizador = setTimeout(() => {
-      reject(new Error(`${etiqueta} agoto su tiempo (${ms} ms)`));
-    }, ms);
-  });
-  return Promise.race([promesa, limite]).finally(() => clearTimeout(temporizador));
-}
-
 /**
  * Crea el adaptador del SLM local o null si no hay modelo configurado.
  *
@@ -103,22 +93,37 @@ export function crearOllamaSlmAdapter({ modelo, host, timeoutMs, keepAlive, clie
   }
 
   async function chatCompletion(peticion) {
-    const cli = await obtenerCliente();
     const inicio = Date.now();
-    const respuesta = await serializar(() => conLimiteDeTiempo(
-      cli.chat({
-        model: modeloElegido,
-        messages: peticion?.messages || [],
-        keep_alive: residencia,
-        options: {
-          temperature: peticion?.options?.temperature ?? 0,
-          num_predict: peticion?.options?.num_predict ?? 256,
-          num_ctx: peticion?.options?.num_ctx ?? 4096
-        }
-      }),
-      limiteMs,
-      'La inferencia del SLM local'
-    ));
+    let expired = false;
+    let timer;
+    const timeoutError = () => new Error(`La inferencia del SLM local agoto su tiempo (${limiteMs} ms)`);
+    const respuesta = await new Promise((resolve, reject) => {
+      // Caller deadline includes client setup and queue wait. It does not
+      // release or cancel an underlying SDK request already admitted.
+      timer = setTimeout(() => { expired = true; reject(timeoutError()); }, limiteMs);
+      Promise.resolve().then(async () => {
+        const cli = await obtenerCliente();
+        if (expired) return;
+        const tarea = serializar(() => {
+          // A caller whose queue deadline expired must never run later.
+          if (expired) throw timeoutError();
+          const generacion = Promise.resolve().then(() => cli.chat({
+            model: modeloElegido,
+            messages: peticion?.messages || [],
+            keep_alive: residencia,
+            options: {
+              temperature: peticion?.options?.temperature ?? 0,
+              num_predict: peticion?.options?.num_predict ?? 256,
+              num_ctx: peticion?.options?.num_ctx ?? 4096
+            }
+          }));
+          generacion.then(resolve, reject);
+          // Admission belongs to this actual promise, not the caller timer.
+          return generacion;
+        });
+        Promise.resolve(tarea).catch(reject);
+      }).catch(reject);
+    }).finally(() => clearTimeout(timer));
     const latenciaMs = Date.now() - inicio;
     return {
       message: {
