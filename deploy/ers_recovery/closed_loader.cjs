@@ -1,7 +1,7 @@
 'use strict';
 // Not a sandbox. Execute only the pre-reviewed fixed source graph after all
 // bytes and custody checks pass. No native resolver or global require cache.
-const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const fs=require('node:fs'),path=require('node:path').posix,crypto=require('node:crypto');
 const Module=require('node:module');
 const FIXED_ROOT='/usr/lib/node_modules/pm2';
 const BUILTINS=new Set(['node:events','node:net','node:fs','node:stream','node:tty','node:util']);
@@ -35,7 +35,7 @@ function closedLoader(manifest){
   }
   edges.set(rel,graph);
   let d=path.dirname(path.join(FIXED_ROOT,rel));
-  while(d!=='/'){dirs.add(d);d=path.dirname(d);}
+  while(d!=='/'&&d!==path.dirname(d)){dirs.add(d);d=path.dirname(d);}
  }
  for(const d of dirs)checkDir(d);
  for(const [rel,spec] of Object.entries(manifest.files))sources.set(rel,readPinned(path.join(FIXED_ROOT,rel),spec.sha256));
