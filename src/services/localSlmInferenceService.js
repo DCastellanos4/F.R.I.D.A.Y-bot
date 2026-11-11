@@ -61,56 +61,71 @@ export function extraerPrimerJson(texto) {
 
 /**
  * Validador minimo de esquemas JSON (subconjunto: object, properties,
- * required, enum, tipos string/number/integer/boolean/array). Sin
+ * required, enum primitivo, items, additionalProperties booleano y tipos). Sin
  * dependencias nuevas: el catalogo de herramientas simples solo necesita
- * esto. Devuelve lista de violaciones; vacia = valido.
+ * esto. Keywords no soportadas se rechazan antes de inferir. Devuelve lista de violaciones; vacia = valido para este subconjunto, no correccion semantica.
  */
+const TIPOS_ESQUEMA = new Set(['object', 'array', 'string', 'number', 'integer', 'boolean', 'null']);
+const CLAVES_ESQUEMA = new Set(['type', 'properties', 'required', 'enum', 'items', 'additionalProperties', 'description', 'title']);
+const propio = (obj, key) => Object.hasOwn(obj, key);
+
+// Do not silently certify keywords this deliberately small validator ignores.
+function revisarEsquema(esquema, profundidad = 0, presupuesto = { nodos: 0 }, vistos = new Set()) {
+  if (profundidad > 24 || ++presupuesto.nodos > 512 || !esquema || typeof esquema !== 'object' || Array.isArray(esquema) || vistos.has(esquema)) return false;
+  vistos.add(esquema);
+  try {
+    if (Object.keys(esquema).some(k => !CLAVES_ESQUEMA.has(k))) return false;
+    const tipos = Array.isArray(esquema.type) ? esquema.type : [esquema.type];
+    if (!tipos.length || tipos.some(t => !TIPOS_ESQUEMA.has(t)) || new Set(tipos).size !== tipos.length) return false;
+    for (const k of ['title', 'description']) if (propio(esquema, k) && typeof esquema[k] !== 'string') return false;
+    if (propio(esquema, 'enum') && (!Array.isArray(esquema.enum) || !esquema.enum.length || esquema.enum.some(v => v !== null && !['string','number','boolean'].includes(typeof v)) || esquema.enum.some(v => typeof v === 'number' && !Number.isFinite(v)))) return false;
+    if (propio(esquema, 'required') && (!tipos.includes('object') || !Array.isArray(esquema.required) || esquema.required.some(k => typeof k !== 'string') || new Set(esquema.required).size !== esquema.required.length)) return false;
+    if (propio(esquema, 'additionalProperties') && (!tipos.includes('object') || typeof esquema.additionalProperties !== 'boolean')) return false;
+    if (propio(esquema, 'properties')) {
+      if (!tipos.includes('object') || !esquema.properties || typeof esquema.properties !== 'object' || Array.isArray(esquema.properties)) return false;
+      for (const sub of Object.values(esquema.properties)) if (!revisarEsquema(sub, profundidad + 1, presupuesto, vistos)) return false;
+    }
+    if (propio(esquema, 'items') && (!tipos.includes('array') || !revisarEsquema(esquema.items, profundidad + 1, presupuesto, vistos))) return false;
+    return true;
+  } finally { vistos.delete(esquema); }
+}
+
 export function validarContraEsquema(valor, esquema, ruta = '') {
+  if (!revisarEsquema(esquema)) return ['esquema_no_soportado'];
   const violaciones = [];
-  if (!esquema || typeof esquema !== 'object') return violaciones;
-
-  const tipo = esquema.type;
-  if (tipo) {
-    const tipos = Array.isArray(tipo) ? tipo : [tipo];
-    const cumple = tipos.some((t) => {
-      if (t === 'array') return Array.isArray(valor);
-      if (t === 'integer') return typeof valor === 'number' && Number.isInteger(valor);
-      if (t === 'number') return typeof valor === 'number' && Number.isFinite(valor);
-      if (t === 'object') return valor !== null && typeof valor === 'object' && !Array.isArray(valor);
-      return typeof valor === t;
+  let nodos = 0;
+  function validar(v, e, r, profundidad = 0) {
+    if (profundidad > 24 || ++nodos > 4096) { violaciones.push('valor_fuera_de_limites'); return; }
+    const tipos = Array.isArray(e.type) ? e.type : [e.type];
+    const cumple = tipos.some(t => {
+      if (t === 'null') return v === null;
+      if (t === 'array') return Array.isArray(v);
+      if (t === 'object') return v !== null && typeof v === 'object' && !Array.isArray(v);
+      if (t === 'integer') return typeof v === 'number' && Number.isSafeInteger(v);
+      if (t === 'number') return typeof v === 'number' && Number.isFinite(v);
+      return typeof v === t;
     });
-    if (!cumple) {
-      violaciones.push(`${ruta || 'raiz'}: se esperaba tipo ${tipos.join('|')}`);
-      return violaciones;
-    }
-  }
-
-  if (esquema.enum && !esquema.enum.includes(valor)) {
-    violaciones.push(`${ruta || 'raiz'}: valor fuera del enum permitido`);
-  }
-
-  if (tipo === 'object' || esquema.properties) {
-    const requeridos = esquema.required || [];
-    for (const clave of requeridos) {
-      if (valor == null || valor[clave] === undefined) {
-        violaciones.push(`${ruta || 'raiz'}.${clave}: falta campo requerido`);
-      }
-    }
-    if (valor && typeof valor === 'object' && esquema.properties) {
-      for (const [clave, sub] of Object.entries(esquema.properties)) {
-        if (valor[clave] !== undefined) {
-          violaciones.push(...validarContraEsquema(valor[clave], sub, ruta ? `${ruta}.${clave}` : clave));
-        }
+    if (!cumple) { violaciones.push(`${r || 'raiz'}: se esperaba tipo ${tipos.join('|')}`); return; }
+    if (e.enum && !e.enum.includes(v)) violaciones.push(`${r || 'raiz'}: valor fuera del enum permitido`);
+    if (Array.isArray(v) && e.items) {
+      if (v.length > 4096) { violaciones.push('valor_fuera_de_limites'); return; }
+      for (let i = 0; i < v.length; i++) validar(v[i], e.items, `${r}[${i}]`, profundidad + 1);
+    } else if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+      for (const k of e.required || []) if (!propio(v, k)) violaciones.push(`${r || 'raiz'}.${k}: falta campo requerido`);
+      const props = e.properties || {};
+      if (Object.keys(v).length > 4096) { violaciones.push('valor_fuera_de_limites'); return; }
+      for (const k of Object.keys(v)) {
+        if (propio(props, k)) validar(v[k], props[k], r ? `${r}.${k}` : k, profundidad + 1);
+        else if (e.additionalProperties === false) violaciones.push(`${r || 'raiz'}: campo adicional no permitido`);
       }
     }
   }
-
+  validar(valor, esquema, ruta);
   return violaciones;
 }
 
 function confianzaSana(v) {
-  const n = Number(v);
-  return isFinite(n) && n >= 0 && n <= 1 ? n : null;
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1 ? v : null;
 }
 
 /* ------------------------------ servicio -------------------------------- */
@@ -124,6 +139,10 @@ function confianzaSana(v) {
 export function crearLocalSlmInferenceService({ provider, umbral = UMBRAL_CONFIANZA_SLM } = {}) {
   if (!provider || typeof provider.chatCompletion !== 'function') {
     throw new TypeError('localSlmInferenceService: provider con chatCompletion es obligatorio.');
+  }
+
+  if (typeof umbral !== 'number' || !Number.isFinite(umbral) || umbral < 0 || umbral > 1) {
+    throw new TypeError('localSlmInferenceService: umbral numerico entre 0 y 1 obligatorio.');
   }
 
   function resultado(base) {
@@ -180,6 +199,9 @@ export function crearLocalSlmInferenceService({ provider, umbral = UMBRAL_CONFIA
   async function extraerArgumentos(mensaje, nombreHerramienta, esquema) {
     if (!mensaje || typeof mensaje !== 'string' || !nombreHerramienta || !esquema) {
       return resultado({ motivo: 'entrada_invalida' });
+    }
+    if (!revisarEsquema(esquema) || esquema.type !== 'object') {
+      return resultado({ motivo: 'esquema_no_soportado' });
     }
     let res;
     try {
