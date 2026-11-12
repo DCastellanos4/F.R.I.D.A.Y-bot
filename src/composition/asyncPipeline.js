@@ -47,7 +47,7 @@ export function crearPipelineAsincrono({ db, procesar, canales = {}, cola = null
      * canal que la use puede ack en milisegundos; la medicion real del
      * presupuesto de 5 ms del ERS queda para la prueba con el canal vivo.
      */
-    recibir(inbound, { tenantId = 'propietario' } = {}) {
+    recibir(inbound, { tenantId = 'propietario', historial = [], opciones = {} } = {}) {
       // Intake ACK never waits for Redis after the durable SQLite insert.
       return (selector === 'redis' ? colaActiva : outboxStore).publicar({
         tenantId,
@@ -59,7 +59,9 @@ export function crearPipelineAsincrono({ db, procesar, canales = {}, cola = null
           channel: inbound.channel,
           messageId: inbound.messageId ?? null,
           timestamp: inbound.timestamp instanceof Date ? inbound.timestamp.toISOString() : new Date().toISOString(),
-          metadata: inbound.metadata || {}
+          metadata: inbound.metadata || {},
+          historial: Array.isArray(historial) ? historial.slice(-16).filter(m=>m&&['user','assistant','system'].includes(m.role)&&typeof m.content==='string').map(m=>({role:m.role,content:m.content.slice(0,32000)})) : [],
+          opciones: {chatId:inbound.userId,urgencyDirective:typeof opciones.urgencyDirective==='string'?opciones.urgencyDirective.slice(0,4000):'',respuestaVoz:opciones.respuestaVoz===true}
         }
       });
     },

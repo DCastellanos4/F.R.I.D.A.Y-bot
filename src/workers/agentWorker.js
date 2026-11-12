@@ -122,6 +122,7 @@ export function crearWorkerAgente({ cola, procesar, outboxStore, auditoria = nul
       destinatario: inbound.userId,
       payload: {
         texto: typeof respuesta === 'string' ? respuesta : String(respuesta ?? ''),
+        contextoEntrega: {textoUsuario:inbound.text,voz:p.opciones?.respuestaVoz===true},
         ...(fallosAuditoriaResultado > 0
           ? { auditoriaResultados: 'degradada', fallosAuditoriaResultados: fallosAuditoriaResultado }
           : {}),
