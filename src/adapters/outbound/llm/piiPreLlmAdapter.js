@@ -86,18 +86,24 @@ export function crearAnonimizadorPreLlm({ inner, anonimizador = null, permitir =
     // token en todos los mensajes (coherencia para el modelo); dos valores
     // distintos nunca comparten token. El mapa no sale de esta llamada.
     const r = pii.anonimizar(texto, { permitir: permitidos });
-    let out = r.texto;
+    const remap = Object.create(null);
     for (const [token, valor] of Object.entries(r.mapa)) {
       if (valor in valorAToken) {
-        out = out.split(token).join(valorAToken[valor]);
+        remap[token] = valorAToken[valor];
       } else {
         const canonico = tokenLibre(token, mapa);
-        if (canonico !== token) out = out.split(token).join(canonico);
+        remap[token] = canonico;
         valorAToken[valor] = canonico;
         mapa[canonico] = valor;
       }
     }
-    return out;
+    // Replace original transient tokens once. Sequential replacements can
+    // consume a canonical token emitted by an earlier replacement.
+    const tokens = Object.keys(remap);
+    if (!tokens.length) return r.texto;
+    const escaped = tokens.sort((a, b) => b.length - a.length)
+      .map(token => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    return r.texto.replace(new RegExp(escaped.join('|'), 'g'), token => remap[token]);
   }
 
   function anonimizarMensaje(mensaje, mapa, valorAToken) {

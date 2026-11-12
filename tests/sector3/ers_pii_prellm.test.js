@@ -272,3 +272,23 @@ test('singleton Ollama conserva host capturado aunque config cambie: wrapper ref
   assert.ok(!JSON.stringify(recibidas[0]).includes('+34611222333'));
   assert.equal(resolverDestinoLlm({ provider: 'ollama' }).host, 'https://ollama.remoto.example:11434');
 });
+
+test('pre-LLM: mixed prior and new PII in a later message never cascades canonical tokens', async () => {
+ const a='+34611222333',b='+34699888777',c='+34655444333';
+ for(const values of [[b,a],[a,b],[b,c,a],[c,a,b],[b,a,b,a]]){
+  let sent;
+  const inner={nombre:'synthetic',async chatCompletion(request){sent=request;return{message:{content:request.messages[1].content,tool_calls:[{id:'synthetic',function:{name:'synthetic',arguments:request.messages[2].tool_calls[0].function.arguments}}]}};}};
+  const llm=crearAnonimizadorPreLlm({inner});
+  const text=values.map((v,i)=>String.fromCharCode(65+i)+' '+v).join(' y ');
+  const argumentsText=JSON.stringify({phones:values});
+  const request={messages:[{role:'user',content:'A '+a},{role:'user',content:text},{role:'assistant',content:null,tool_calls:[{id:'synthetic',function:{name:'synthetic',arguments:argumentsText}}]}]};
+  const original=JSON.stringify(request);
+  const result=await llm.chatCompletion(request);
+  assert.equal(result.message.content,text);
+  assert.equal(result.message.tool_calls[0].function.arguments,argumentsText);
+  assert.equal(JSON.stringify(request),original);
+  for(const value of [a,b,c])assert.equal(JSON.stringify(sent).includes(value),false);
+  const tokens=sent.messages[1].content.match(/\[PII_TELEFONO_\d+\]/g);
+  assert.equal(new Set(tokens).size,new Set(values).size);
+ }
+});
