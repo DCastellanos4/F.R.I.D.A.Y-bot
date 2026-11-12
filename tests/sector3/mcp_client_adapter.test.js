@@ -344,6 +344,7 @@ test('McpRegistry: agrega herramientas de multiples dominios y enruta callTool',
       }
     );
   } finally {
+    await bookingServer.close().catch(() => {});
     await registry.close();
   }
 });
