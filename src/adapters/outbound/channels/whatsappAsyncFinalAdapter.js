@@ -1,8 +1,15 @@
 /** Final async WhatsApp answer. An ambiguous voice send NEVER falls back to text. */
 import {crearWhatsAppChannelAdapter} from './whatsappChannelAdapter.js';
-export function crearCanalFinalWhatsapp({sock,normalizar,sintetizar,enviarVoz,registrarIntercambio,condensar}={}){
+export function crearCanalFinalWhatsapp({sock,normalizar,sintetizar,enviarVoz,registrarIntercambio,condensar,detenerEscribiendo}={}){
  const canal=crearWhatsAppChannelAdapter(sock);
  return Object.freeze({canal:'whatsapp',async enviarTexto(destinatario,texto,{contextoEntrega={}}={}){
+  try {
+   if (typeof detenerEscribiendo === 'function') {
+    detenerEscribiendo(destinatario);
+   } else if (sock && typeof sock.sendPresenceUpdate === 'function') {
+    sock.sendPresenceUpdate('paused', destinatario).catch(() => {});
+   }
+  } catch (_) {}
   const respuesta=normalizar(texto);
   if(!sock.user){const e=new Error('RF01_WHATSAPP_NOT_READY');e.esFalloPreEnvioVerificado=true;throw e;}
   let audio=null;

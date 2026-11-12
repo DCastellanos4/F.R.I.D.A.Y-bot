@@ -155,6 +155,36 @@ let sock = null;
 let estaConectado = false;
 let serviciosIniciados = false;
 
+const activeTypingMap = new Map();
+
+export function iniciarEscribiendo(socketInstancia, remoteJid, maxDuracionMs = 90000) {
+  detenerEscribiendo(socketInstancia, remoteJid);
+  const s = socketInstancia || sock;
+  if (s && typeof s.sendPresenceUpdate === 'function') {
+    s.sendPresenceUpdate('composing', remoteJid).catch(() => {});
+    const interval = setInterval(() => {
+      s.sendPresenceUpdate('composing', remoteJid).catch(() => {});
+    }, 4000);
+    const timeout = setTimeout(() => {
+      detenerEscribiendo(s, remoteJid);
+    }, maxDuracionMs);
+    activeTypingMap.set(remoteJid, { interval, timeout });
+  }
+}
+
+export function detenerEscribiendo(socketInstancia, remoteJid) {
+  const activo = activeTypingMap.get(remoteJid);
+  if (activo) {
+    clearInterval(activo.interval);
+    clearTimeout(activo.timeout);
+    activeTypingMap.delete(remoteJid);
+  }
+  const s = socketInstancia || sock;
+  if (s && typeof s.sendPresenceUpdate === 'function') {
+    s.sendPresenceUpdate('paused', remoteJid).catch(() => {});
+  }
+}
+
 /**
  * Envía un mensaje proactivo a David por WhatsApp (texto u objeto con imagen)
  */
@@ -587,7 +617,7 @@ export async function iniciarWhatsApp() {
         const {contenedorCompartido}=await import('./src/composition/container.js');
         const {crearCanalFinalWhatsapp}=await import('./src/adapters/outbound/channels/whatsappAsyncFinalAdapter.js');
         contenedorCompartido.registrarRuntimePipeline((inbound,ctx)=>crearOpcionesRuntimeWhatsapp(sock,inbound.userId,{},ctx.opciones?.urgencyDirective));
-        contenedorCompartido.registrarCanalEntrega('whatsapp',crearCanalFinalWhatsapp({sock,normalizar:normalizarMarkdownWhatsApp,sintetizar:synthesizeSpeech,enviarVoz:sendVoiceNote,registrarIntercambio,condensar:(jid)=>programarCondensacionSiNecesario(jid,{chatCompletion:chatCompletionPorDefecto})}));
+        contenedorCompartido.registrarCanalEntrega('whatsapp',crearCanalFinalWhatsapp({sock,normalizar:normalizarMarkdownWhatsApp,sintetizar:synthesizeSpeech,enviarVoz:sendVoiceNote,registrarIntercambio,condensar:(jid)=>programarCondensacionSiNecesario(jid,{chatCompletion:chatCompletionPorDefecto}),detenerEscribiendo:(dest)=>detenerEscribiendo(sock,dest)}));
       }
       console.log('\n======================================================');
       console.log('D.A.V.I.S. CONECTADO Y EN LINEA');
@@ -1133,10 +1163,8 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         continue;
       }
 
-      // Mantener el estado "escribiendo..." en WhatsApp mientras el LLM piensa
-      const typingInterval = setInterval(() => {
-        sock.sendPresenceUpdate('composing', remoteJid).catch(() => {});
-      }, 4000);
+      // Iniciar estado "escribiendo..." en WhatsApp mientras se procesa la consulta
+      iniciarEscribiendo(sock, remoteJid);
 
       try {
         // 1. Confirmar lectura
@@ -1146,9 +1174,6 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         // adaptador de canal, no por llamadas sueltas al socket.
         const canalWhatsapp = crearWhatsAppChannelAdapter(sock);
 
-        // 2. Primer pulso de "escribiendo..."
-        await sock.sendPresenceUpdate('composing', remoteJid);
-
         // 3. Procesar consulta con el agente (con memoria de conversacion aislada por chat)
         const historialPrevio = obtenerHistorial(remoteJid);
         const inicioJarvis = Date.now();
@@ -1156,23 +1181,25 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         try {
           const inbound = crearInboundDesdeWhatsApp({ msg, texto, remoteJid });
           respuesta = await procesarMensajeEntrante(inbound, {
-          historial: historialPrevio,
-          opciones: {...crearOpcionesRuntimeWhatsapp(sock,remoteJid,deps,urgencyDirective),respuestaVoz:esAudio || /responde(me)?\s+(en|con)?\s*(audio|nota de voz|voz)/i.test(texto)}
-        });
+            historial: historialPrevio,
+            opciones: {...crearOpcionesRuntimeWhatsapp(sock,remoteJid,deps,urgencyDirective),respuestaVoz:esAudio || /responde(me)?\s+(en|con)?\s*(audio|nota de voz|voz)/i.test(texto)}
+          });
           registrarEventoMetrica({ tipo: 'comando', nombre: 'consulta_jarvis', duracionMs: Date.now() - inicioJarvis }, { rutaArchivo: deps.rutaArchivoMetricas });
         } catch (errJarvis) {
+          detenerEscribiendo(sock, remoteJid);
           registrarEventoMetrica({ tipo: 'error', nombre: 'consulta_jarvis', duracionMs: Date.now() - inicioJarvis, detalle: errJarvis && errJarvis.message }, { rutaArchivo: deps.rutaArchivoMetricas });
           throw errJarvis;
         }
 
-        // 4. Detener estado de escritura y enviar respuesta
-        clearInterval(typingInterval);
-        await sock.sendPresenceUpdate('paused', remoteJid);
-
-        if(process.env.DAVIS_ASYNC_PIPELINE==='1'){
-          await canalWhatsapp.enviarTexto(remoteJid,respuesta,{quoted:msg});
-          continue; // ACK is not the final answer or a history turn.
+        if (process.env.DAVIS_ASYNC_PIPELINE === '1') {
+          // En pipeline asincrono NO enviamos el texto preliminar "Recibido, lo estoy procesando.".
+          // WhatsApp mantiene el estado "escribiendo..." (composing) de forma reactiva hasta que el
+          // worker en segundo plano entregue la respuesta final coherente por canalFinalWhatsapp.
+          continue;
         }
+
+        // 4. Detener estado de escritura en camino sincrono antes de enviar respuesta
+        detenerEscribiendo(sock, remoteJid);
 
         // WhatsApp solo interpreta *negrita* con un asterisco: el modelo suele
         // emitir **doble** (markdown), que se veria literal. Se normaliza aqui,
@@ -1206,9 +1233,8 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
           console.error('[Historial] No se pudo registrar el intercambio:', errHist.message);
         }
       } catch (err) {
-        clearInterval(typingInterval);
+        detenerEscribiendo(sock, remoteJid);
         console.error('Error procesando mensaje:', err);
-        await sock.sendPresenceUpdate('paused', remoteJid);
         await sock.sendMessage(remoteJid, {
           // Sanitizado: un 429 del proveedor llegaba con organization id y
           // detalle de cuota (fallo observado en produccion, 7 nov 2026).
