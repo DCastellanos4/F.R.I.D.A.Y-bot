@@ -29,6 +29,7 @@ tal en el propio texto.
 - [Contexto selectivo y presupuesto preventivo](eficiencia-ia.md)
 - [Observabilidad: OpenTelemetry + Prometheus + Grafana](observabilidad.md)
 - [Persistencia SQLite](persistencia-sqlite.md)
+- [Arquitectura MCP Modular](ers-arquitectura-mcp.md): cliente MCP JSON-RPC 2.0 stdio, micro-servidores booking y devops desacoplados.
 
 ### Multiusuario (preparacion, gates cerrados)
 - [Tenancy: fundamentos locales](tenancy.md)

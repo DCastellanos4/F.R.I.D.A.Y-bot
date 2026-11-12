@@ -184,3 +184,30 @@ Crear bateria de pruebas unitarias en `tests/sector3/mcp_modular_suite.test.js`:
 2. **Latencia Neta**: El tiempo total de resolucion de herramientas no aumenta mas de 25 ms respecto a la ejecucion monolytica local.
 3. **Multi-Tenant Real**: Un cliente configurado como comercio local solo tiene acceso a sus herramientas de citas y catalogo propio; las herramientas administrativas de sistema ni se cargan en memoria ni existen en el esquema del LLM.
 4. **Puerta CI/CD**: 100% de la suite de pruebas pasando, 0 advertencias de desbordamiento de catalogo y 0 emojis.
+
+---
+
+## 7. Estado Real de la Implementacion (Fase 1 y Fase 2 Ejecutadas)
+
+Con fecha 2026-11-12, la infraestructura central MCP y los dos primeros micro-servidores estan completados, probados e integrados en `main`:
+
+1. **Infraestructura Core MCP (`src/adapters/outbound/mcp/`)**:
+   - `src/ports/outbound/McpClientPort.js`: Contrato formal de puerto hexagonal (`toolsList`, `callTool`, `close`) con funcion de asercion `afirmarMcpClientPort`.
+   - `src/adapters/outbound/mcp/mcpClientAdapter.js`: Adaptador cliente sobre `stdio` mediante subprocesos, protocolo JSON-RPC 2.0 (handshake `initialize` y `notifications/initialized`), mapeo automatico a esquemas OpenAI/Groq `{ type: 'function', function: { name, description, parameters } }`, timeout estricto de 15 segundos con error fail-closed (`MCP_TIMEOUT_EXPIRED`), y apagado controlado con SIGTERM y SIGKILL.
+   - `src/adapters/outbound/mcp/mcpRegistry.js`: Registro de dominios y agregador de herramientas; enruta transparentemente las llamadas al micro-servidor MCP correspondiente y aisla fallos con `MCP_TOOL_NOT_FOUND`.
+
+2. **Micro-servidor 1: `mcp-server-booking` (`mcp-servers/booking/`)**:
+   - Servidor ejecutable autonomo sobre `stdio` (`mcp-servers/booking/index.js`).
+   - Persistencia SQLite transaccional (`mcp-servers/booking/db.js`) con soporte dual de drivers (`better-sqlite3` y fallback a `node:sqlite`).
+   - Calculo matematico de huecos libres sin colision en horario comercial (09:00 - 20:00).
+   - Herramientas: `consultar_disponibilidad`, `reservar_cita`, `cancelar_cita`, `listar_citas`.
+
+3. **Micro-servidor 2: `mcp-server-devops` (`mcp-servers/devops/`)**:
+   - Servidor ejecutable autonomo sobre `stdio` (`mcp-servers/devops/index.js`).
+   - Herramientas: `ejecutar_comando_bash`, `consultar_estado_servidor`, `inspeccionar_docker`, `verificar_almacenamiento`, `comprobar_certificados_ssl`.
+
+4. **Bateria de Pruebas Automatizadas (36 tests passing en Node.js Windows y Linux VPS)**:
+   - `tests/sector3/mcp_client_adapter.test.js`: 11 tests de protocolo, timeouts, errores y ciclo de vida de procesos.
+   - `tests/sector3/mcp_server_booking.test.js`: 2 tests directos de motor SQLite y protocolo stdio con subprocesos.
+   - `tests/sector3/mcp_server_devops.test.js`: 22 tests unitarios e integracion con telemetria del sistema operativo.
+   - `tests/sector3/mcp_e2e_integration.test.js`: Prueba E2E que orquesta en vivo ambos micro-servidores hijos simultaneamente a traves de `McpRegistry`.
