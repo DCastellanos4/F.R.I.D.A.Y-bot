@@ -35,7 +35,7 @@ export function crearEntregadorRespuestas({ outboxStore, canales = {}, intervalo
       if (!canal) continue; // canal sin adaptador en este proceso: no se toca
       if (!outboxStore.marcarRespuestaEnviando(resp.id)) continue; // la tomo otro
       try {
-        await canal.enviarTexto(resp.destinatario, resp.payload?.texto ?? '');
+        await canal.enviarTexto(resp.destinatario, resp.payload?.texto ?? '',{jobId:resp.jobId,contextoEntrega:resp.payload?.contextoEntrega||{}});
       } catch (error) {
         if (error && error.esFalloPreEnvioVerificado === true) {
           // El canal garantiza que el mensaje no salio: reintento seguro.

@@ -37,7 +37,7 @@ import { crearQdrantVectorStoreAdapter } from '../adapters/outbound/vectorstores
 import { crearSqliteFts5SparseAdapter } from '../adapters/outbound/retrieval/sqliteFts5SparseAdapter.js';
 import { crearHttpCrossEncoderReranker } from '../adapters/outbound/rerankers/httpCrossEncoderRerankerAdapter.js';
 import { esDocumentoSensibleRag, registrarBuscadorHibridoPorDefecto } from '../services/semanticMemoryService.js';
-import { crearPipelineAsincrono } from './asyncPipeline.js';
+import { crearPipelineAsincrono, validarSelectorCola } from './asyncPipeline.js';
 import { crearAuditLogService } from '../security/auditLogService.js';
 import { crearAnonimizadorPreLlm } from '../adapters/outbound/llm/piiPreLlmAdapter.js';
 
@@ -125,11 +125,13 @@ function crearPipelineDesdeEntorno({ procesar, overrides }) {
     procesar,
     auditoria: crearAuditLogService(db)
   });
-  pipeline.iniciar();
+  // Production WhatsApp consumption starts only after the authenticated socket
+  // and its runtime callbacks have been registered. API remains synchronous.
   return pipeline;
 }
 
 export function crearContenedor(overrides = {}) {
+  validarSelectorCola(); // antes de proveedores, persistencia, migraciones o workers
   let llmProvider = overrides.llmProvider ?? crearLLMServiceProviderAdapter();
   // RNF-04 PII PRE-LLM: con DAVIS_PII_PRELLM=1 todo texto hacia el LLM
   // cloud sale anonimizado y la respuesta se restaura en local (mapa por
@@ -197,7 +199,12 @@ export function crearContenedor(overrides = {}) {
   });
   const procesarBase = processor.procesarMensajeEntrante;
   const userRepository = persistenciaActiva.persistencia?.userRepository || overrides.userRepository || null;
-  const pipeline = crearPipelineDesdeEntorno({ procesar: procesarBase, overrides });
+  let resolverRuntime = null;let pipelineIniciado = false;
+  const pipeline = crearPipelineDesdeEntorno({ procesar: (inbound,ctx)=>{
+    if(!resolverRuntime)throw new Error('RF01_RUNTIME_NOT_READY');
+    const runtime=resolverRuntime(inbound,ctx)||{};
+    return procesarBase(inbound,{...ctx,opciones:{...runtime,...ctx.opciones}});
+  }, overrides });
   return Object.freeze({
     llmProvider,
     memoryRepository,
@@ -207,15 +214,18 @@ export function crearContenedor(overrides = {}) {
     pipelineAsincrono: pipeline,
     persistencia: persistenciaActiva.persistencia || null,
     /** Alta en caliente del adaptador de entrega (canal con sesion abierta). */
+    registrarRuntimePipeline(resolver) {if(typeof resolver!=='function')throw new TypeError('RF01_RUNTIME_REQUIRED');resolverRuntime=resolver;},
     registrarCanalEntrega(nombre, adaptador) {
       if (!pipeline) throw new Error('Pipeline asincrono inactivo: DAVIS_ASYNC_PIPELINE!=1.');
       pipeline.registrarCanal(nombre, adaptador);
+      if(!pipelineIniciado&&resolverRuntime){pipelineIniciado=true;pipeline.iniciar();}
     },
     async procesarMensajeEntrante(inbound, ctx) {
       // B1: con pipeline activo la recepcion es ACK inmediato (escritura
       // outbox atomica); la respuesta real la entrega el pool por el canal.
-      if (pipeline) {
-        pipeline.recibir(inbound);
+      if (pipeline && inbound.channel==='whatsapp') {
+        if(!pipelineIniciado)throw new Error('RF01_CHANNEL_NOT_READY');
+        pipeline.recibir(inbound,ctx);
         return ACK_PIPELINE;
       }
       const respuesta = await procesarBase(inbound, ctx);

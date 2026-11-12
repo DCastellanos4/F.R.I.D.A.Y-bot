@@ -15,7 +15,30 @@ export HARNESS_REAL_NODE
 # Raiz del repo ANTES de cualquier cd (deploy.sh vive aqui).
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BASE=$(mktemp -d /tmp/deploy-harness-XXXXXX)
-if [ -z "${KEEP:-}" ]; then trap 'rm -rf "$BASE"' EXIT; fi
+cleanup() {
+  if [ -n "${API_STUB_PID:-}" ]; then kill "$API_STUB_PID" 2>/dev/null || true; wait "$API_STUB_PID" 2>/dev/null || true; fi
+  if [ -z "${KEEP:-}" ]; then rm -rf "$BASE"; fi
+}
+trap cleanup EXIT
+# Real loopback HTTP stub: deploy's health probe is NOT mocked. Only F has
+# a private API token, deliberately absent from shared .env and shell env.
+cat > "$BASE/api-stub.cjs" <<'APIEOF'
+const http=require('node:http'),fs=require('node:fs');
+const token=process.argv[3]==='F'?'SYNTHETIC_PRIVATE_API_TOKEN':undefined;
+const server=http.createServer((req,res)=>{
+ const valid=token&&req.headers.authorization==='Bearer '+token;
+ res.statusCode=token?(valid?200:401):503;
+ res.end(JSON.stringify(token?(valid?{ok:true}:{error:'No autorizado'}):{ok:false,error:'API REST deshabilitada: define API_TOKEN en el entorno para habilitarla.'}));
+});
+server.listen(0,'127.0.0.1',()=>fs.writeFileSync(process.argv[2],String(server.address().port)));
+APIEOF
+"$HARNESS_REAL_NODE" "$BASE/api-stub.cjs" "$BASE/api-port" "$ESCENARIO" > "$BASE/api-stub.log" 2>&1 &
+API_STUB_PID=$!
+for i in $(seq 1 50); do [ -f "$BASE/api-port" ] && break; sleep 0.05; done
+API_PORT=$(cat "$BASE/api-port")
+export DAVIS_RUNTIME_CONFIG="$BASE/jarvis-estado/secrets/runtime-env.json"
+unset API_TOKEN DAVIS_RUNTIME_CONFIG_REQUIRED
+
 
 # --- bare origin local con un commit minimo -------------------------------
 git init --bare -q "$BASE/origin.git"
@@ -24,9 +47,9 @@ cd "$BASE/src"
 git config user.email h@h && git config user.name h
 printf '{"name":"h","version":"1.0.0","dependencies":{}}\n' > package.json
 printf '{"name":"h","version":"1.0.0","lockfileVersion":3,"packages":{}}\n' > package-lock.json
-printf 'module.exports = { apps: [] };\n' > ecosystem.config.cjs
+printf 'const e=require("./deploy/runtime-env.cjs").cargarEntornoRuntime();module.exports={apps:[{name:"jarvis-api",env:{PORT:%s,...e["jarvis-api"]}}]};\n' "$API_PORT" > ecosystem.config.cjs
 mkdir -p deploy
-cp "$ROOT/deploy/deploy.sh" "$ROOT/deploy/snapshot.js" "$ROOT/deploy/quality-gate.mjs" deploy/
+cp "$ROOT/deploy/deploy.sh" "$ROOT/deploy/snapshot.js" "$ROOT/deploy/quality-gate.mjs" "$ROOT/deploy/api-health.cjs" "$ROOT/deploy/runtime-env.cjs" deploy/
 # Namespace de temporales PROPIO (como el workflow, pero bajo $BASE):
 # el deploy interno NUNCA toca el /tmp compartido ni el namespace del
 # despliegue exterior.
@@ -43,6 +66,15 @@ ESTADO=$BASE/jarvis-estado
 mkdir -p "$ESTADO/data/auth_info_baileys" "$BASE/backups"
 echo '{"fake":true}' > "$ESTADO/data/auth_info_baileys/creds.json"
 printf 'DAVIS_BACKUP_KEY=clave-harness-larga-123456\n' > "$ESTADO/.env"
+
+if [ "$ESCENARIO" = "F" ]; then
+  mkdir -p "$ESTADO/secrets"
+  "$HARNESS_REAL_NODE" -e '
+  const fs=require("node:fs"),file=process.argv[1],db=process.argv[2];
+  fs.writeFileSync(file,JSON.stringify({schema:1,apps:{"jarvis-api":{API_TOKEN:"SYNTHETIC_PRIVATE_API_TOKEN",DAVIS_API_HOST:"127.0.0.1",DAVIS_PERSISTENCE:"sqlite",DAVIS_SQLITE_PATH:db},"jarvis-whatsapp":{DAVIS_ASYNC_PIPELINE:"1",DAVIS_QUEUE:"redis",DAVIS_REDIS_URL:"redis://synthetic:private@127.0.0.1:6389",DAVIS_PERSISTENCE:"sqlite",DAVIS_SQLITE_PATH:db,DAVIS_ERS_PIPELINE_DB:db}}}),{mode:0o600});
+  ' "$DAVIS_RUNTIME_CONFIG" "$ESTADO/data/jarvis.db"
+  touch "$ESTADO/secrets/runtime-env.required"
+fi
 
 # --- binarios falsos -------------------------------------------------------
 BIN=$BASE/bin && mkdir -p "$BIN"
@@ -84,7 +116,7 @@ PM2EOF
 sed -i "s|__STATE__|$STATE|g; s|__BASE__|$BASE|g" "$BIN/pm2"
 chmod +x "$BIN/pm2"
 
-printf '#!/bin/bash\nexit 0\n' > "$BIN/npm"; chmod +x "$BIN/npm"
+printf '#!/bin/bash\nln -s %q/node_modules node_modules\n' "$ROOT" > "$BIN/npm"; chmod +x "$BIN/npm"
 printf '#!/bin/bash\necho "{\"ok\":false,\"error\":\"API REST deshabilitada\"}"\n' > "$BIN/curl"; chmod +x "$BIN/curl"
 if [ "$ESCENARIO" = "A" ] || [ "$ESCENARIO" = "D" ]; then
   printf '#!/bin/bash\necho "tar: file changed as we read it" >&2\nexit 1\n' > "$BIN/tar"
@@ -129,5 +161,5 @@ echo "rc=$RC"
 echo "pm2-final=$(cat "$STATE")"
 ls -la "$BASE/backups/" | grep -E "dbk1|tmp" || echo "backups: (sin dbk1)"
 if [ -L "$BASE/jarvis" ]; then echo "symlink=$(readlink "$BASE/jarvis")"; else echo "symlink=(no existe)"; fi
-grep -E "PARADA|ESTADO PARCIAL|rearrancando|quiesce|writers" "$BASE/salida.log" | sed 's/^/log: /' | head -8
+grep -E "PARADA|ESTADO PARCIAL|rearrancando|quiesce|writers|authenticated200|disabled503" "$BASE/salida.log" | sed 's/^/log: /' | head -12
 exit $RC
