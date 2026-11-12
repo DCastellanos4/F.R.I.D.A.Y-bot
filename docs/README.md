@@ -40,6 +40,7 @@ tal en el propio texto.
   cada funcion esta en [Capacidades](capacidades.md).
 - [ERS: Arquitectura proximo nivel](ers-arquitectura-proximo-nivel.md): especificacion de requisitos del sistema para evolucion a arquitectura distribuida asincrona, inferencia especulativa hibrida, base de datos vectorial industrial y Model Context Protocol (MCP).
 - [ERS: Desacoplamiento MCP y Carga Dinamica](ers-arquitectura-mcp.md): especificacion para fragmentar el monolito de 140 herramientas en micro-servidores MCP aislados, con RAG de herramientas y perfiles para comercios locales.
+- [Guia Maestra de Estudio de Arquitectura](guia-estudio-arquitectura.md): guia exhaustiva de 5 sesiones con preguntas y respuestas modelo para entrevistas tecnicas.
 
 ## Convenciones
 
