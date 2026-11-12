@@ -59,7 +59,7 @@ function ultimoTurnoPideConfirmacion(historial) {
   return false;
 }
 
-export function crearMessageProcessor({ llmProvider, memoryRepository, metricasClasificador, crearStoreMetricas, rutaArchivoIdempotenciaDefecto, accesoTenants = null, enrutadorInferencia = null, buscadorHibrido = null } = {}) {
+export function crearMessageProcessor({ llmProvider, memoryRepository, metricasClasificador, crearStoreMetricas, rutaArchivoIdempotenciaDefecto, accesoTenants = null, enrutadorInferencia = null, buscadorHibrido = null, mcpRegistry = null } = {}) {
   if (llmProvider !== undefined) afirmarLLMProvider(llmProvider);
   if (memoryRepository !== undefined) afirmarMemoryRepository(memoryRepository);
 
@@ -83,6 +83,9 @@ export function crearMessageProcessor({ llmProvider, memoryRepository, metricasC
       }
       if (memoryRepository && !opcionesConPuertos.memoryRepository) {
         opcionesConPuertos.memoryRepository = memoryRepository;
+      }
+      if (mcpRegistry && !opcionesConPuertos.mcpRegistry) {
+        opcionesConPuertos.mcpRegistry = mcpRegistry;
       }
       // RF-02: enrutador especulativo inyectado por la raiz de composicion
       // (null salvo DAVIS_SLM_MODEL); una opcion explicita del llamador gana.

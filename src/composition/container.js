@@ -17,7 +17,9 @@ import { crearJsonMemoryRepository } from '../adapters/outbound/persistence/json
 import { crearJsonlClassifierMetricsStore } from '../adapters/outbound/persistence/jsonlClassifierMetricsStore.js';
 import { crearPuenteWhatsAppTenants } from './whatsappTenantBridge.js';
 import { crearMessageProcessor } from '../core/messageProcessor.js';
-import { DATA_DIR } from '../config/paths.js';
+import { PROJECT_ROOT, DATA_DIR } from '../config/paths.js';
+import { crearMcpRegistry } from '../adapters/outbound/mcp/mcpRegistry.js';
+import { crearMcpClientAdapter } from '../adapters/outbound/mcp/mcpClientAdapter.js';
 import { registrarStoreMemoriasPorDefecto } from '../services/memoryService.js';
 import { registrarStoreUsoPorDefecto } from '../services/usageLedgerService.js';
 import { registrarStoreFinanzasPorDefecto } from '../services/financeService.js';
@@ -130,8 +132,82 @@ function crearPipelineDesdeEntorno({ procesar, overrides }) {
   return pipeline;
 }
 
+/**
+ * MCP Registry: solo se activa con DAVIS_MCP_ENABLED=1 o si se inyecta
+ * explicitamente mediante overrides.mcpRegistry. Registra los micro-servidores
+ * disponibles en mcp-servers/.
+ */
+function crearMcpRegistryDesdeEntorno(overrides = {}) {
+  if (overrides.mcpRegistry !== undefined) {
+    if (overrides.mcpRegistry && typeof overrides.mcpRegistry === 'object') {
+      return overrides.mcpRegistry;
+    }
+    if (!overrides.mcpRegistry) return null;
+  } else if (process.env.DAVIS_MCP_ENABLED !== '1') {
+    return null;
+  }
+
+  const registry = crearMcpRegistry();
+  const bookingPath = path.join(PROJECT_ROOT, 'mcp-servers', 'booking', 'index.js');
+  if (fs.existsSync(bookingPath)) {
+    registry.registerServer('booking', crearMcpClientAdapter({
+      name: 'mcp-server-booking',
+      command: process.execPath,
+      args: [bookingPath],
+      cwd: PROJECT_ROOT,
+      env: {
+        ...(process.env.BOOKING_DB_PATH ? { BOOKING_DB_PATH: process.env.BOOKING_DB_PATH } : {})
+      }
+    }));
+  }
+  const devopsPath = path.join(PROJECT_ROOT, 'mcp-servers', 'devops', 'index.js');
+  if (fs.existsSync(devopsPath)) {
+    registry.registerServer('devops', crearMcpClientAdapter({
+      name: 'mcp-server-devops',
+      command: process.execPath,
+      args: [devopsPath],
+      cwd: PROJECT_ROOT
+    }));
+  }
+  const financePath = path.join(PROJECT_ROOT, 'mcp-servers', 'finance', 'index.js');
+  if (fs.existsSync(financePath)) {
+    registry.registerServer('finance', crearMcpClientAdapter({
+      name: 'mcp-server-finance',
+      command: process.execPath,
+      args: [financePath],
+      cwd: PROJECT_ROOT,
+      env: {
+        ...(process.env.FINANCE_DB_PATH ? { FINANCE_DB_PATH: process.env.FINANCE_DB_PATH } : {})
+      }
+    }));
+  }
+  const lifestylePath = path.join(PROJECT_ROOT, 'mcp-servers', 'lifestyle', 'index.js');
+  if (fs.existsSync(lifestylePath)) {
+    registry.registerServer('lifestyle', crearMcpClientAdapter({
+      name: 'mcp-server-lifestyle',
+      command: process.execPath,
+      args: [lifestylePath],
+      cwd: PROJECT_ROOT,
+      env: {
+        ...(process.env.LIFESTYLE_DB_PATH ? { LIFESTYLE_DB_PATH: process.env.LIFESTYLE_DB_PATH } : {})
+      }
+    }));
+  }
+  const mediaPath = path.join(PROJECT_ROOT, 'mcp-servers', 'media', 'index.js');
+  if (fs.existsSync(mediaPath)) {
+    registry.registerServer('media', crearMcpClientAdapter({
+      name: 'mcp-server-media',
+      command: process.execPath,
+      args: [mediaPath],
+      cwd: PROJECT_ROOT
+    }));
+  }
+  return registry;
+}
+
 export function crearContenedor(overrides = {}) {
   validarSelectorCola(); // antes de proveedores, persistencia, migraciones o workers
+  const mcpRegistry = crearMcpRegistryDesdeEntorno(overrides);
   let llmProvider = overrides.llmProvider ?? crearLLMServiceProviderAdapter();
   // RNF-04 PII PRE-LLM: con DAVIS_PII_PRELLM=1 todo texto hacia el LLM
   // cloud sale anonimizado y la respuesta se restaura en local (mapa por
@@ -195,6 +271,7 @@ export function crearContenedor(overrides = {}) {
     accesoTenants: overrides.accesoTenants || null,
     enrutadorInferencia,
     buscadorHibrido,
+    mcpRegistry,
     rutaArchivoIdempotenciaDefecto: overrides.rutaArchivoIdempotenciaDefecto ?? rutaIdempTest
   });
   const procesarBase = processor.procesarMensajeEntrante;
@@ -211,6 +288,7 @@ export function crearContenedor(overrides = {}) {
     metricasClasificador,
     enrutadorInferencia,
     buscadorHibrido,
+    mcpRegistry,
     pipelineAsincrono: pipeline,
     persistencia: persistenciaActiva.persistencia || null,
     /** Alta en caliente del adaptador de entrega (canal con sesion abierta). */

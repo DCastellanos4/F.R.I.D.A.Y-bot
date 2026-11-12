@@ -35,7 +35,41 @@ export class McpRegistry {
     afirmarMcpClient(adapter);
 
     this.domainServers.set(domain, adapter);
+
+    const herramientasConocidas = {
+      booking: ['consultar_disponibilidad', 'reservar_cita', 'cancelar_cita', 'listar_citas'],
+      devops: ['ejecutar_comando_bash', 'consultar_estado_servidor', 'inspeccionar_docker', 'verificar_almacenamiento', 'comprobar_certificados_ssl']
+    };
+    if (herramientasConocidas[domain]) {
+      for (const toolName of herramientasConocidas[domain]) {
+        this.toolToDomain.set(toolName, domain);
+      }
+    }
+
     return this;
+  }
+
+  /**
+   * Comprueba si una herramienta esta registrada en alguno de los servidores.
+   *
+   * @param {string} name - Nombre de la herramienta.
+   * @returns {boolean}
+   */
+  hasTool(name) {
+    if (!name || typeof name !== 'string') return false;
+    if (this.toolToDomain.has(name)) return true;
+
+    const herramientasConocidas = {
+      booking: ['consultar_disponibilidad', 'reservar_cita', 'cancelar_cita', 'listar_citas'],
+      devops: ['ejecutar_comando_bash', 'consultar_estado_servidor', 'inspeccionar_docker', 'verificar_almacenamiento', 'comprobar_certificados_ssl']
+    };
+    for (const domain of this.domainServers.keys()) {
+      if (herramientasConocidas[domain]?.includes(name)) {
+        this.toolToDomain.set(name, domain);
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
