@@ -203,7 +203,13 @@ export function aislarOpcionesTenant(opciones, dataDir) {
 export function verificarArbolTenant(dataDir, tenantId) {
   if (tenantId === undefined || tenantId === null || tenantId === TENANT_PROPIETARIO) return;
   afirmarTenantId(tenantId);
-  const base = path.resolve(dataDir);
+  const baseResuelto = path.resolve(dataDir);
+  let base = baseResuelto;
+  try {
+    base = fs.realpathSync(baseResuelto);
+  } catch {
+    base = baseResuelto;
+  }
   const raiz = path.join(base, 'tenants', tenantId);
   let restantes = 10000;
   const revisar = (p, recursivo = false) => {
