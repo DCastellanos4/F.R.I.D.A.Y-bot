@@ -5,6 +5,8 @@
  * Strict quality: Zero emojis.
  */
 
+const {cargarEntornoRuntime}=require('./deploy/runtime-env.cjs');
+const privado=cargarEntornoRuntime();
 module.exports = {
   apps: [
     {
@@ -24,7 +26,8 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 3000,
-        STANDALONE_API: 'true'
+        STANDALONE_API: 'true',
+        ...(privado['jarvis-api']||{})
       },
       env_development: {
         NODE_ENV: 'development',
@@ -46,7 +49,8 @@ module.exports = {
       exp_backoff_restart_delay: 200,
       kill_timeout: 8000,
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        ...(privado['jarvis-whatsapp']||{})
       },
       env_development: {
         NODE_ENV: 'development'

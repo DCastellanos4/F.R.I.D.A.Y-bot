@@ -41,6 +41,12 @@ iniciarObservabilidad({ servicio: 'jarvis-api', puertoMetricas: Number(process.e
   .catch((e) => console.error('[Observabilidad] init fallido:', e.message));
 
 const PUERTO = config.port;
+// API is local by default. Remote access requires a separately authorized proxy,
+// never a public listener selected while repairing a missing bearer token.
+export function resolverHostApi(host=process.env.DAVIS_API_HOST||'127.0.0.1'){
+  if(!['127.0.0.1','::1','localhost'].includes(host))throw new TypeError('API_LOOPBACK_HOST_REQUIRED');
+  return host;
+}
 
 if (process.env.STANDALONE_API === 'true') {
   iniciarVigilanteProactivo();
@@ -331,7 +337,8 @@ const isDirectRun = Boolean(
 const isPm2 = typeof process.env.pm_id !== 'undefined';
 
 if (!isTest && (isDirectRun || isPm2 || process.env.RUN_API_SERVER === 'true' || process.env.STANDALONE_API === 'true')) {
-  server.listen(PUERTO, '0.0.0.0', () => {
-    console.log(`[Web] Servidor API de FRIDAY escuchando en http://0.0.0.0:${PUERTO}`);
+  const host=resolverHostApi();
+  server.listen(PUERTO, host, () => {
+    console.log(`[Web] Servidor API de FRIDAY escuchando en loopback:${PUERTO}`);
   });
 }

@@ -74,3 +74,10 @@ quiz('harness E: arranque de la nueva release falla TRAS el corte -> ESTADO PARC
   assert.match(salida, /symlink=.*releases\//, `el corte ocurrio y se REPORTA, no se oculta ni se revierte solo:\n${salida}`);
   assert.match(salida, /-rw------- .*\.dbk1/, `existe punto de restauracion valido 0600 para la decision manual:\n${salida}`);
 });
+
+quiz('harness F: private API-only token absent from shared .env passes real authenticated health probe', {timeout:120000}, () => {
+ const {rc,salida}=correr('F');
+ assert.equal(rc,0,salida);
+ assert.match(salida,/authenticated200 and absent\/wrong401 verified/);
+ assert.doesNotMatch(salida,/SYNTHETIC_PRIVATE_API_TOKEN|Bearer|Authorization/);
+});

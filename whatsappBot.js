@@ -542,22 +542,6 @@ export async function iniciarWhatsApp() {
     browser: ['DAVIS Linux', 'Chrome', '124.0.0']
   });
 
-  // RF-01 (B1): con el pipeline asincrono activo (DAVIS_ASYNC_PIPELINE=1,
-  // carril coordinado), el socket se registra como canal de entrega para
-  // que el entregador del pool pueda enviar las respuestas finales. Sin
-  // el env no cambia nada (camino sincrono historico).
-  if (process.env.DAVIS_ASYNC_PIPELINE === '1') {
-    try {
-      const { contenedorCompartido } = await import('./src/composition/container.js');
-      const { crearWhatsAppChannelAdapter } = await import('./src/adapters/outbound/channels/whatsappChannelAdapter.js');
-      if (contenedorCompartido && typeof contenedorCompartido.registrarCanalEntrega === 'function') {
-        contenedorCompartido.registrarCanalEntrega('whatsapp', crearWhatsAppChannelAdapter(sock));
-        console.log('[Pipeline] Canal de entrega WhatsApp registrado en el pool asincrono.');
-      }
-    } catch (errCanal) {
-      console.error('[Pipeline] No se pudo registrar el canal de entrega:', errCanal.message);
-    }
-  }
 
   if (pairingNumber && !sock.authState.creds.registered) {
     setTimeout(async () => {
@@ -599,6 +583,12 @@ export async function iniciarWhatsApp() {
       }
     } else if (connection === 'open') {
       estaConectado = true;
+      if(process.env.DAVIS_ASYNC_PIPELINE==='1'){
+        const {contenedorCompartido}=await import('./src/composition/container.js');
+        const {crearCanalFinalWhatsapp}=await import('./src/adapters/outbound/channels/whatsappAsyncFinalAdapter.js');
+        contenedorCompartido.registrarRuntimePipeline((inbound,ctx)=>crearOpcionesRuntimeWhatsapp(sock,inbound.userId,{},ctx.opciones?.urgencyDirective));
+        contenedorCompartido.registrarCanalEntrega('whatsapp',crearCanalFinalWhatsapp({sock,normalizar:normalizarMarkdownWhatsApp,sintetizar:synthesizeSpeech,enviarVoz:sendVoiceNote,registrarIntercambio,condensar:(jid)=>programarCondensacionSiNecesario(jid,{chatCompletion:chatCompletionPorDefecto})}));
+      }
       console.log('\n======================================================');
       console.log('D.A.V.I.S. CONECTADO Y EN LINEA');
       console.log(`Copiloto táctico de David: +${NUMERO_BOT_SIMYO}`);
@@ -644,6 +634,65 @@ export function resolverChatCompletionAux(deps = {}) {
  * LLM simulados, sin conexion real. deps.chatCompletion permite inyectar el
  * LLM en pruebas; en produccion (sin deps) se usa el configurado.
  */
+export function crearOpcionesRuntimeWhatsapp(sock, remoteJid, deps = {}, urgencyDirective = '') {
+ const chatCompletionEfectivo=typeof deps.chatCompletion==='function'?deps.chatCompletion:chatCompletionPorDefecto;
+ return {
+          chatId: remoteJid,
+          urgencyDirective,
+          chatCompletion: chatCompletionEfectivo,
+          carpetaTrazas: deps.carpetaTrazas,
+          avisarSaludClasificador: resolverAvisoSaludClasificador(deps).fn,
+          rutaArchivoMetricasClasificador: deps.rutaArchivoMetricasClasificador,
+          rutaArchivoCandidaturas: deps.rutaArchivoCandidaturas,
+          radarDeps: deps.radarDeps,
+          rutaPlanesEstudio: deps.rutaPlanesEstudio,
+          crearRecordatorioEstudio: deps.crearRecordatorioEstudio,
+          rutaArchivoFlashcards: deps.rutaArchivoFlashcards,
+          rutaArchivoFinanzas: deps.rutaArchivoFinanzas,
+          rutaArchivoProcesos: deps.rutaArchivoProcesos,
+          rutaArchivoTraductor: deps.rutaArchivoTraductor,
+          rutaArchivoFechas: deps.rutaArchivoFechas,
+          rutaArchivoSnoozes: deps.rutaArchivoSnoozes,
+          rutaArchivoLlegada: deps.rutaArchivoLlegada,
+          rutaArchivoTransporte: deps.rutaArchivoTransporte,
+          fetchFnEmt: deps.fetchFnEmt,
+          fetchFnCercanias: deps.fetchFnCercanias,
+          clientIdEmt: deps.clientIdEmt,
+          passKeyEmt: deps.passKeyEmt,
+          rutaArchivoContactos: deps.rutaArchivoContactos,
+          rutaArchivoDigest: deps.rutaArchivoDigest,
+          carpetaNotas: deps.carpetaNotas,
+          extraerArticulo: deps.extraerArticulo,
+          carpetaDiario: deps.carpetaDiario,
+          rutaArchivoHabitos: deps.rutaArchivoHabitos,
+          rutaArchivoMenus: deps.rutaArchivoMenus,
+          rutaArchivoCompra: deps.rutaArchivoCompra,
+          rutaArchivoRecomendador: deps.rutaArchivoRecomendador,
+          rutaArchivoQuedadas: deps.rutaArchivoQuedadas,
+          rutaArchivoRecordatorios: deps.rutaArchivoRecordatorios,
+          rutaArchivoProgramados: deps.rutaArchivoProgramados,
+          rutaArchivoMemorias: deps.rutaArchivoMemorias,
+          rutaArchivoNocturno: deps.rutaArchivoNocturno,
+          obtenerNoticiasDeportes: deps.obtenerNoticiasDeportes,
+          obtenerMemorias: deps.obtenerMemorias,
+          rutaArchivoEntrevistas: deps.rutaArchivoEntrevistas,
+          rutaArchivoEntregas: deps.rutaArchivoEntregas,
+          buscarEnFuenteCompras: deps.buscarEnFuenteCompras,
+          fetchFnCompras: deps.fetchFnCompras,
+          rutaArchivoIdeas: deps.rutaArchivoIdeas,
+          fetchFnGitHub: deps.fetchFnGitHub,
+          rutaArchivoMetricas: deps.rutaArchivoMetricas,
+          rutaConfigOps: deps.rutaConfigOps,
+          rutaConfigHogar: deps.rutaConfigHogar,
+          rutaArchivoViajes: deps.rutaArchivoViajes,
+          otpDelivery: async ({ otpCode, ttlSeconds, reason, command }) => {
+            await sock.sendMessage(remoteJid, {
+              text: `Codigo de autorizacion 2FA para el comando critico "${command}" (${reason}):\n\n${otpCode}\n\nValidez: ${ttlSeconds} segundos. Responde "confirmar otp ${otpCode}" para autorizar la ejecucion. Este codigo solo lo ves tu.`
+            });
+          }
+ };
+}
+
 export async function procesarMensajesEntrantes(sock, { messages, type }, deps = {}) {
     if (type !== 'notify') return;
 
@@ -1108,61 +1157,7 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
           const inbound = crearInboundDesdeWhatsApp({ msg, texto, remoteJid });
           respuesta = await procesarMensajeEntrante(inbound, {
           historial: historialPrevio,
-          opciones: {
-          chatId: remoteJid,
-          urgencyDirective,
-          chatCompletion: chatCompletionEfectivo,
-          carpetaTrazas: deps.carpetaTrazas,
-          avisarSaludClasificador: resolverAvisoSaludClasificador(deps).fn,
-          rutaArchivoMetricasClasificador: deps.rutaArchivoMetricasClasificador,
-          rutaArchivoCandidaturas: deps.rutaArchivoCandidaturas,
-          radarDeps: deps.radarDeps,
-          rutaPlanesEstudio: deps.rutaPlanesEstudio,
-          crearRecordatorioEstudio: deps.crearRecordatorioEstudio,
-          rutaArchivoFlashcards: deps.rutaArchivoFlashcards,
-          rutaArchivoFinanzas: deps.rutaArchivoFinanzas,
-          rutaArchivoProcesos: deps.rutaArchivoProcesos,
-          rutaArchivoTraductor: deps.rutaArchivoTraductor,
-          rutaArchivoFechas: deps.rutaArchivoFechas,
-          rutaArchivoSnoozes: deps.rutaArchivoSnoozes,
-          rutaArchivoLlegada: deps.rutaArchivoLlegada,
-          rutaArchivoTransporte: deps.rutaArchivoTransporte,
-          fetchFnEmt: deps.fetchFnEmt,
-          fetchFnCercanias: deps.fetchFnCercanias,
-          clientIdEmt: deps.clientIdEmt,
-          passKeyEmt: deps.passKeyEmt,
-          rutaArchivoContactos: deps.rutaArchivoContactos,
-          rutaArchivoDigest: deps.rutaArchivoDigest,
-          carpetaNotas: deps.carpetaNotas,
-          extraerArticulo: deps.extraerArticulo,
-          carpetaDiario: deps.carpetaDiario,
-          rutaArchivoHabitos: deps.rutaArchivoHabitos,
-          rutaArchivoMenus: deps.rutaArchivoMenus,
-          rutaArchivoCompra: deps.rutaArchivoCompra,
-          rutaArchivoRecomendador: deps.rutaArchivoRecomendador,
-          rutaArchivoQuedadas: deps.rutaArchivoQuedadas,
-          rutaArchivoRecordatorios: deps.rutaArchivoRecordatorios,
-          rutaArchivoProgramados: deps.rutaArchivoProgramados,
-          rutaArchivoMemorias: deps.rutaArchivoMemorias,
-          rutaArchivoNocturno: deps.rutaArchivoNocturno,
-          obtenerNoticiasDeportes: deps.obtenerNoticiasDeportes,
-          obtenerMemorias: deps.obtenerMemorias,
-          rutaArchivoEntrevistas: deps.rutaArchivoEntrevistas,
-          rutaArchivoEntregas: deps.rutaArchivoEntregas,
-          buscarEnFuenteCompras: deps.buscarEnFuenteCompras,
-          fetchFnCompras: deps.fetchFnCompras,
-          rutaArchivoIdeas: deps.rutaArchivoIdeas,
-          fetchFnGitHub: deps.fetchFnGitHub,
-          rutaArchivoMetricas: deps.rutaArchivoMetricas,
-          rutaConfigOps: deps.rutaConfigOps,
-          rutaConfigHogar: deps.rutaConfigHogar,
-          rutaArchivoViajes: deps.rutaArchivoViajes,
-          otpDelivery: async ({ otpCode, ttlSeconds, reason, command }) => {
-            await sock.sendMessage(remoteJid, {
-              text: `Codigo de autorizacion 2FA para el comando critico "${command}" (${reason}):\n\n${otpCode}\n\nValidez: ${ttlSeconds} segundos. Responde "confirmar otp ${otpCode}" para autorizar la ejecucion. Este codigo solo lo ves tu.`
-            });
-          }
-          }
+          opciones: {...crearOpcionesRuntimeWhatsapp(sock,remoteJid,deps,urgencyDirective),respuestaVoz:esAudio || /responde(me)?\s+(en|con)?\s*(audio|nota de voz|voz)/i.test(texto)}
         });
           registrarEventoMetrica({ tipo: 'comando', nombre: 'consulta_jarvis', duracionMs: Date.now() - inicioJarvis }, { rutaArchivo: deps.rutaArchivoMetricas });
         } catch (errJarvis) {
@@ -1173,6 +1168,11 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         // 4. Detener estado de escritura y enviar respuesta
         clearInterval(typingInterval);
         await sock.sendPresenceUpdate('paused', remoteJid);
+
+        if(process.env.DAVIS_ASYNC_PIPELINE==='1'){
+          await canalWhatsapp.enviarTexto(remoteJid,respuesta,{quoted:msg});
+          continue; // ACK is not the final answer or a history turn.
+        }
 
         // WhatsApp solo interpreta *negrita* con un asterisco: el modelo suele
         // emitir **doble** (markdown), que se veria literal. Se normaliza aqui,

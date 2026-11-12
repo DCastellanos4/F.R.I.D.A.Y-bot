@@ -35,38 +35,38 @@ export function crearSqliteOutboxStore(db) {
   }
 
   const insEvento = db.prepare(`
-    INSERT INTO outbox_events (id, tenant_id, canal, tipo, payload, estado, intentos, creado_en, disponible_en)
-    VALUES (@id, @tenant_id, @canal, @tipo, @payload, 'pendiente', 0, @ahora, @disponible_en)
+    INSERT INTO outbox_events (id, tenant_id, canal, tipo, payload, estado, intentos, creado_en, disponible_en, transporte)
+    VALUES (@id, @tenant_id, @canal, @tipo, @payload, 'pendiente', 0, @ahora, @disponible_en, @transporte)
   `);
   const selPendientes = db.prepare(`
     SELECT id FROM outbox_events
-    WHERE estado = 'pendiente' AND disponible_en <= @ahora
+    WHERE estado = 'pendiente' AND claim_token IS NULL AND transporte='sqlite' AND disponible_en <= @ahora
     ORDER BY creado_en, id
     LIMIT @limite
   `);
   const updReclamar = db.prepare(`
     UPDATE outbox_events SET estado = 'en_curso', reclamado_en = @ahora
-    WHERE id = @id AND estado = 'pendiente'
+    WHERE id = @id AND estado = 'pendiente' AND claim_token IS NULL AND transporte='sqlite'
   `);
   const selTrabajo = db.prepare('SELECT * FROM outbox_events WHERE id = ?');
   const updCompletado = db.prepare(`
     UPDATE outbox_events SET estado = 'completado', procesado_en = @ahora, ultimo_error = NULL
-    WHERE id = @id
+    WHERE id = @id AND claim_token IS NULL AND transporte='sqlite'
   `);
   const updFalloReintentable = db.prepare(`
     UPDATE outbox_events
     SET estado = 'pendiente', intentos = intentos + 1, disponible_en = @disponible_en,
         reclamado_en = NULL, ultimo_error = @error
-    WHERE id = @id
+    WHERE id = @id AND claim_token IS NULL AND transporte='sqlite'
   `);
   const updFalloDefinitivo = db.prepare(`
     UPDATE outbox_events
     SET estado = 'fallido', intentos = intentos + 1, procesado_en = @ahora, ultimo_error = @error
-    WHERE id = @id
+    WHERE id = @id AND claim_token IS NULL AND transporte='sqlite'
   `);
   const updRecuperar = db.prepare(`
     UPDATE outbox_events SET estado = 'pendiente', reclamado_en = NULL
-    WHERE estado = 'en_curso' AND reclamado_en < @limiteExpiracion
+    WHERE estado = 'en_curso' AND claim_token IS NULL AND transporte='sqlite' AND reclamado_en < @limiteExpiracion
   `);
   const insCheckpoint = db.prepare(`
     INSERT INTO job_checkpoints (job_id, ronda, estado, creado_en)
@@ -142,13 +142,15 @@ export function crearSqliteOutboxStore(db) {
      * es una unica INSERT preparada, muy por debajo del presupuesto de 3 ms
      * del ERS en una DB local WAL.
      */
-    publicar({ id = null, tenantId = TENANT_PROPIETARIO, canal, tipo, payload, disponibleEn = null } = {}) {
+    publicar({ id = null, tenantId = TENANT_PROPIETARIO, canal, tipo, payload, disponibleEn = null, transporte = 'sqlite' } = {}) {
       afirmarTenantId(tenantId);
+      if (!['sqlite','redis'].includes(transporte)) throw new TypeError('RF01_TRANSPORT_UNSUPPORTED');
       if (typeof canal !== 'string' || !canal.trim()) throw new TypeError('outbox.publicar: canal obligatorio.');
       if (typeof tipo !== 'string' || !tipo.trim()) throw new TypeError('outbox.publicar: tipo obligatorio.');
       const ahora = aIso();
       const eventoId = id || `evt_${crypto.randomUUID()}`;
       insEvento.run({
+        transporte,
         id: eventoId,
         tenant_id: tenantId,
         canal: canal.trim().toLowerCase(),
@@ -217,12 +219,15 @@ export function crearSqliteOutboxStore(db) {
     },
 
     guardarCheckpoint(jobId, ronda, estado) {
+      return db.transaction(() => {
+      if (selTrabajo.get(String(jobId))?.transporte === 'redis') throw new Error('RF01_CLAIM_TOKEN_REQUIRED');
       insCheckpoint.run({
         job_id: String(jobId),
         ronda: Math.max(0, Math.trunc(Number(ronda) || 0)),
         estado: JSON.stringify(estado ?? {}),
         ahora: aIso()
       });
+      }).immediate();
     },
 
     ultimoCheckpoint(jobId) {
@@ -255,7 +260,9 @@ export function crearSqliteOutboxStore(db) {
      * (INSERT OR IGNORE). Devuelve true si la respuesta quedo encolada.
      */
     encolarRespuesta({ id = null, jobId, canal, destinatario, payload } = {}) {
+      return db.transaction(() => {
       if (!jobId) throw new TypeError('outbox.encolarRespuesta: jobId obligatorio.');
+      if (selTrabajo.get(String(jobId))?.transporte === 'redis') throw new Error('RF01_CLAIM_TOKEN_REQUIRED');
       const respuestaId = id || `resp_${jobId}`;
       const r = insRespuesta.run({
         id: respuestaId,
@@ -266,6 +273,7 @@ export function crearSqliteOutboxStore(db) {
         ahora: aIso()
       });
       return r.changes === 1;
+      }).immediate();
     },
 
     respuestasPendientes({ canal = null, limite = 20 } = {}) {

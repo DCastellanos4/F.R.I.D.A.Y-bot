@@ -83,7 +83,7 @@ test('migraciones versionadas e idempotentes; WAL real en archivo', () => {
   assert.equal(db.pragma('foreign_keys', { simple: true }), 1);
 
   const versiones = db.prepare('SELECT version, nombre FROM schema_migrations').all();
-  assert.deepEqual(versiones.map((v) => v.version), [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.deepEqual(versiones.map((v) => v.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 
   // Segunda ejecucion: no reaplica ni falla.
   const segunda = ejecutarMigraciones(db);

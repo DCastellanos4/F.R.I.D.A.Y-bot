@@ -51,6 +51,8 @@ test('B1: contenedor con pipeline activo devuelve ACK inmediato y publica el tra
     memoryRepository: { buscar: async () => [], guardar: async () => {}, listar: async () => [], olvidar: async () => true },
     pipelineAsincrono: pipelineFaux
   });
+  contenedor.registrarRuntimePipeline(()=>({}));
+  contenedor.registrarCanalEntrega('whatsapp',{enviarTexto:async()=>{}});
   const t0 = Date.now();
   const respuesta = await contenedor.procesarMensajeEntrante({ userId: 'u1', text: 'hola', channel: 'whatsapp' });
   assert.equal(respuesta, 'Recibido, lo estoy procesando.', 'ACK inmediato declarado');

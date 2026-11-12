@@ -137,6 +137,11 @@ node "$DTMP/quality-gate.mjs" --critical "$DTMP/criticos-$TS.tap" --suite "$DTMP
   || { echo "PARADA: puerta no superada en servidor; ANTES del corte, el bot sigue con la release anterior." >&2; exit 1; }
 rm -rf "$DTMP/cicd-data-$TS" "$DTMP/cicd-history-$TS"
 
+# Validate service-scoped private activation before stopping producers. A
+# configured RF01/API install must not silently revert to old defaults.
+node -e "require(process.argv[1])" "$DESTINO/ecosystem.config.cjs" \
+  || { echo "PARADA: configuracion privada de activacion invalida; servicios actuales intactos." >&2; exit 1; }
+
 echo "== [5/7] Snapshot cifrado del estado (obligatorio, DBK1 GCM autenticado) =="
 PASS="${DAVIS_BACKUP_KEY:-${BACKUP_PASSPHRASE:-}}"
 if [ -z "$PASS" ] && [ -f "$ESTADO/.env" ]; then set -a; . "$ESTADO/.env"; set +a; PASS="${DAVIS_BACKUP_KEY:-${BACKUP_PASSPHRASE:-}}"; fi
@@ -330,26 +335,13 @@ if ! echo "$NUEVO" | grep -q "D.A.V.I.S. CONECTADO Y EN LINEA"; then
 fi
 echo "WhatsApp: conexion fresca confirmada (banner del proceso nuevo, sin QR)."
 
-# API: solo se acepta el estado ESPERADO. Sin API_TOKEN en el .env compartido,
-# el estado esperado es el fail-closed 'API REST deshabilitada' (comportamiento
-# del PR de seguridad); con API_TOKEN configurado se exige ok:true. Cualquier
-# otra respuesta (puerto cerrado, 5xx, body inesperado) FALLA el despliegue:
-# nunca se ignora un error inesperado.
-PUERTO_API=$(grep -E "^PORT=" "$ESTADO/.env" 2>/dev/null | tail -1 | cut -d= -f2 || true)
-PUERTO_API="${PUERTO_API:-3000}"
-if grep -qE "^API_TOKEN=.+" "$ESTADO/.env" 2>/dev/null; then
-  PATRON_API='"ok":true';  ESTADO_API="habilitada (API_TOKEN configurado), se exige ok:true"
-else
-  PATRON_API='API REST deshabilitada'; ESTADO_API="deshabilitada por configuracion (sin API_TOKEN), se exige el fail-closed"
-fi
-RESP_API=$(curl -s -m 10 "http://127.0.0.1:$PUERTO_API/api/salud" || true)
-if ! echo "$RESP_API" | grep -q "$PATRON_API"; then
-  echo "ESTADO PARCIAL TRAS EL CORTE: API en 127.0.0.1:$PUERTO_API no devuelve el estado esperado ($ESTADO_API)." >&2
-  echo "Respuesta (200 primeros caracteres): $(echo "$RESP_API" | cut -c1-200)" >&2
+# Probe resolves the same private API-only config in memory. Never send
+# credentials through shell arguments or log headers/raw response bodies.
+if ! node "$DESTINO/deploy/api-health.cjs" "$DESTINO/ecosystem.config.cjs"; then
+  echo "ESTADO PARCIAL TRAS EL CORTE: API no cumple salud/autenticacion esperada." >&2
   echo "NO se revierte automaticamente; restaurar es decision aprobada aparte." >&2
   exit 1
 fi
-echo "API: estado esperado confirmado ($ESTADO_API)."
 
 $PM2 ls
 
