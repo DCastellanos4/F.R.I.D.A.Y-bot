@@ -148,6 +148,11 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
 
     const aperturaMin = horaAMinutos(hora_apertura);
     const cierreMin = horaAMinutos(hora_cierre);
+    const maxDuracionPermitida = cierreMin - aperturaMin;
+
+    if (duracion > maxDuracionPermitida) {
+      throw new Error(`duracion_minutos (${duracion}) excede la duracion maxima permitida (${maxDuracionPermitida} min)`);
+    }
     if (aperturaMin >= cierreMin) {
       throw new Error('hora_apertura debe ser anterior a hora_cierre');
     }
@@ -250,6 +255,11 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
 
     const aperturaMin = horaAMinutos(hora_apertura);
     const cierreMin = horaAMinutos(hora_cierre);
+    const maxDuracionPermitida = cierreMin - aperturaMin;
+
+    if (duracion > maxDuracionPermitida) {
+      throw new Error(`duracion_minutos (${duracion}) excede la duracion maxima permitida (${maxDuracionPermitida} min)`);
+    }
 
     if (inicioMinutosDia < aperturaMin || finMinutosDia > cierreMin) {
       const horaInicioTexto = `${String(Math.floor(inicioMinutosDia / 60)).padStart(2, '0')}:${String(inicioMinutosDia % 60).padStart(2, '0')}`;

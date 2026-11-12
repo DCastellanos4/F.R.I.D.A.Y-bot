@@ -53,6 +53,7 @@ export class McpClientAdapter {
     this.isInitialized = false;
     this.initPromise = null;
     this.exitPromise = null;
+    this.exitError = null;
     this.stderrOutput = [];
   }
 
@@ -64,6 +65,10 @@ export class McpClientAdapter {
       const err = new Error(`MCP client [${this.name}] is closed`);
       err.code = 'MCP_CLIENT_CLOSED';
       throw err;
+    }
+
+    if (this.exitError) {
+      throw this.exitError;
     }
 
     if (this.child) {
@@ -83,7 +88,16 @@ export class McpClientAdapter {
         exitErr.code = 'MCP_PROCESS_EXITED';
         exitErr.exitCode = code;
         exitErr.signal = signal;
+        this.exitError = exitErr;
         this.rejectAllPending(exitErr);
+        if (this.rl) {
+          try {
+            this.rl.close();
+          } catch {
+            // Ignora error al cerrar readline
+          }
+          this.rl = null;
+        }
         resolve({ code, signal });
       });
     });
@@ -92,8 +106,15 @@ export class McpClientAdapter {
       const procErr = new Error(`MCP process [${this.name}] error: ${err.message}`);
       procErr.code = 'MCP_PROCESS_ERROR';
       procErr.cause = err;
+      this.exitError = procErr;
       this.rejectAllPending(procErr);
     });
+
+    if (this.child.stdin) {
+      this.child.stdin.on('error', () => {
+        // Ignora EPIPE o stream cerrado si el subproceso finalizo abruptamente
+      });
+    }
 
     if (this.child.stderr) {
       this.child.stderr.on('data', (chunk) => {
@@ -174,12 +195,20 @@ export class McpClientAdapter {
    * @returns {Promise<any>}
    */
   sendRequest(method, params = {}, customTimeoutMs) {
-    this.ensureStarted();
+    try {
+      this.ensureStarted();
+    } catch (err) {
+      return Promise.reject(err);
+    }
 
     if (this.isClosed) {
       const err = new Error(`MCP client [${this.name}] is closed`);
       err.code = 'MCP_CLIENT_CLOSED';
       return Promise.reject(err);
+    }
+
+    if (this.exitError) {
+      return Promise.reject(this.exitError);
     }
 
     const id = this.nextId++;

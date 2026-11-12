@@ -44,19 +44,23 @@ export function getBashExecutable() {
   return 'bash';
 }
 
+export const TIMEOUT_BASH_DEFECTO_MS = 15000;
+export const TIMEOUT_BASH_MAX_MS = 15000;
+
 /**
  * Ejecuta un comando en shell bash de forma aislada con limite estricto de tiempo.
  *
  * @param {string} comando - Comando bash a ejecutar
- * @param {number} [timeoutMs=10000] - Tiempo maximo de ejecucion en ms
+ * @param {number} [timeoutMs=15000] - Tiempo maximo de ejecucion en ms
  * @returns {Promise<{ ok: boolean, exitCode: number, stdout: string, stderr: string, timedOut: boolean, durationMs: number }>}
  */
-export async function ejecutarComandoBash(comando, timeoutMs = 10000) {
+export async function ejecutarComandoBash(comando, timeoutMs = TIMEOUT_BASH_DEFECTO_MS) {
   if (!comando || typeof comando !== 'string') {
     throw new TypeError('El parametro comando es obligatorio y debe ser una cadena no vacia');
   }
 
-  const timeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : 10000;
+  const timeoutNumerico = Number(timeoutMs) > 0 ? Number(timeoutMs) : TIMEOUT_BASH_DEFECTO_MS;
+  const timeout = Math.min(timeoutNumerico, TIMEOUT_BASH_MAX_MS);
   const bashBinary = getBashExecutable();
   const startTime = Date.now();
 
@@ -556,6 +560,27 @@ export async function handleMessage(msg) {
 
   const { id, method, params } = msg;
 
+  const idValido = id === undefined || id === null || typeof id === 'string' || typeof id === 'number';
+  if (!idValido) {
+    sendResponse({
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: -32600, message: 'Invalid Request: id invalido' }
+    });
+    return;
+  }
+
+  if (typeof method !== 'string' || !method) {
+    if (id !== undefined) {
+      sendResponse({
+        jsonrpc: '2.0',
+        id: id ?? null,
+        error: { code: -32600, message: 'Invalid Request: method invalido' }
+      });
+    }
+    return;
+  }
+
   if (method === 'initialize') {
     sendResponse({
       jsonrpc: '2.0',
@@ -642,10 +667,10 @@ export async function handleMessage(msg) {
     return;
   }
 
-  if (id !== undefined && id !== null) {
+  if (id !== undefined) {
     sendResponse({
       jsonrpc: '2.0',
-      id,
+      id: id ?? null,
       error: {
         code: -32601,
         message: `Metodo no encontrado: ${method}`

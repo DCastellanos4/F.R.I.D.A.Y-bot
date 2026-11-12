@@ -123,6 +123,26 @@ export function crearManejadorRpc(bookingDb) {
 
     const { id, method, params } = solicitud;
 
+    const idValido = id === undefined || id === null || typeof id === 'string' || typeof id === 'number';
+    if (!idValido) {
+      return {
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32600, message: 'Invalid Request: id invalido' }
+      };
+    }
+
+    if (typeof method !== 'string' || !method) {
+      if (id !== undefined) {
+        return {
+          jsonrpc: '2.0',
+          id: id ?? null,
+          error: { code: -32600, message: 'Invalid Request: method invalido' }
+        };
+      }
+      return null;
+    }
+
     // Notificaciones: no devuelven respuesta a menos que se haya proporcionado un id
     if (method === 'notifications/initialized' || method === 'initialized') {
       if (id !== undefined && id !== null) {
