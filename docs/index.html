@@ -2,376 +2,320 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>D.A.V.I.S. ARCHITECTURAL SPECIFICATION - RFC 2026</title>
-<style>
-  body {
-    background-color: #ffffff;
-    color: #000000;
-    font-family: "Courier New", Courier, monospace, monospace;
-    font-size: 13px;
-    line-height: 1.35;
-    margin: 2em auto;
-    max-width: 84ch;
-    padding: 0 1ch;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-  }
-  a {
-    color: #000000;
-    text-decoration: underline;
-  }
-  a:hover {
-    background-color: #000000;
-    color: #ffffff;
-    text-decoration: none;
-  }
-  h1, h2, h3, h4 {
-    font-family: "Courier New", Courier, monospace, monospace;
-    font-size: 13px;
-    font-weight: bold;
-    margin: 1.5em 0 0.5em 0;
-  }
-  hr {
-    border: none;
-    border-top: 1px solid #000000;
-    margin: 1.5em 0;
-  }
-</style>
+<title>D.A.V.I.S. - ARCHITECTURE SPECIFICATION MANUAL</title>
 </head>
 <body>
+<pre>
 ================================================================================
-D.A.V.I.S. ARCHITECTURAL SPECIFICATION                                    RFC-2026
-Standard Technical Document                                       Autonomous Systems
-Distribution: Public Domain                                            November 2026
+D.A.V.I.S. TECHNICAL ARCHITECTURE MANUAL                                RFC-2026
+Autonomous Cognitive Systems Architecture Specification                Fall 2026
+Standard Distribution                                     Zero-Style Pure ASCII
 ================================================================================
 
-TITLE:       D.A.V.I.S. (Digital Autonomous Voice & Intelligence System)
-             System Architecture, Component Specifications, and Decision Records
-STATUS:      Operative / Production Grade
-REVISION:    v2.4.0-PROD
-POLICY:      Strict Zero Emojis / Zero Sensitive Secrets / Fail-Closed Security
+SYSTEM IDENTIFIER:   D.A.V.I.S. (Digital Autonomous Voice & Intelligence System)
+DOCUMENT PURPOSE:    Architecture Topology, Component Protocols & Decisions (ADRs)
+SECURITY LEVEL:      Public Architectural Domain (Zero Secrets / Zero PII)
+COMPLIANCE:          Strict Zero-Emoji Policy / Fail-Closed Security
 
 --------------------------------------------------------------------------------
 TABLE OF CONTENTS
 --------------------------------------------------------------------------------
-1.0  ABSTRACT AND ARCHITECTURAL GOALS
-2.0  HEXAGONAL DOMAIN ARCHITECTURE (PORTS AND ADAPTERS)
-3.0  ASYNCHRONOUS PIPELINE AND PERSISTENT OUTBOX (ERS POOL)
-4.0  MODEL CONTEXT PROTOCOL (MCP) MODULAR SUBSYSTEM
-5.0  INDUSTRIAL RAG ENGINE: SECOND BRAIN OVER QDRANT & BGE-M3
-6.0  MULTITENANCY AND SAAS RATE LIMITING ENGINE
-7.0  DETERMINISTIC SPECIALIST INFERENCE ROUTING
-8.0  DEFENSIVE SECURITY, ANTI-SSRF, AND PRIVILEGE ESCALATION CONTROLS
-9.0  ARCHITECTURAL DECISION RECORDS (ADR-001 THROUGH ADR-008)
-10.0 QUALITY GATE, CONTINUOUS DEPLOYMENT, AND CONFORMANCE METRICS
+[1.0] ARCHITECTURAL PHILOSOPHY AND CORE INVARIANTS
+[2.0] HEXAGONAL DOMAIN TOPOLOGY (PORTS AND ADAPTERS)
+[3.0] ASYNCHRONOUS TRANSACTIONAL OUTBOX PIPELINE
+[4.0] MODEL CONTEXT PROTOCOL (MCP) MODULAR MICRO-SERVERS
+[5.0] INDUSTRIAL RAG ENGINE (SECOND BRAIN OVER QDRANT)
+[6.0] MULTITENANCY SAAS AND RATE LIMITING ENGINE
+[7.0] SPECIALIST INFERENCE ROUTING AND CONTEXT BUDGETING
+[8.0] DEFENSIVE SECURITY AND ANTI-SSRF SOCKET ISOLATION
+[9.0] ARCHITECTURAL DECISION RECORDS (ADR-001 TO ADR-008)
+[10.0] QUALITY GATES, CONFORMANCE AND CONTINUOUS DEPLOYMENT
 
---------------------------------------------------------------------------------
-1.0 ABSTRACT AND ARCHITECTURAL GOALS
---------------------------------------------------------------------------------
-D.A.V.I.S. is a self-hosted, headless autonomous assistant engine designed to
-operate 24/7 as an uninterrupted control surface over asynchronous messaging
-fabrics (such as WhatsApp Multi-Device WebSocket protocol) and authenticated
-REST/Webhook APIs.
+================================================================================
+[1.0] ARCHITECTURAL PHILOSOPHY AND CORE INVARIANTS
+================================================================================
+D.A.V.I.S. is engineered as a headless, autonomous 24/7 assistant engine designed
+to decouple complex conversational protocols (such as WhatsApp Multi-Device
+WebSocket interfaces and authenticated REST endpoints) from heavy cognitive
+reasoning loops and infrastructure operations.
 
-The system addresses four primary architectural imperatives:
-  1. Complete Hexagonal Decoupling: Pure application core isolated from transport
-     protocols, model providers, and storage backends.
-  2. Non-Blocking Reactivity: Long-running tool executions and multi-step LLM
-     chains are decoupled from real-time messaging sockets via an outbox pipeline.
-  3. Strict Tenant Isolation and Quotas: Complete multitenancy with fail-closed
-     RBAC and sliding-window rate limiting for multi-client deployment.
-  4. Deterministic and Auditable Execution: 100% reproducible tests without
-     network mocks leaking, strict zero-emoji output formatting, and zero
-     uncontrolled LLM hallucinations in system administration tasks.
+Core System Invariants:
++---+----------------------------+---------------------------------------------+
+| # | Invariant                  | Architectural Guarantee                     |
++---+----------------------------+---------------------------------------------+
+| 1 | Complete Port Isolation    | Domain logic has zero dependency on network |
+|   |                            | protocols, transport sockets, or databases. |
+| 2 | Asynchronous Reactive Loop | Gateway threads are freed in under 15ms via |
+|   |                            | an atomic outbox queue.                     |
+| 3 | Strict Multitenant Barrier | Complete isolation (AISLAMIENTO_COMPLETO=1) |
+|   |                            | with fail-closed security per tenant.       |
+| 4 | Defensive Determinism      | Tool catalog strictly budgeted below 128    |
+|   |                            | tools to prevent LLM hallucination and drop.|
+| 5 | Zero Secret Exposure       | Configuration adheres strictly to environment|
+|   |                            | variable injection with zero static leaks.  |
++---+----------------------------+---------------------------------------------+
 
---------------------------------------------------------------------------------
-2.0 HEXAGONAL DOMAIN ARCHITECTURE (PORTS AND ADAPTERS)
---------------------------------------------------------------------------------
-The software architecture follows Alistair Cockburn's Hexagonal Architecture
-(Ports & Adapters pattern). All business domain logic resides within the core
-and depends only on abstract inbound and outbound port interfaces.
+================================================================================
+[2.0] HEXAGONAL DOMAIN TOPOLOGY (PORTS AND ADAPTERS)
+================================================================================
+The application strictly enforces Alistair Cockburn's Hexagonal Architecture.
+External protocols communicate through Inbound Ports; external services, vector
+databases, and cloud providers are accessed exclusively via Outbound Ports.
 
 +------------------------------------------------------------------------------+
 |                          HEXAGONAL SYSTEM TOPOLOGY                           |
 +------------------------------------------------------------------------------+
 
-      [INBOUND CHANNELS]                           [OUTBOUND ADAPTERS]
-                               +----------------+
-  WhatsApp Multi-Device WS --->| InboundChannel |---+
-  (Baileys Native Socket)      +----------------+   |
-                                                    |---> [Qdrant Vector DB]
-  HTTP REST / Webhook API  --->| InboundMessage |   |     (1024d Dense HNSW)
-  (Express / Raw Node)         +----------------+   |
-                                       |            |---> [Local SQLite WAL]
-                                       v            |     (ACID State & Rel)
-                       +-------------------------------+
-                       |      APPLICATION NUCLEUS      |---> [Ollama SLM / LLM]
-                       |                               |     (bge-m3 / Qwen)
-                       | * MessageProcessor            |
-                       | * SpecialistRouter            |---> [Cloud LLM APIs]
-                       | * ContextBudgeter (<128 tools)|     (Groq / OpenAI)
-                       | * TenantQuotaEngine           |
-                       | * AgentExecutionLoop (Max 5R) |---> [MCP Micro-Servers]
-                       +-------------------------------+     (Stdio JSON-RPC)
-                                       |
-                                       v            |---> [System Subsystems]
-                               +----------------+   |     (Docker, Network,
-                               | OutboundPorts  |---+      Encrypted DBK1)
-                               +----------------+
+  [INBOUND CHANNELS]                                       [OUTBOUND ADAPTERS]
+ 
+  +-------------------------+                           +----------------------+
+  | WhatsApp Multi-Device   |                           | Qdrant Vector DB     |
+  | (Baileys WebSocket)     |----+                 +--->| (1024d HNSW Cosine)  |
+  +-------------------------+    |                 |    +----------------------+
+                                 |                 |
+  +-------------------------+    v                 |    +----------------------+
+  | REST API / Webhooks     |--->[InboundPort]     |--->| SQLite WAL Engine    |
+  | (Express / Raw Node)    |    |                 |    | (ACID Relational)    |
+  +-------------------------+    |                 |    +----------------------+
+                                 v                 |
+                   +---------------------------+   |    +----------------------+
+                   |    APPLICATION CORE       |---+--->| Ollama Local SLM     |
+                   |                           |   |    | (bge-m3 / Qwen)      |
+                   | * MessageProcessor        |   |    +----------------------+
+                   | * SpecialistRouter        |   |
+                   | * TenantQuotaEngine       |   |    +----------------------+
+                   | * ToolBudgeter (<128)     |   |--->| Cloud LLM Providers  |
+                   | * AgentExecutionLoop      |   |    | (Groq / OpenAI)      |
+                   +---------------------------+   |    +----------------------+
+                                 |                 |
+                                 v                 |    +----------------------+
+                           [OutboundPort]          |--->| MCP Micro-Servers    |
+                                 |                 |    | (Stdio JSON-RPC 2.0) |
+                                 +-----------------+    +----------------------+
+                                                   |
+                                                   |    +----------------------+
+                                                   +--->| System Infrastructure|
+                                                        | (Docker, WoL, DBK1)  |
+                                                        +----------------------+
 
-Core Modules:
-  - src/ports/inbound/InboundMessage.js : Contract for normalized user ingress.
-  - src/ports/outbound/VectorStorePort.js : Interface for dense vector storage.
-  - src/ports/outbound/McpClientPort.js  : Contract for JSON-RPC 2.0 tool servers.
-  - src/composition/container.js         : Composition root binding dependencies
-                                           without ambient singletons.
+================================================================================
+[3.0] ASYNCHRONOUS TRANSACTIONAL OUTBOX PIPELINE
+================================================================================
+To prevent socket disconnects on mobile messaging networks during multi-step
+LLM tool reasoning, D.A.V.I.S. decouples intake from fulfillment.
 
---------------------------------------------------------------------------------
-3.0 ASYNCHRONOUS PIPELINE AND PERSISTENT OUTBOX (ERS POOL)
---------------------------------------------------------------------------------
-To maintain real-time responsiveness on conversational messaging protocols
-without running into gateway timeout disconnects, D.A.V.I.S. incorporates an
-Asynchronous Message Pipeline based on the Transactional Outbox Pattern.
+Pipeline Dataflow:
 
-Data Flow and State Transitions:
-
-  [Inbound Socket]
-         |
-         | 1. Packet Ingress (Text / PTT Audio)
-         v
-  [Presence Worker] ---> Emits Continuous Native 'composing' State (every 4s)
-         |
-         | 2. Atomic Write to Inbound SQLite Queue
-         v
-  [Persistent Queue] === (SQLite Outbox / Redis Streams)
-         |
-         | 3. Worker Pool Dequeue
-         v
-  [Background Worker] ---> Executes Specialist Router, LLM Reasoning, and Tools
-         |
-         | 4. Final Answer Generation (Single Normalized Turn)
-         v
-  [Final Delivery Adapter] ---> Pauses 'composing' Presence & Emits Native Text
-
-Key Resilience Guarantees:
-  - Fast Acknowledgment: Socket connection thread is liberated in <15ms.
-  - Idempotency Window: 10-minute sliding SHA-256 fingerprint window prevents
-    duplicate processing of network retry packets.
-  - Fail-Safe Cleanup: 90-second safety watchdog automatically halts typing
-    state if a worker encounters an unrecoverable kernel panic.
-
---------------------------------------------------------------------------------
-4.0 MODEL CONTEXT PROTOCOL (MCP) MODULAR SUBSYSTEM
---------------------------------------------------------------------------------
-To overcome context window saturation and security boundaries of monolithic
-tool suites, tools are partitioned into decoupled micro-servers communicating
-via standard Model Context Protocol (MCP) JSON-RPC 2.0 over standard I/O (stdio).
-
-Topology of Micro-Servers:
-
-  +------------------+---------------------------------------------------------+
-  | Server Name      | Responsibilities and Domain Encapsulation               |
-  +------------------+---------------------------------------------------------+
-  | mcp-booking      | Appointment scheduling, reservation schemas, business   |
-  |                  | slot validation, and calendar reconciliation.           |
-  | mcp-devops       | Git operations, container monitoring, CI/CD telemetry,  |
-  |                  | host health status, and tunnel management.              |
-  | mcp-finance      | Expense registration, subscription audits, OCR receipt   |
-  |                  | parsing, and budget threshold tracking.                 |
-  | mcp-lifestyle    | Habit logs, dietary planning, transport arrivals (EMT /  |
-  |                  | Renfe Cercanias live feeds), and personal agenda.       |
-  | mcp-media        | Content downloading (yt-dlp bandwidth ladder), optical  |
-  |                  | media verification, and audio transcription bridging.   |
-  +------------------+---------------------------------------------------------+
-
-Architecture of src/adapters/outbound/mcp/mcpClientAdapter.js:
-  - Process Isolation: Each server runs under a restricted child process.
-  - Timeout and Buffer Clamping: Maximum 30s response timeout and 1MB buffer
-    limit prevent memory exhaustion attacks.
-  - Fault Containment: Process crashes in a domain server trigger graceful
-    restarts without crashing the host agent.
-
---------------------------------------------------------------------------------
-5.0 INDUSTRIAL RAG ENGINE: SECOND BRAIN OVER QDRANT & BGE-M3
---------------------------------------------------------------------------------
-Requirement RF-03 mandates an industrial-grade Retrieval-Augmented Generation
-(RAG) subsystem for personal and business knowledge retrieval.
-
-Component Pipeline:
-
-  [Notes / Documents] (Markdown with YAML Frontmatter in data/notes/)
+  Incoming Message Packet (Text or Voice Audio PTT)
          |
          v
-  [qdrantSecondBrainService.js] ---> Semantic chunking by headers (#, ##, ###)
-         |                           and paragraph boundaries with overlap.
-         v
-  [Ollama Local Embedding API] ---> Model: 'bge-m3' (1024-dimensional dense vectors)
+  [Socket Intake Guard]
+         |
+         +--> [Continuous Native 'composing' Presence Pulse (Every 4000ms)]
+         |
+         +--> [Atomic Outbox Persistence] (SQLite / Redis Queue)
+                     |
+                     v
+         [Background Worker Pool (ERS)]
+                     |
+                     |--> 1. Pre-LLM PII Sanitization
+                     |--> 2. Specialist Domain Routing
+                     |--> 3. Recursive Tool Loop (Max 5 Rounds with Dedup)
+                     |--> 4. Final Text Normalization & Speech Synthesis
+                     v
+         [Outbound Final Delivery Adapter]
+                     |
+                     +--> Pauses 'composing' Presence (sendPresenceUpdate: paused)
+                     +--> Dispatches Coherent Final Message (Text or PTT Audio)
+
+================================================================================
+[4.0] MODEL CONTEXT PROTOCOL (MCP) MODULAR MICRO-SERVERS
+================================================================================
+Monolithic tool suites bloat system prompts and degrade LLM reasoning. The
+system breaks external capabilities into standalone Model Context Protocol (MCP)
+servers communicating via JSON-RPC 2.0 over standard I/O (stdio).
+
+MCP Server Matrix:
++----------------+--------------------+----------------------------------------+
+| Server ID      | Protocol Transport | Functional Scope                       |
++----------------+--------------------+----------------------------------------+
+| mcp-booking    | stdio (JSON-RPC)   | Appointment scheduling, reservation    |
+|                |                    | tables, slot collision prevention.     |
++----------------+--------------------+----------------------------------------+
+| mcp-devops     | stdio (JSON-RPC)   | Git branching, PR review, Docker health|
+|                |                    | status, network interfaces, telemetry. |
++----------------+--------------------+----------------------------------------+
+| mcp-finance    | stdio (JSON-RPC)   | Ledger entries, subscription tracking, |
+|                |                    | receipt OCR, categorical budgeting.    |
++----------------+--------------------+----------------------------------------+
+| mcp-lifestyle  | stdio (JSON-RPC)   | Habit trackers, grocery lists, Madrid  |
+|                |                    | EMT bus arrivals, Renfe train feeds.   |
++----------------+--------------------+----------------------------------------+
+| mcp-media      | stdio (JSON-RPC)   | Media downloads (yt-dlp ladder), voice |
+|                |                    | transcription bridging, audio metadata.|
++----------------+--------------------+----------------------------------------+
+
+Execution Safeguards:
+  - Process Isolation: Each server runs in an unprivileged child process.
+  - Buffer Bounds: Standard input/output buffers capped at 1MB to prevent OOM.
+  - Hard Timeouts: Invocations kill processes exceeding 30s execution window.
+
+================================================================================
+[5.0] INDUSTRIAL RAG ENGINE (SECOND BRAIN OVER QDRANT)
+================================================================================
+Requirement RF-03 delivers dense semantic vector retrieval over Markdown
+notes and long-term memory records.
+
+RAG Subsystem Topology:
+
+  [Markdown Notes Corpus] (data/notes/*.md)
          |
          v
-  [Qdrant Collection] ============> Collection: 'davis_memorias_propietario'
-                                     * Metric: Cosine Distance
-                                     * On-Disk Payload & Vector Storage
-                                     * HNSW Index: m=16, ef_construct=100
-
-Retrieval and Graceful Degradation:
-  1. Dense Semantic Query: Incoming queries are converted to a 1024d embedding
-     via Ollama and matched against Qdrant using vector similarity.
-  2. Multi-Tenant Payload Filter: Strict filter { tenant_id: <id> } ensures zero
-     cross-tenant memory leakage.
-  3. Graceful Fallback: If Qdrant or Ollama is offline, brainSearchService.js
-     automatically falls back to SQLite/Lexical keyword search without throwing
-     unhandled exceptions.
-
---------------------------------------------------------------------------------
-6.0 MULTITENANCY AND SAAS RATE LIMITING ENGINE
---------------------------------------------------------------------------------
-D.A.V.I.S. features native multitenancy activated via AISLAMIENTO_COMPLETO = true.
-
-Tenant Tier Specifications:
-
-  +-------------+--------------------+-------------------+---------------------+
-  | Plan Name   | Daily Token Quota  | Rate Limit (RPM)  | Execution Scope     |
-  +-------------+--------------------+-------------------+---------------------+
-  | demo        | 15,000 tokens/day  |  5 requests/min   | Strict Tenant Scope |
-  | cliente     | 100,000 tokens/day | 15 requests/min   | Tenant + Integrat.  |
-  | staff       | 500,000 tokens/day | 60 requests/min   | Extended Business   |
-  | propietario | Unlimited          | Unlimited         | Full Host & DevOps  |
-  +-------------+--------------------+-------------------+---------------------+
-
-Aislamiento and Boundary Security:
-  - Fail-Closed Gate: Any incoming message with an unrecognized tenant ID or
-    lacking valid subscription records is dropped at the ingress layer before
-    triggering LLM inference.
-  - Dual Persistence Store: SQLite tables (tenants, tenant_limites, tenant_uso)
-    with atomic transactions under Write-Ahead Logging (WAL).
-  - Storage Sandboxing: Tenant notes and files are restricted to
-    `data/tenants/<tenantId>/` with path traversal protections.
-  - Owner Exemption: The host owner retains historical root storage and bypasses
-    rate limit counters.
-
---------------------------------------------------------------------------------
-7.0 DETERMINISTIC SPECIALIST INFERENCE ROUTING
---------------------------------------------------------------------------------
-Small Language Models (SLMs) and cloud LLMs suffer from performance degradation
-when overloaded with massive tool catalogs. D.A.V.I.S. implements a dynamic
-specialist routing hierarchy to enforce tool budgeting under 128 tools.
-
-Hierarchical Pipeline:
-
-  [Input Query]
+  [qdrantSecondBrainService.js]
          |
+         |--> Header-Aware Chunking (#, ##, ###) and Paragraph Slicing
+         |--> Metadata Attachment: { tenant_id, file, tag, chunk_index, timestamp }
          v
-  [Phase 1: Deterministic Regex Gate]
-         |--> Direct Match? ---> Dispatches Deterministic Service (e.g. EMT live bus)
+  [Ollama Embeddings Service]
          |
+         |--> Model: 'bge-m3' (1024-dimensional dense embeddings)
          v
-  [Phase 2: Intent Classifier & Few-Shot Router]
-         |--> Evaluates intent categories (carrera, estudio, ops, finanzas, etc.)
+  [Qdrant Vector Database]
          |
+         |--> Collection: 'davis_memorias_propietario'
+         |--> Distance: Cosine Metric
+         |--> Index: HNSW (m=16, ef_construct=100) with On-Disk SSD storage
          v
-  [Phase 3: Specialist Tool Catalog Pruning]
-         |--> Injects ONLY tools associated with active domain intents.
-         |--> Enforces hard limit (<128 tools) to prevent provider API rejections.
+  [Hybrid Search & Graceful Fallback]
          |
-         v
-  [Phase 4: Agent Reasoning Loop]
-         |--> Max 5 Tool Iterations with Loop Dedup Detection.
-         |--> Final Synthesis Phase forces plain text delivery.
+         +--> Success: Merges Vector Matches with Reciprocal Rank Fusion.
+         +--> Network Error / Timeout: Falls back gracefully to lexical search.
 
---------------------------------------------------------------------------------
-8.0 DEFENSIVE SECURITY, ANTI-SSRF, AND PRIVILEGE ESCALATION CONTROLS
---------------------------------------------------------------------------------
-Privileged actions and external network calls are subject to defensive runtime
-barriers:
+================================================================================
+[6.0] MULTITENANCY SAAS AND RATE LIMITING ENGINE
+================================================================================
+Multi-business and multi-user hosting is isolated via the core switch:
+AISLAMIENTO_COMPLETO = true.
 
-1. Anti-SSRF SafeFetch Engine (src/services/safeFetch.js):
-   - DNS Resolution Pinning: Validates IP addresses AT socket connection time.
-   - Private Range Blocking: Immediate connection drop for IPv4 (10.0.0.0/8,
-     172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, 169.254.0.0/16) and IPv6
-     (::1, fc00::/7, fe80::/10).
-   - Modern Node.js Compatibility: Dual-mode support for `{ all: true }` arrays
-     and single-record DNS responses.
+Tenant Plan Hierarchy:
++-------------+--------------------+-------------------+-----------------------+
+| Plan Tier   | Daily Token Quota  | Rate Limit (RPM)  | Execution Privileges  |
++-------------+--------------------+-------------------+-----------------------+
+| demo        | 15,000 tokens/day  |  5 requests/min   | Strict Tenant Scope   |
+| cliente     | 100,000 tokens/day | 15 requests/min   | Standard Tenant Suite |
+| staff       | 500,000 tokens/day | 60 requests/min   | Extended Business     |
+| propietario | Unlimited          | Unlimited         | Full Host & DevOps    |
++-------------+--------------------+-------------------+-----------------------+
 
-2. Privilege Escalation & Two-Factor OTP:
-   - Destructive Shell Operations: `execute_bash_command` requires human OTP
-     confirmation over WhatsApp before execution.
-   - PII Sanitization: Pre-LLM redaction strips credentials, tokens, and host IPs.
+Isolation Mechanics:
+  1. Fail-Closed Ingress: Unknown or suspended tenants are rejected at ingress
+     without consuming LLM inference or GPU cycles.
+  2. Storage Sandboxing: File assets, SQLite entries, and vector payloads are
+     partitioned under `data/tenants/<tenantId>/` with traversal checks.
+  3. Sanitized Denial Responses: Rejection messages are strictly sanitized to
+     prevent exposing underlying database structures or host topology.
 
-3. Authenticated Snapshots (DBK1):
-   - Pre-deploy snapshots use AES-256-GCM authenticated encryption with
-     file permissions forced to 0600.
+================================================================================
+[7.0] SPECIALIST INFERENCE ROUTING AND CONTEXT BUDGETING
+================================================================================
+To prevent token budget exhaustion and LLM attention dilution, tool catalogs are
+pruned dynamically before invoking the inference engine.
 
---------------------------------------------------------------------------------
-9.0 ARCHITECTURAL DECISION RECORDS (ADR-001 THROUGH ADR-008)
---------------------------------------------------------------------------------
+Routing Hierarchy:
 
-[ADR-001] Hexagonal Architecture and Port Decoupling
-  - Decision: Separate all external services into Ports & Adapters.
-  - Rationale: Enables 100% offline unit testing via synthetic stubs and permits
-    swapping model providers or vector engines with zero domain modifications.
+  Incoming Query
+        |
+        v
+  [1. Deterministic Matcher]
+        |--> Fast-path regex dispatches deterministic tools without LLM latency.
+        v
+  [2. Specialist Intent Classifier]
+        |--> Matches query into intent domains:
+        |    { carrera, estudio, devtools, ops, finanzas, transporte, ... }
+        v
+  [3. Catalog Pruning & Budget Gate]
+        |--> Selects ONLY relevant domain tools.
+        |--> Hard cap enforced: Catalog strictly maintained below 128 tools.
+        v
+  [4. Autonomous Tool Execution Loop]
+        |--> Max 5 iteration rounds with parameter deduplication protection.
+        |--> Forced final synthesis round guarantees plain text answer.
 
-[ADR-002] Outbox Pattern for Conversational Protocols
-  - Decision: Decouple socket ingress from execution via asynchronous queue.
-  - Rationale: Eliminates Baileys socket disconnections caused by lengthy LLM
-    reasoning steps. Allows continuous 'composing' presence.
+================================================================================
+[8.0] DEFENSIVE SECURITY AND ANTI-SSRF SOCKET ISOLATION
+================================================================================
+Privileged operations and network fetches are guarded by automated boundaries:
 
-[ADR-003] Stdio-Based MCP Modular Micro-Servers
-  - Decision: Migrate tool monolith into JSON-RPC stdio micro-servers.
-  - Rationale: Isolate domain failures, enforce memory bounds, and prepare
-    tools for SaaS distribution without monolithic bloat.
+1. Anti-SSRF SafeFetch Architecture (src/services/safeFetch.js):
+   - Socket DNS Pinning: Validates target IP address during socket creation.
+   - Private Range Denial: Blocks IPv4 ranges (10.0.0.0/8, 172.16.0.0/12,
+     192.168.0.0/16, 127.0.0.0/8, 169.254.0.0/16) and IPv6 loopbacks.
+   - Dual-Format Resolver: Supports Node 20+ `{ all: true }` record formats.
 
-[ADR-004] Qdrant HNSW and bge-m3 for Industrial RAG
-  - Decision: Deploy Qdrant over Docker in loopback with bge-m3 embeddings.
-  - Rationale: High performance HNSW dense retrieval, native tenant filtering,
-    and low memory footprint on CPU-only ARM64 host.
+2. Two-Factor OTP Human Authorization:
+   - High-privilege shell execution (`execute_bash_command`) requires human OTP
+     approval delivered via WhatsApp before running.
 
-[ADR-005] Strict Multi-Tenant Isolation (AISLAMIENTO_COMPLETO = true)
-  - Decision: Activate fail-closed tenant boundary with sliding-window quotas.
-  - Rationale: Prepares commercial multi-business scheduling and invoicing
-    without risk of cross-tenant data leakage.
+3. Authenticated Snapshots:
+   - System state is preserved prior to deployment using authenticated
+     AES-256-GCM encrypted snapshots (DBK1 format) with 0600 file permissions.
 
-[ADR-006] Intent Classification & Dynamic Tool Pruning
-  - Decision: Enforce maximum tool window under 128 tools via specialist routing.
-  - Rationale: Protects against LLM hallucinations, provider token rejection
-    thresholds, and reduces token billing.
+================================================================================
+[9.0] ARCHITECTURAL DECISION RECORDS (ADR-001 TO ADR-008)
+================================================================================
 
-[ADR-007] Anti-SSRF Socket Pinning in safeFetch
-  - Decision: Validate IPs during DNS lookup inside socket creation.
-  - Rationale: Protects cloud metadata endpoints (169.254.169.254) and local
-    services from DNS rebinding and forged URL attacks.
+[ADR-001] Hexagonal Ports & Adapters Architecture
+  - Decision: Segregate application core from external libraries via ports.
+  - Rationale: Enables 100% offline unit testing and headless provider swapping.
 
-[ADR-008] Non-Reversible Deployment Gate and flock Timeout
-  - Decision: Enforce `flock -w 300` and automated quality gates (100% critical).
-  - Rationale: Eliminates race conditions during concurrent CI/CD runs and
-    prevents broken code from reaching production.
+[ADR-002] Asynchronous Outbox Pipeline for Messaging
+  - Decision: Decouple socket ACK from LLM chain via persistent outbox.
+  - Rationale: Eliminates Baileys socket disconnections during multi-step reasoning.
 
---------------------------------------------------------------------------------
-10.0 QUALITY GATE, CONTINUOUS DEPLOYMENT, AND CONFORMANCE METRICS
---------------------------------------------------------------------------------
-Continuous Integration enforces strict compliance checks prior to deployment:
+[ADR-003] Stdio-Based Model Context Protocol (MCP) Modularization
+  - Decision: Segment tool monolith into isolated JSON-RPC stdio processes.
+  - Rationale: Isolates memory leaks, enforces buffer bounds, prevents crash cascades.
 
-  1. Static Code Audit:
-     - Zero-Emoji Compliance across all source code, tests, and documentation.
-     - Dependency audit and vulnerability checks.
+[ADR-004] Dense Vector Retrieval over Qdrant and bge-m3
+  - Decision: Deploy Qdrant in loopback with local bge-m3 embeddings.
+  - Rationale: Low memory footprint on ARM64 host, native tenant-filtered HNSW.
 
-  2. Automated Test Matrix (Node.js Native Test Runner):
-     - Discovered: 145 Test Suites.
-     - Sectors: Sector 1 (Channels), Sector 2 (DevOps), Sector 3 (Cognitive,
-       RAG, Tenancy, MCP).
-     - Gate Requirement: 100% Critical Battery Pass, >=95% Global Suite Pass.
+[ADR-005] Complete Multitenancy (AISLAMIENTO_COMPLETO = true)
+  - Decision: Enforce fail-closed tenancy boundaries and sliding-window RPM.
+  - Rationale: Permits commercial SaaS distribution without cross-tenant data leaks.
 
-  3. Server-Side Deployment Protocol:
-     - Step 0: Reference preparation and SHA validation.
-     - Step 1: Descendant verification (no out-of-order deploys).
-     - Step 2: Shared state migration (data/, auth_info_baileys/, .env).
-     - Step 3: Isolated worktree release generation.
-     - Step 4: Quality gate execution inside isolated staging container.
-     - Step 5: AES-256-GCM DBK1 state snapshot generation.
-     - Step 6: Controlled symlink cut and PM2 75-second health verification.
-     - Step 7: Retention cleanup (conserving top 3 releases).
+[ADR-006] Dynamic Tool Catalog Pruning Below 128 Tools
+  - Decision: Filter tools dynamically based on specialist intent classification.
+  - Rationale: Prevents provider token limit errors and eliminates hallucinations.
+
+[ADR-007] Socket-Level Anti-SSRF Validation
+  - Decision: Inspect IP addresses inside socket DNS lookup callbacks.
+  - Rationale: Defeats DNS rebinding attacks and protects cloud metadata APIs.
+
+[ADR-008] Non-Reversible Deployment Gate with flock Timeout
+  - Decision: Enforce `flock -w 300` and automated quality gates on deployment.
+  - Rationale: Prevents deployment race conditions and stops broken code from
+    reaching production.
+
+================================================================================
+[10.0] QUALITY GATES, CONFORMANCE AND CONTINUOUS DEPLOYMENT
+================================================================================
+Automated pipeline guarantees zero regressions across 145 test suites:
+
++----------------------------+-------------------------------------------------+
+| Verification Stage         | Gate Requirement and Criteria                   |
++----------------------------+-------------------------------------------------+
+| Static Emoji Audit         | 0 emojis allowed across codebase, tests, docs.  |
+| Critical Battery Test      | 100% passing required (Zero failures permitted).|
+| Global Test Suite          | Minimum 95% pass rate across 145 suites.        |
+| Pre-Deploy State Snapshot  | AES-256-GCM DBK1 encrypted archive created.     |
+| Process Health Window      | 75-second post-cut stability window in PM2.     |
+| Multi-Release Retention    | Exactly 3 most recent releases preserved.       |
++----------------------------+-------------------------------------------------+
 
 ================================================================================
 END OF SPECIFICATION - D.A.V.I.S. AUTONOMOUS SYSTEMS - ALL RIGHTS RESERVED
 ================================================================================
+</pre>
 </body>
 </html>
