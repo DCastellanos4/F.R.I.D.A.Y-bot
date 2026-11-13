@@ -16,6 +16,7 @@ import { registrarEnvolventeChatCompletion, limpiarEnvolventeChatCompletion } fr
 import { crearJsonMemoryRepository } from '../adapters/outbound/persistence/jsonMemoryRepository.js';
 import { crearJsonlClassifierMetricsStore } from '../adapters/outbound/persistence/jsonlClassifierMetricsStore.js';
 import { crearPuenteWhatsAppTenants } from './whatsappTenantBridge.js';
+import { crearTenantQuotaService, registrarTenantQuotaServicePorDefecto } from '../services/tenantQuotaService.js';
 import { crearMessageProcessor } from '../core/messageProcessor.js';
 import { PROJECT_ROOT, DATA_DIR } from '../config/paths.js';
 import { crearMcpRegistry } from '../adapters/outbound/mcp/mcpRegistry.js';
@@ -39,6 +40,8 @@ import { crearQdrantVectorStoreAdapter } from '../adapters/outbound/vectorstores
 import { crearSqliteFts5SparseAdapter } from '../adapters/outbound/retrieval/sqliteFts5SparseAdapter.js';
 import { crearHttpCrossEncoderReranker } from '../adapters/outbound/rerankers/httpCrossEncoderRerankerAdapter.js';
 import { esDocumentoSensibleRag, registrarBuscadorHibridoPorDefecto } from '../services/semanticMemoryService.js';
+import { crearQdrantSecondBrainService } from '../services/qdrantSecondBrainService.js';
+import { registrarSegundoCerebroPorDefecto } from '../services/brainSearchService.js';
 import { crearPipelineAsincrono, validarSelectorCola } from './asyncPipeline.js';
 import { crearAuditLogService } from '../security/auditLogService.js';
 import { crearAnonimizadorPreLlm } from '../adapters/outbound/llm/piiPreLlmAdapter.js';
@@ -91,6 +94,16 @@ function crearPersistenciaActiva(overrides) {
  * Los documentos sensibles quedan fuera via esIndexable, como en el RAG
  * historico.
  */
+function crearSegundoCerebroDesdeEntorno() {
+  const url = (process.env.QDRANT_URL || '').trim();
+  if (!url) return null;
+  const dimensiones = Number.parseInt(process.env.DAVIS_EMBEDDING_DIMS || '', 10) || 1024;
+  return crearQdrantSecondBrainService({
+    qdrantUrl: url,
+    dimensiones
+  });
+}
+
 function crearBuscadorHibridoDesdeEntorno() {
   const url = (process.env.QDRANT_URL || '').trim();
   if (!url) return null;
@@ -238,6 +251,16 @@ export function crearContenedor(overrides = {}) {
       })
     : null);
   const persistenciaActiva = crearPersistenciaActiva(overrides);
+  const quotaService = overrides.quotaService || (persistenciaActiva.persistencia?.limitesStore
+    ? crearTenantQuotaService({
+        limitesStore: persistenciaActiva.persistencia.limitesStore,
+        usageStore: persistenciaActiva.persistencia.usageStore,
+        db: persistenciaActiva.persistencia.db
+      })
+    : null);
+  if (quotaService) {
+    registrarTenantQuotaServicePorDefecto(quotaService);
+  }
   const memoryRepository = persistenciaActiva.memoryRepository;
   const metricasClasificador = overrides.metricasClasificador ?? crearJsonlClassifierMetricsStore();
   // Aislamiento del estado de pruebas: bajo NODE_ENV=test la cache de
@@ -263,6 +286,12 @@ export function crearContenedor(overrides = {}) {
   if (buscadorHibrido && overrides.registrarBuscadorPorDefecto !== false) {
     registrarBuscadorHibridoPorDefecto(buscadorHibrido);
   }
+  const segundoCerebro = overrides.qdrantSecondBrain !== undefined
+    ? overrides.qdrantSecondBrain
+    : (overrides.segundoCerebro !== undefined ? overrides.segundoCerebro : crearSegundoCerebroDesdeEntorno());
+  if (segundoCerebro && overrides.registrarSegundoCerebroPorDefecto !== false) {
+    registrarSegundoCerebroPorDefecto(segundoCerebro);
+  }
   const processor = crearMessageProcessor({
     llmProvider,
     memoryRepository,
@@ -271,6 +300,7 @@ export function crearContenedor(overrides = {}) {
     accesoTenants: overrides.accesoTenants || null,
     enrutadorInferencia,
     buscadorHibrido,
+    qdrantSecondBrain: segundoCerebro,
     mcpRegistry,
     rutaArchivoIdempotenciaDefecto: overrides.rutaArchivoIdempotenciaDefecto ?? rutaIdempTest
   });
@@ -288,9 +318,11 @@ export function crearContenedor(overrides = {}) {
     metricasClasificador,
     enrutadorInferencia,
     buscadorHibrido,
+    qdrantSecondBrain: segundoCerebro,
     mcpRegistry,
     pipelineAsincrono: pipeline,
     persistencia: persistenciaActiva.persistencia || null,
+    quotaService,
     /** Alta en caliente del adaptador de entrega (canal con sesion abierta). */
     registrarRuntimePipeline(resolver) {if(typeof resolver!=='function')throw new TypeError('RF01_RUNTIME_REQUIRED');resolverRuntime=resolver;},
     registrarCanalEntrega(nombre, adaptador) {
@@ -330,11 +362,13 @@ export const contenedorCompartido = contenedorPorDefecto;
 export const procesarMensajeEntrante = contenedorPorDefecto.procesarMensajeEntrante;
 
 /** Fabrica para el listener Baileys. No abre gates ni registra identidades. */
-export function crearPuenteWhatsAppTenantsCompuesto({ esPropietario } = {}) {
+export function crearPuenteWhatsAppTenantsCompuesto({ esPropietario, quotaService } = {}) {
   const p = contenedorPorDefecto.persistencia;
   if (!p?.tenantRepository || !p?.limitesStore) return null;
+  const qs = quotaService || contenedorPorDefecto.quotaService;
   return crearPuenteWhatsAppTenants({
-    tenantRepository: p.tenantRepository, limitesStore: p.limitesStore,
+    tenantRepository: p.tenantRepository, limitesStore: qs || p.limitesStore,
+    quotaService: qs,
     llmProvider: contenedorPorDefecto.llmProvider, esPropietario
   });
 }

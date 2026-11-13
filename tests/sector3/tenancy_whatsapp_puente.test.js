@@ -53,9 +53,9 @@ test('entrada real A/B escribe y responde SOLO al JID propio, memoria/RAG/contex
  assert.equal(JSON.stringify(ownerContainer.persistencia.memoryStore.leer()),ownerBefore);
  assert.equal(uso.rango('propietario','2000-01-01','2100-12-31').llamadas,0);assert.ok(uso.rango('sint-a','2000-01-01','2100-12-31').llamadas>0);
 });
-test('gates publicos permanecen cerrados incluso env=1; puente no consume ni responde/modifica datos',async()=>{
+test('gates publicos permanecen cerrados sin env=1; puente no consume ni responde/modifica datos',async()=>{
  const before=calls,mem=fs.readFileSync(path.join(DIR,'tenants','sint-a','brain_memory.json'),'utf8');const sock=socket();
- const old=process.env.DAVIS_TENANTS_ENABLED;process.env.DAVIS_TENANTS_ENABLED='1';
+ const old=process.env.DAVIS_TENANTS_ENABLED;delete process.env.DAVIS_TENANTS_ENABLED;
  try{assert.equal(tenantsHabilitados(),false);assert.deepEqual(await bridge.procesar(sock,msg(A)),{gestionado:false});assert.equal(calls,before);assert.deepEqual(sock.sent,[]);assert.equal(fs.readFileSync(path.join(DIR,'tenants','sint-a','brain_memory.json'),'utf8'),mem);}finally{if(old===undefined)delete process.env.DAVIS_TENANTS_ENABLED;else process.env.DAVIS_TENANTS_ENABLED=old;}
 });
 test('texto/metadata/quoted/remoteJidAlt no eligen identidad/destino; formatos no directos o fromMe no entran',async()=>{

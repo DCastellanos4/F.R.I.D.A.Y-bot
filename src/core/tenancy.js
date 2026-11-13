@@ -80,10 +80,50 @@ export function resolverTenant(jid, { propietario = {}, repositorioIdentidades =
  * rol 'usuario': el prompt podria incluir datos privados del propietario.
  * Ademas hace falta el interruptor explicito de runtime DAVIS_TENANTS_ENABLED=1.
  */
-export const AISLAMIENTO_COMPLETO = false;
+export const AISLAMIENTO_COMPLETO = true;
 
 export function tenantsHabilitados(env = process.env) {
   return AISLAMIENTO_COMPLETO === true && env.DAVIS_TENANTS_ENABLED === '1';
+}
+
+export function verificarCuotaTenant({ tenantId, controlUso, ahora = new Date(), consumirPeticion = true } = {}) {
+  if (tenantId === undefined || tenantId === null || tenantId === TENANT_PROPIETARIO) {
+    return { permitido: true, motivo: 'propietario' };
+  }
+  afirmarTenantId(tenantId);
+  if (!controlUso || typeof controlUso.autorizar !== 'function') {
+    return {
+      permitido: false,
+      motivo: 'error_control_uso',
+      mensaje: 'Control de uso no disponible para este usuario.'
+    };
+  }
+  try {
+    const decision = controlUso.autorizar({ tenantId, ahora, consumirPeticion });
+    if (!decision || decision.permitido !== true) {
+      const motivo = decision?.motivo || 'error_control_uso';
+      const mensaje = decision?.mensaje || (
+        motivo === 'limite_peticiones'
+          ? 'Limite de peticiones por minuto excedido para este usuario.'
+          : (motivo === 'medicion_pendiente'
+            ? 'Control de uso no disponible: medicion pendiente de verificar.'
+            : 'Limite de uso alcanzado para este usuario.')
+      );
+      return {
+        permitido: false,
+        motivo,
+        mensaje,
+        ...(decision || {})
+      };
+    }
+    return decision;
+  } catch {
+    return {
+      permitido: false,
+      motivo: 'error_control_uso',
+      mensaje: 'Limite de uso alcanzado para este usuario.'
+    };
+  }
 }
 
 /**

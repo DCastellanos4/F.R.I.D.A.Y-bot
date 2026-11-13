@@ -10,12 +10,13 @@ import { crearMessageProcessor } from '../core/messageProcessor.js';
 import { tenantsHabilitados } from '../core/tenancy.js';
 import { normalizarMarkdownWhatsApp } from '../services/textFormatService.js';
 
-export function crearPuenteWhatsAppTenants({ tenantRepository, limitesStore, llmProvider, esPropietario } = {}) {
-  if (!tenantRepository || !limitesStore || typeof esPropietario !== 'function') throw new TypeError('Puente WhatsApp requiere repositorios y comprobacion owner.');
+export function crearPuenteWhatsAppTenants({ tenantRepository, limitesStore, quotaService, llmProvider, esPropietario } = {}) {
+  const storeUso = quotaService || limitesStore;
+  if (!tenantRepository || !storeUso || typeof esPropietario !== 'function') throw new TypeError('Puente WhatsApp requiere repositorios y comprobacion owner.');
   // La identidad verificada se liga al objeto inbound creado AQUI; copiar sus
   // campos o metadata no concede identidad. No se exporta el autenticador.
   const identidades = new WeakMap();
-  const acceso = crearAccesoTenants({ tenantRepository, limitesStore,
+  const acceso = crearAccesoTenants({ tenantRepository, limitesStore: storeUso, quotaService: storeUso,
     autenticar: (inbound) => identidades.get(inbound) || null,
     esPropietario: () => false // owner nunca entra en este carril
   });

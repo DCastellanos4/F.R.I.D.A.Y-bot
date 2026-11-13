@@ -5,8 +5,9 @@
 import { createHash } from 'node:crypto';
 import { TENANT_PROPIETARIO } from '../core/tenancy.js';
 
-export function crearAccesoTenants({ autenticar, esPropietario, tenantRepository, limitesStore } = {}) {
-  if (typeof autenticar !== 'function' || typeof esPropietario !== 'function' || !tenantRepository || !limitesStore) throw new TypeError('Acceso tenant requiere autenticador y repositorios confiables.');
+export function crearAccesoTenants({ autenticar, esPropietario, tenantRepository, limitesStore, quotaService } = {}) {
+  const storeUso = quotaService || limitesStore;
+  if (typeof autenticar !== 'function' || typeof esPropietario !== 'function' || !tenantRepository || !storeUso) throw new TypeError('Acceso tenant requiere autenticador y repositorios confiables.');
   return Object.freeze({
     async resolver(inbound) {
       let identidad;
@@ -26,7 +27,7 @@ export function crearAccesoTenants({ autenticar, esPropietario, tenantRepository
         rolDeTenant: (id) => { if (!vinculada(id)) return null; const actual = tenantRepository.obtener(id); return actual?.estado === 'activo' ? actual.rol : null; },
         permitidasUsuario: [],
         permisosDeTenant: (id) => vinculada(id) ? tenantRepository.leerPermisos(id) : [],
-        controlUso: limitesStore
+        controlUso: storeUso
       };
     }
   });

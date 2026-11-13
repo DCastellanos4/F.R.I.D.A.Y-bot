@@ -1285,7 +1285,7 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
           ? 'No tienes contactos guardados. Dime por ejemplo: "apunta el contacto de Ana, 600123123, amiga de la uni".'
           : 'Tus contactos:\n' + lista.map((c) => `- ${c.nombre}${c.telefono ? `: ${c.telefono}` : ''}${c.relacion ? ` (${c.relacion})` : ''}`).join('\n');
       } else if (nombreFuncion === 'buscar_recuerdo_semantico') {
-        const res = await buscarSemantico(args.consulta, { carpetaNotas: opciones.carpetaNotas, rutaArchivoMemorias: opciones.rutaArchivoMemorias, chatCompletion: opciones.chatCompletion });
+        const res = await buscarSemantico(args.consulta, { carpetaNotas: opciones.carpetaNotas, rutaArchivoMemorias: opciones.rutaArchivoMemorias, chatCompletion: opciones.chatCompletion, qdrantSecondBrain: opciones.qdrantSecondBrain, buscadorHibrido: opciones.buscadorHibrido });
         resultadoTool = !res.ok ? res.error
           : res.resultados.length === 0 ? 'No encuentro nada relacionado en tus memorias ni en tus notas.'
           : `He encontrado esto${res.semantica ? '' : ' (busqueda por palabras; sin el modelo no puedo hacerla semantica)'}:\n` + res.resultados.map((r) => `- [${r.tipo}] ${r.texto.slice(0, 200)}`).join('\n');
@@ -3064,10 +3064,12 @@ export async function consultarJarvisEnAmbito(mensajeUsuario, historial = [], op
   const tid = opciones && opciones.tenantId;
   if (tid !== undefined && tid !== null && tid !== 'propietario') {
     if (!opciones.controlUso || typeof opciones.controlUso.autorizar !== 'function') return 'Control de uso no disponible para este usuario.';
-    let dec;
-    try { dec = opciones.controlUso.autorizar({ tenantId: tid }); } catch { dec = { permitido: false, motivo: 'error_control_uso' }; }
-    if (dec?.motivo === 'medicion_pendiente') return 'Control de uso no disponible: medicion pendiente de verificar.';
-    if (!dec || dec.permitido !== true) return 'Limite de uso alcanzado para este usuario.';
+    if (!opciones._cuotaVerificada) {
+      let dec;
+      try { dec = opciones.controlUso.autorizar({ tenantId: tid }); } catch { dec = { permitido: false, motivo: 'error_control_uso' }; }
+      if (dec?.motivo === 'medicion_pendiente') return 'Control de uso no disponible: medicion pendiente de verificar.';
+      if (!dec || dec.permitido !== true) return dec?.mensaje || 'Limite de uso alcanzado para este usuario.';
+    }
   }
   try { verificarArbolTenant(DATA_DIR_TENANCY, tid); } catch { return 'Almacenamiento no disponible para este usuario.'; }
   if (opciones && typeof opciones === 'object') opciones = aislarOpcionesTenant(opciones, DATA_DIR_TENANCY);

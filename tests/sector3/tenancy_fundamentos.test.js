@@ -276,10 +276,11 @@ test('agente: tenantId desconocido NO ejecuta herramientas; sin tenantId (histor
   }
 });
 
-test('compuerta fail-closed: constante de codigo en false; el entorno no la abre', () => {
-  assert.equal(AISLAMIENTO_COMPLETO, false);
-  assert.equal(tenantsHabilitados({ DAVIS_TENANTS_ENABLED: '1' }), false);
+test('compuerta fail-closed: constante de codigo en true; el entorno debe ser 1 para abrir', () => {
+  assert.equal(AISLAMIENTO_COMPLETO, true);
+  assert.equal(tenantsHabilitados({ DAVIS_TENANTS_ENABLED: '1' }), true);
   assert.equal(tenantsHabilitados({}), false);
+  assert.equal(tenantsHabilitados({ DAVIS_TENANTS_ENABLED: '0' }), false);
 });
 
 test('rutas por tenant: propietario conserva la ruta historica; traversal e ids hostiles rechazados', () => {

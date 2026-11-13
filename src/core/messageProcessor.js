@@ -15,6 +15,7 @@ import { afirmarLLMProvider } from '../ports/outbound/LLMProviderPort.js';
 import { afirmarMemoryRepository } from '../ports/outbound/MemoryRepositoryPort.js';
 import { conSpan, hashSesion } from '../observability/telemetry.js';
 import { clasificarIntencionConModelo } from './intentRouterService.js';
+import { verificarCuotaTenant, tenantsHabilitados } from './tenancy.js';
 
 // Confirmaciones desnudas: mismo vocabulario que la guardia historica
 // (specialistRouterService); estos mensajes SIEMPRE llegan al agente.
@@ -59,7 +60,7 @@ function ultimoTurnoPideConfirmacion(historial) {
   return false;
 }
 
-export function crearMessageProcessor({ llmProvider, memoryRepository, metricasClasificador, crearStoreMetricas, rutaArchivoIdempotenciaDefecto, accesoTenants = null, enrutadorInferencia = null, buscadorHibrido = null, mcpRegistry = null } = {}) {
+export function crearMessageProcessor({ llmProvider, memoryRepository, metricasClasificador, crearStoreMetricas, rutaArchivoIdempotenciaDefecto, accesoTenants = null, enrutadorInferencia = null, buscadorHibrido = null, qdrantSecondBrain = null, mcpRegistry = null } = {}) {
   if (llmProvider !== undefined) afirmarLLMProvider(llmProvider);
   if (memoryRepository !== undefined) afirmarMemoryRepository(memoryRepository);
 
@@ -72,6 +73,22 @@ export function crearMessageProcessor({ llmProvider, memoryRepository, metricasC
       // Si se instala acceso autenticado, sus parametros de seguridad ganan
       // SIEMPRE a las opciones del llamador. Ningun texto/metadata elige tenant.
       const opcionesConPuertos = { ...opciones, ...(acceso || {}) };
+
+      const tid = opcionesConPuertos.tenantId;
+      if (tid && tid !== 'propietario') {
+        if (!enAmbito && !tenantsHabilitados()) {
+          return 'Acceso no disponible para este usuario.';
+        }
+        const verif = verificarCuotaTenant({
+          tenantId: tid,
+          controlUso: opcionesConPuertos.controlUso,
+          consumirPeticion: true
+        });
+        if (!verif || verif.permitido !== true) {
+          return verif?.mensaje || 'Limite de uso alcanzado para este usuario.';
+        }
+        opcionesConPuertos._cuotaVerificada = true;
+      }
 
       if (llmProvider) {
         if (typeof opcionesConPuertos.chatCompletion !== 'function') {
@@ -97,6 +114,9 @@ export function crearMessageProcessor({ llmProvider, memoryRepository, metricasC
       // sin el la busqueda sigue el camino historico.
       if (buscadorHibrido && !opcionesConPuertos.buscadorHibrido) {
         opcionesConPuertos.buscadorHibrido = buscadorHibrido;
+      }
+      if (qdrantSecondBrain && !opcionesConPuertos.qdrantSecondBrain) {
+        opcionesConPuertos.qdrantSecondBrain = qdrantSecondBrain;
       }
       // Metricas del clasificador: puerto inyectado; una ruta historica
       // suelta se traduce a store aqui (la raiz conoce adaptadores, el
