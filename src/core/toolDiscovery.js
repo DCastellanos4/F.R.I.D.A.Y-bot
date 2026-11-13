@@ -14,7 +14,7 @@ export const HERRAMIENTA_DESCUBRIR = Object.freeze({
 });
 const normalizar = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const palabras = s => normalizar(s).split(/[^a-z0-9]+/).filter(p => p.length > 3 && !['para', 'como', 'quiero', 'puedes', 'necesito', 'david', 'esta', 'este', 'cuando'].includes(p));
-export function buscarEsquemas(catalogo, { consulta = '', nombres = [] } = {}, maximo = 8) {
+function puntuar(catalogo, { consulta = '', nombres = [] } = {}) {
   const pedidos = new Set(Array.isArray(nombres) ? nombres.filter(n => typeof n === 'string') : []);
   const terminos = palabras(consulta);
   return catalogo.map((h, i) => {
@@ -22,7 +22,20 @@ export function buscarEsquemas(catalogo, { consulta = '', nombres = [] } = {}, m
     const texto = normalizar(`${nombre.replaceAll('_', ' ')} ${h.function.description}`);
     const score = pedidos.has(nombre) ? 10000 : terminos.reduce((s, t) => s + (texto.includes(t) ? 1 : 0), 0);
     return { h, score, i };
-  }).filter(r => r.score > 0).sort((a, b) => b.score - a.score || a.i - b.i).slice(0, maximo).map(r => r.h);
+  }).filter(r => r.score > 0).sort((a, b) => b.score - a.score || a.i - b.i);
+}
+
+export function buscarEsquemas(catalogo, { consulta = '', nombres = [] } = {}, maximo = 8) {
+  return puntuar(catalogo, { consulta, nombres }).slice(0, maximo).map(r => r.h);
+}
+
+// Falla 14 nov 2026: con contexto "capacidades" el modelo pedia la tool de
+// envio de WhatsApp y solo recibia el inventario fijo, asi que concluia que
+// no existia. Esta variante exige un encaje minimo (2 terminos, o nombre
+// exacto pedido) para no ensuciar preguntas genericas de capacidades con
+// esquemas irrelevantes.
+export function buscarEsquemasRelevantes(catalogo, { consulta = '', nombres = [] } = {}, { maximo = 8, puntuacionMinima = 2 } = {}) {
+  return puntuar(catalogo, { consulta, nombres }).filter(r => r.score >= puntuacionMinima).slice(0, maximo).map(r => r.h);
 }
 export function prepararHerramientasProgresivas(seleccion, consulta, maximo = 12) {
   if (seleccion.length <= maximo) return [...seleccion];
