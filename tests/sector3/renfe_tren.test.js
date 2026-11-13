@@ -539,7 +539,9 @@ assert.match(rB, /salidas programadas/i, 'datos de la fuente');
 console.log('OK 18b falsedad tras tool -> fuente impuesta sin LLM');
 // 18c: EMT config-required legitimo NO se toca
 const cC = clienteFalsedad('Para la EMT hace falta configurar el acceso gratuito de MobilityLabs; en cuanto lo actives te doy las llegadas.');
-const rC = await consultarJarvisRenfe('cuando llega el bus 132 a mi parada', [], opcionesGuardia(cC, depsRecJ));
+const rC = await consultarJarvisRenfe('cuando llega el bus 132 a la parada 1234', [], opcionesGuardia(cC, depsRecJ));
+// Desde 13 nov 2026 las consultas de bus van por camino determinista: sin credenciales
+// la fuente declara config-required (MobilityLabs) y nunca inventa llegadas.
 assert.match(rC, /MobilityLabs/, 'el config-required legitimo de EMT se conserva');
 console.log('OK 18c EMT config-required legitimo intacto');
 // 18d: consulta NO de trenes con incapacidad generica NO se toca

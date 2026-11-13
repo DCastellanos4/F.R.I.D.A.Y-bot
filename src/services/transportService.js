@@ -149,7 +149,7 @@ export async function proximasLlegadas({ parada, tipo, codigo, destino } = {}, d
     // y existe en el indice de Renfe; un codigo inventado NUNCA se pasa a
     // la fuente ni se le pide al usuario que lo corrija: se pide el nombre.
     const limpio = String(codigo).trim();
-    if (!/^\d{4,6}$/.test(limpio)) {
+    if (!(tipoFinal === 'emt' ? /^\d{1,6}$/ : /^\d{4,6}$/).test(limpio)) {
       return { ok: false, error: `No reconozco "${limpio}" como estacion. Dime el NOMBRE de la estacion (por ejemplo: "Aranjuez") y lo busco.` };
     }
     if (tipoFinal !== 'emt') {
@@ -291,4 +291,50 @@ export function extraerOrigenDesde(texto) {
   if (!m) return null;
   const limpio = m[1].replace(/^(el|la|los|las|un|una)\s+/i, '').trim();
   return limpio || null;
+}
+
+// ---------------------------------------------------------------------------
+// Consultas de BUS (EMT) en lenguaje natural. Falla observada 13 nov 2026:
+// "dime buses de tajamar" no activo el dominio transporte y el modelo
+// contesto con minutos inventados SIN llamar a ninguna herramienta. Para
+// estas consultas los datos DEBEN venir de la API EMT (camino determinista).
+// ---------------------------------------------------------------------------
+const PALABRA_BUS = /\b(bus|buses|autobus|autobuses|emt)\b/;
+const PALABRA_TREN = /\b(tren|trenes|cercanias|renfe|ave|alvia|avant|metro)\b/;
+const PETICION_NO_CONSULTA = /\b(vigila|vigilar|avisa|avisame|alerta|alertas|programa|programar|recuerdame|favorita|favorito|guarda|guardar|borra|borrar|elimina|eliminar|registra|registrar|apunta|apuntar)\b/;
+const SEÑAL_LLEGADA = /\b(pasan|pasa|llegan|llega|vienen|viene|proximo|proximos|proxima|proximas|cuando|cuanto|falta|faltan|ahora|hay|dime|dame|muestrame|mira|revisa|consulta|tiempos|esperas?|quedan?)\b/;
+
+export function esConsultaLlegadasBus(texto) {
+  const t = normalizarTexto(texto);
+  if (!t || !PALABRA_BUS.test(t)) return false;
+  if (PALABRA_TREN.test(t)) return false;
+  if (PETICION_NO_CONSULTA.test(t)) return false;
+  if (/\bbus\s+(de\s+datos|can|serie|usb|pci)\b/.test(t)) return false;
+  // Declaraciones ("mi parada de casa es la EMT 1234") no son consultas.
+  if (/\b(mi|mis|nuestra)\s+parada\b.*\bes\b/.test(t)) return false;
+  const palabraBusReal = /\b(bus|buses|autobus|autobuses)\b/.test(t);
+  return SEÑAL_LLEGADA.test(t) || (palabraBusReal && (/\bparada\b/.test(t) || /\b\d{3,6}\b/.test(t)));
+}
+
+/**
+ * Resuelve la parada EMT de una consulta: numero tras "parada/estacion/emt",
+ * o parada favorita EMT cuyo nombre aparece en el texto, o un numero suelto
+ * de 4-5 cifras que no vaya tras "linea". Devuelve { codigo, nombre? } o null.
+ */
+export function resolverParadaBus(texto, deps = {}) {
+  const t = normalizarTexto(texto);
+  const m = t.match(/\b(?:parada|estacion|emt|marquesina|numero|n)\s+(?:de\s+bus\s+|de\s+autobus\s+|emt\s+)?(?:n\s+|numero\s+)?(\d{1,6})\b/);
+  const favoritas = leerEstado(deps).paradas.filter((p) => p.tipo === 'emt');
+  if (m) {
+    const fav = favoritas.find((p) => p.codigo === m[1]);
+    return { codigo: m[1], nombre: fav ? fav.nombre : null };
+  }
+  const fav = favoritas.find((p) => {
+    const n = normalizarTexto(p.nombre);
+    return n && new RegExp(`(^|\\s)${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`).test(t);
+  });
+  if (fav) return { codigo: fav.codigo, nombre: fav.nombre };
+  const suelto = t.replace(/\blinea\s+\d+\b/g, ' ').match(/\b(\d{4,5})\b/);
+  if (suelto) return { codigo: suelto[1], nombre: null };
+  return null;
 }
