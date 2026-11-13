@@ -1,62 +1,63 @@
-# Despliegue y CI/CD
+# Infraestructura del VPS y Pipeline de Despliegue CI/CD
 
-Pipeline: push a `main` dispara el workflow de GitHub Actions
-(`.github/workflows/ci-cd.yml`), que ejecuta la suite de pruebas con la
-puerta de calidad y, si pasa, despliega por SSH al VPS Oracle llamando a
-`deploy/deploy.sh` con `RELEASE_SHA` fijado al SHA probado. El despliegue
-es siempre de un SHA concreto ya verde en CI, nunca de "lo ultimo".
+Especificacion tecnica completa del servidor en produccion y de la cadena de despliegue continuo de D.A.V.I.S.
 
-## Puerta de calidad (`deploy/quality-gate.mjs`)
+## 1. Topologia de Infraestructura en el VPS (Oracle Cloud Infrastructure)
 
-- Tests criticos: todos ejecutados, 0 fallos y 0 omitidos (una critica
-  omitida cuenta como fallo).
-- Suite completa: al menos el 95 % (`MIN_PASS_PCT`) de las tests ejecutadas
-  pasan; las omitidas no cuentan en el denominador y se reportan aparte.
-- Fail-closed: TAP ausente, resumen no parseable, cero ejecutadas o error
-  del runner hacen fallar la puerta.
+El sistema opera en una instancia Always Free de OCI con arquitectura ARM64:
+- **Hardware**: Oracle Ampere A1 Compute (4 vCPU Neoverse-N1, 24 GB RAM LPDDR4, 100+ GB NVMe SSD).
+- **Sistema Operativo**: Ubuntu 22.04 LTS (Kernel Linux aarch64).
+- **Red**: Loopback restringido (`127.0.0.1`). Ningun micro-servicio interno expone puertos a Internet; el trafico externo entra exclusivamente por WhatsApp WebSocket saliente y túneles seguros.
 
-La misma puerta se vuelve a ejecutar en el servidor sobre la release exacta
-antes de activarla.
+### Componentes de Infraestructura en Produccion:
 
-## Modelo de release aislada (`deploy/deploy.sh`)
+1. **Gestor de Procesos (PM2 v5.x)**:
+   - `jarvis-api` (PID fork, puerto loopback `127.0.0.1:3000`): API REST autenticada por token y webhook de GitHub.
+   - `jarvis-whatsapp` (PID fork): Cliente multi-dispositivo Baileys, emision de estado typing nativo (`composing`), monitores en segundo plano (Vigilante, Sniper Watchdog, Daily Briefing 06:55).
+   - Configuracion: `ecosystem.config.cjs` con secretos aislados en `~/jarvis-estado/secrets/runtime-env.json` (permisos 0600).
 
-- Cada release es un worktree de git por SHA en `~/releases/<sha>`; la ruta
-  viva `~/jarvis` es un symlink a la release activa, y PM2 referencia esa
-  ruta.
-- Estado compartido fuera de las releases: `data/`, `auth_info_baileys/` y
-  `.env` viven en `~/jarvis-estado` y se enlazan dentro de cada release. La
-  migracion del estado se hace una sola vez copiando (nunca moviendo).
-- Control de orden: no se despliega un SHA que no sea descendiente del
-  desplegado (fuera de orden o divergente = parada).
-- Un solo despliegue a la vez (flock; el workflow tambien serializa con
-  concurrency).
-- Todo temporal del despliegue vive en un namespace `DEPLOY_TMP` unico por
-  invocacion.
+2. **Motor Vectorial Industrial (Qdrant v1.20)**:
+   - Ejecutado en contenedor Docker: `qdrant/qdrant:v1.20.0` en loopback `127.0.0.1:6333`.
+   - Persistencia: Volumen en disco SSD para vectores e indice HNSW.
+   - Coleccion: `davis_memorias_propietario` (vectores de 1024 dimensiones, metrica Coseno).
 
-## Snapshot y corte
+3. **Motor Local de Inferencia y Embeddings (Ollama v0.5+)**:
+   - Servicio local en loopback `http://127.0.0.1:11434`.
+   - Modelo de embeddings: `bge-m3:latest` (1024 dimensiones, multilingue espanol/ingles).
+   - Modelos SLM de contingencia: `qwen2.5:3b`, `qwen2.5:1.5b`.
 
-Antes del corte se detienen todos los writers (`jarvis-api` y
-`jarvis-whatsapp`) y se espera acotadamente a que paren de verdad; se toma
-un tar del estado completo y se cifra en formato DBK1 con `deploy/snapshot.js`
-(clave por entorno, roundtrip de verificacion antes de emitir). El backup
-de SQLite no cubre el estado volatil de Baileys: por eso el snapshot es del
-estado completo con writers parados.
+4. **Subsistema de Voz y Audio Nativo**:
+   - Transcripcion: `whisper.cpp` compilado nativamente para ARM64 NEON, procesa notas de voz PTT de WhatsApp localmente sin enviar audio a APIs de terceros.
+   - Sintesis: `edge-tts` (generacion de notas de voz nativas OGG Opus PTT en espanol).
+   - Transcodificacion: `ffmpeg` optimizado para conversion de audio/video y limitacion de bitrates.
 
-El corte es el cambio del symlink seguido de un arranque limpio de PM2
-(delete + start, no restart), verificando que ambos procesos quedan online.
+5. **Subsistema de Descargas y Scraping**:
+   - `yt-dlp`: Descarga y compresion de videos/audios con escalon de bitrate (ladder) de 16 MB para compatibilidad directa con WhatsApp.
+   - Playwright Chromium Headless: Captura web, navegacion determinista y lectura de noticias sin JavaScript en cliente.
 
-## Politica de fallos
+6. **Base de Datos y Colas (SQLite WAL & Redis)**:
+   - Base de datos relacional: `/home/ubuntu/jarvis-estado/data/jarvis.db` (SQLite 3 con WAL activo y transacciones ACID).
+   - Cola de mensajes y outbox: Redis en loopback `127.0.0.1:6389` con autenticacion estricta y base SQLite `ers_pipeline.db`.
 
-- Antes del corte: cualquier fallo para el despliegue y el bot sigue con la
-  release anterior intacta.
-- Despues del corte: un fallo deja un estado parcial que se reporta con
-  precision. Nada se revierte solo: cualquier restauracion (incluido volver
-  al symlink anterior) es una decision aprobada aparte, porque puede perder
-  datos escritos tras el corte.
+7. **Almacenamiento Cifrado y Backups**:
+   - Directorio: `/home/ubuntu/backups/`.
+   - Formato DBK1: Archivos tar cifrados con AES-256-GCM y permisos forzados a `0600`. Se generan automaticamente antes de cada corte de despliegue.
 
-## Arranque en el VPS
+---
 
-PM2 con `ecosystem.config.cjs` (apps `jarvis-api` y `jarvis-whatsapp`). Las
-variables se leen del primer fichero existente entre `DAVIS_ENV_FILE`,
-`<DATA_DIR>/.env` y `.env` del repo; los cambios en variables ya cacheadas
-por PM2 requieren `pm2 restart --update-env` (o delete + start).
+## 2. Pipeline de Despliegue CI/CD (`deploy/deploy.sh`)
+
+Push a `main` dispara el workflow de GitHub Actions (`.github/workflows/ci-cd.yml`):
+
+### Fases de la Puerta de Calidad:
+1. **Auditoria Estatica**: Auditoria estricta de cero emojis en codigo, tests y documentacion.
+2. **Bateria Critica**: 100% de tests criticos ejecutados con 0 fallos y 0 omitidos.
+3. **Suite Completa**: Al menos el 95% de las 145 suites de prueba superadas.
+4. **Despliegue Atómico por SSH**:
+   - Bloqueo exclusivo: `flock -w 300 /home/ubuntu/.deploy.lock` (espera ordenada de hasta 5 minutos, eliminando condiciones de carrera).
+   - Sanitizacion CRLF: Eliminacion automatica de saltos de linea Windows antes de ejecutar bash.
+   - Release Aislada: Worktree de Git en `~/releases/<timestamp>-<sha>` enlazando el estado compartido `~/jarvis-estado`.
+   - Snapshot Pre-Corte: Writers detenidos acotadamente (`quiesce`), snapshot DBK1 verificado.
+   - Corte Controlado: Conmutacion atomica del symlink `~/jarvis`.
+   - Ventana de Estabilidad: Verificacion de 75 segundos en PM2 (restarts inmoviles, WhatsApp conectado sin pedir QR, API /api/salud 200).
+   - Limpieza: Retencion estricta de las 3 releases mas recientes.

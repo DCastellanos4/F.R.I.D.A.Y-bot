@@ -30,6 +30,7 @@ TABLE OF CONTENTS
 [8.0] DEFENSIVE SECURITY AND ANTI-SSRF SOCKET ISOLATION
 [9.0] ARCHITECTURAL DECISION RECORDS (ADR-001 TO ADR-008)
 [10.0] QUALITY GATES, CONFORMANCE AND CONTINUOUS DEPLOYMENT
+[11.0] PRODUCTION VPS HOST ENVIRONMENT AND INFRASTRUCTURE TOPOLOGY
 
 ================================================================================
 [1.0] ARCHITECTURAL PHILOSOPHY AND CORE INVARIANTS
@@ -312,6 +313,50 @@ Automated pipeline guarantees zero regressions across 145 test suites:
 | Process Health Window      | 75-second post-cut stability window in PM2.     |
 | Multi-Release Retention    | Exactly 3 most recent releases preserved.       |
 +----------------------------+-------------------------------------------------+
+
+================================================================================
+[11.0] PRODUCTION VPS HOST ENVIRONMENT AND INFRASTRUCTURE TOPOLOGY
+================================================================================
+Beyond the application codebase, D.A.V.I.S. is deeply coupled to a dedicated,
+hardened Linux host environment running on Oracle Cloud Infrastructure (OCI).
+
+Host Infrastructure Matrix:
++---------------------+-------------------+------------------------------------+
+| Subsystem Layer     | Technology Stack  | Configuration Specification        |
++---------------------+-------------------+------------------------------------+
+| Compute Platform    | OCI Ampere A1     | 4 vCPU ARM64 (Neoverse-N1), 24GB   |
+|                     |                   | RAM, Ubuntu 22.04 LTS aarch64.     |
++---------------------+-------------------+------------------------------------+
+| Process Supervision | PM2 v5.x          | Dual fork apps (jarvis-api:3000,   |
+|                     |                   | jarvis-whatsapp), log rotation.    |
++---------------------+-------------------+------------------------------------+
+| Vector Database     | Qdrant v1.20      | Docker container on 127.0.0.1:6333 |
+|                     |                   | On-disk HNSW index, SSD persistence|
++---------------------+-------------------+------------------------------------+
+| Local Embedding/SLM | Ollama v0.5+      | Systemd daemon on 127.0.0.1:11434  |
+|                     |                   | Model: bge-m3:latest (1024d).      |
++---------------------+-------------------+------------------------------------+
+| Audio Transcription | whisper.cpp       | Native AArch64 C++ binary NEON     |
+|                     |                   | Local PTT WhatsApp voice to text.  |
++---------------------+-------------------+------------------------------------+
+| Voice Synthesis     | edge-tts / ffmpeg | Native OGG Opus PTT voice notes    |
+|                     |                   | with automatic sample conversion.  |
++---------------------+-------------------+------------------------------------+
+| Media & Automation  | yt-dlp            | Multi-tier ladder capped at 16MB   |
+|                     | Playwright        | Headless Chromium for web scrapes. |
++---------------------+-------------------+------------------------------------+
+| Persistence Layer   | SQLite 3 (WAL)    | ACID transactional state in WAL    |
+|                     | Redis Server      | Loopback queue at 127.0.0.1:6389.  |
++---------------------+-------------------+------------------------------------+
+| State Cryptography  | OpenSSL AES-GCM   | Pre-deploy DBK1 snapshots in       |
+|                     |                   | /home/ubuntu/backups/ (mode 0600). |
++---------------------+-------------------+------------------------------------+
+
+Loopback Network Topology:
+  All internal daemons (Qdrant 6333, Ollama 11434, Redis 6389, API 3000) bind
+  strictly to 127.0.0.1. Zero inbound service ports are open to the public
+  Internet. External ingress occurs solely through outbound Baileys WebSocket
+  tunnels to WhatsApp servers and authenticated GitHub Actions webhooks.
 
 ================================================================================
 END OF SPECIFICATION - D.A.V.I.S. AUTONOMOUS SYSTEMS - ALL RIGHTS RESERVED
