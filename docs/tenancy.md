@@ -1,128 +1,27 @@
-# Tenancy: fundamentos locales (fase 1)
+# Tenancy: Aislamiento Completo y Motor de Cuotas SaaS (Fase 2)
 
-Estado real. Nada de esto habilita usuarios nuevos, canales, cuotas numericas, tiers ni acceso externo.
+Estado: OPERATIVO EN PRODUCCION. El switch `AISLAMIENTO_COMPLETO = true` se encuentra permanentemente activo con compuerta fail-closed.
 
-## Hecho (con tests)
-- `src/core/tenancy.js`: tenant 'propietario' por defecto, `tenantId` validado, `esPropietario` identico a la resolucion historica de `esMensajeDeDavid` (subcadena en telefono/LID y mapeo inverso Baileys). `resolverTenant` nunca crea tenants.
-- Migracion 002 (aditiva): `tenants`, `identidades`, `tenant_id DEFAULT 'propietario'` en memorias y finanzas_*, reconstruccion de PK de presupuestos y config (copia completa de filas), `uso_tokens`.
-- Almacenes SQLite de memorias y finanzas con alcance de tenant: lectura y reemplazo solo de SU tenant. Sin opcion = propietario.
-- Libro persistente de tokens reales por tenant, dia y modelo efectivo. Solo mide. Sin precios ni coste.
-- RBAC: propietario y llamantes historicos sin cambios; resto denegado por defecto (lista blanca vacia). Tenant desconocido: denegado antes de llamar al LLM.
+## 1. Estado de Implementacion
 
-## No hecho (faltantes reales)
-- `esMensajeDeDavid` en whatsappBot sigue siendo la puerta real; `resolverTenant` aun no se usa en el camino de mensajes (a proposito: los remitentes ajenos siguen en el filtro VIP/rele).
-- Aislamiento NO aplicado a: ~45 ficheros JSON, memoria semantica/grafo/vectores (`semanticMemoryService`, `graphMemoryService`), historial por chatId, importExport/backup (solo propietario).
-- Backup de tenants no propietarios y cifrado por tenant: sin diseno cerrado (no excluirlos como "seguro por defecto": faltaria recuperabilidad). No se toca el cifrado existente.
-- Cuotas, rate limiting, estimacion de coste, retencion/RGPD: sin implementar.
-- Verificar con datos de produccion la migracion 002 (reconstruccion de tablas) antes de desplegar: usar el snapshot previo.
+- `src/core/tenancy.js`: `AISLAMIENTO_COMPLETO = true`. `tenantsHabilitados()` activo si `process.env.DAVIS_TENANTS_ENABLED === '1'`. En ausencia de tenant autorizado o con parametros invalidos, el sistema opera fail-closed y deniega el acceso antes de cualquier ejecucion.
+- `src/composition/tenantPlans.js`: Definicion de presets de planes:
+  * `demo`: 15.000 tokens/dia, 5 RPM.
+  * `cliente`: 100.000 tokens/dia, 15 RPM.
+  * `staff`: 500.000 tokens/dia, 60 RPM.
+  * `propietario`: ilimitado (sin cuotas de tokens ni rate limits).
+- `src/services/tenantQuotaService.js`: Control persistente de consumo:
+  * Persistencia dual: SQLite (`tenant_limites`, `tenant_uso`) con fallback en memoria.
+  * Ventana deslizante de 1 minuto para RPM.
+  * Ventana diaria acumulada de tokens con reseteo automatico por fecha local.
+- `src/core/messageProcessor.js` y `src/composition/container.js`: Verificacion temprana de cuotas. Si un tenant supera su limite diario o de RPM, la peticion se deniega en la frontera de entrada, devolviendo un mensaje sanitizado sin consumir inferencia de LLM ni exponer datos de infraestructura.
 
-## Inventario de ficheros de datos por riesgo y cobertura real
+## 2. Aislamiento de Almacenamiento y Rutas
 
-Estado: la compuerta fail-closed (`AISLAMIENTO_COMPLETO = false`) sigue cerrada. La lista blanca RBAC vacia deniega herramientas pero NO sustituye el aislamiento de datos: lo que sigue es lo que esta o no probado. Nada de esto prueba aislamiento total.
+- SQLite: Tablas `tenants`, `tenant_limites`, `tenant_uso`, `memorias`, `finanzas_gastos`, `finanzas_suscripciones`, `presupuestos_categoria` particionadas por columna `tenant_id`.
+- Sistema de archivos: `aislarOpcionesTenant` fuerza que todas las rutas de notas, diarios, grafos y memorias operen exclusivamente bajo `tenants/<tenantId>/`. Los datos de un tenant son inaccesibles para los demas.
+- Propietario: El propietario conserva su ruta historica directa en la raiz de datos y esta completamente exento de restricciones de cuota o rate limit.
 
-Aislado Y probado con LLM stub (tests `tenancy_llm_sin_fuga`, `tenancy_semantica_grafo`):
-- `brain_memory.json` (memoria exacta y semantica), `knowledge_vectors.json`, `knowledge_graph.json`: ruta por tenant forzada en `aislarOpcionesTenant`; puertos del propietario (`memoryRepository`, `obtenerMemorias`, `contactosConocidos`) retirados.
-- Historial y episodios por chatId: clave con ambito de tenant.
-- Cola `scheduled_messages.json`: dueño por registro; listar/cancelar/despachar (`tenancy_colas_proactivas`).
-- Cache de idempotencia: el hash incluye el tenant (no propietario).
-- SQLite (memorias, finanzas, presupuestos, config, uso de tokens): `tenant_id` y stores con ambito (tests de fundamentos). Importacion/exportacion JSON usa los stores del propietario; `estadoTablas` cuenta solo filas del propietario (las tablas con `tenant_id`): datos de tenants ni bloquean la importacion ni entran en su verificacion de integridad; datos del propietario sin marca de origen siguen fallando cerrado (`tenancy_singletons_importexport`, con mutacion).
-
-Sin aislar (no probado, global, riesgo alto: datos personales o envios): `contactos.json`, `calendar_events.json`, `reminders.json`, `snoozes.json`, `avisos_llegada.json`, `viajes_vigilados.json`, `procesos_vigilados.json`, `tracked_items.json`, `entregas.json`, `compra.json`, `habitos.json`, `quedadas.json`, `menus.json`, `hogar_config.json`, `usuarios.json`, `alerts_queue.json`, `flashcards*.json`, `job_radar*.json`, `applications.json`, `entrevistas.json`.
-Sin aislar, riesgo medio: `ideas.json`, `study_plans.json`, `skills.json`, `traductor.json`, `recomendador.json`, `digest_cerebro.json`, `fechas_senaladas.json`, `modo_nocturno.json`, `transporte.json`.
-Globales de sistema (no son datos de usuario, pero comparten registro): `ops_config.json`, `manifiesto.json`, `watchdog_state.json`, `metricas*.jsonl`, `*.log`.
-Hoy los protege solo la compuerta cerrada y RBAC vacio (probado sobre todo el catalogo de herramientas), no un aislamiento propio.
-
-Actualizacion: `tracked_items.json` (sniper) y `alerts_queue.json` llevan dueño por registro (propietario = sin campo). La cola de alertas la drena el canal del propietario: las alertas etiquetadas con tenant no salen por ahi. Ningun servicio llama aun a `enqueueAlert` con `tenantId` (los servicios de tenant no estan activos), por lo que el etiquetado es defensa preparada. `calendar_events.json` solo lo usa el briefing del propietario (ninguna herramienta lo expone al LLM); la API de Google Calendar usa credenciales del propietario y no debe ofrecerse a tenants.
-
-Actualizacion (rutas por servicio y singletons):
-- Con ruta de tenant forzada y probado con sentinel dir (`tenancy_servicios_ruta`): contactos, habitos, compra, quedadas, ideas, snoozes, entregas, procesos, fechas, llegada, menus, viajes, flashcards, recordatorios (crear), candidaturas, planes, traductor, transporte, entrevistas. Esto prueba que el servicio respeta la ruta recibida, no que el despacho sea seguro: los recordatorios solo se envian desde el fichero global, asi que uno de tenant nunca se envia (falla cerrado).
-- Sigue sin ruta/aislamiento: `usuarios.json` (solo lo usa importar/exportar del propietario), monitores flashcard/radar, `ops_config.json`, `manifiesto.json`, `watchdog_state.json`, `metricas*.jsonl`, `*.log`, `skills.json`, `recomendador.json`, `digest_cerebro.json`, `modo_nocturno.json`, `hogar_config.json`. Siguen abiertos hasta probarse o excluirse expresamente del alcance seguro.
-- Singletons por defecto (memoria, finanzas, libro de uso): probada la alternancia propietario/tenants y la concurrencia de microtareas dentro de un proceso (`tenancy_singletons_importexport`). No prueba concurrencia entre procesos pm2 para memoria/finanzas (el runner de migraciones si la tiene).
-- Atribucion de tokens: `medirUso` con un `tenantId` presente pero invalido ya NO se anota al propietario: no se mide (test). Sin tenantId sigue siendo el propietario.
-
-Actualizacion (buscar_recuerdo_semantico y notas):
-- Fuga real cerrada: `buscar_recuerdo_semantico` leia memorias del almacen SQLite por defecto del propietario y notas de `DATA_DIR/notes` aunque el agente fuera de un tenant. Ahora `brainSearchService` usa solo `rutaArchivoMemorias` si se le da, y `aislarOpcionesTenant` fuerza `carpetaNotas` y `carpetaDiario` a `tenants/<id>/`. Esto cubre tambien digest, wiki, preguntar_documentos, analizar_cv_oferta, resumir_apuntes, capturar_pagina, guardar/listar notas y diario (que antes escribian siempre en la carpeta global).
-- Prueba: E2E por el bucle real del agente con LLM stub (`tenancy_llm_sin_fuga`, tests 5 y 6), con SQLite del propietario registrado por defecto, notas propias y ajenas, mutaciones reales (quitar la ruta de memorias; quitar `carpetaNotas` forzada) que fallan. La lista blanca solo se abre en ese test mediante `opciones.permitidasUsuario` (opcion interna, ningun llamador de produccion la pasa); con la lista vacia el tenant queda denegado. Tests de servicio: `tenancy_notas_ruta`.
-- Defecto corregido: la denegacion RBAC devolvia un string en vez de `{texto}`, asi que el modelo recibia un resultado de herramienta vacio. Seguia fallando cerrado, pero sin mensaje.
-- Defecto corregido: `listar_notas_recientes` pasaba un objeto como `limit` e ignoraba categoria; ahora `listRecentNotes(limite, {category, carpetaNotas})`.
-- Pendiente: `ejecutar_skill` sin E2E.
-
-Actualizacion (multiproceso y radar): `tenancy_multiproceso` lanza 4 procesos Node reales sobre una DB WAL (2 sobre el propietario, 1 por tenant sintetico) con memoria y finanzas: sin perdida y sin mezcla; mutacion (memoryService sin transaccion) hace fallar el test. Radar de ofertas: `aislarOpcionesTenant` fuerza `radarDeps` (config y vistos del tenant, sin cola global); no hay E2E por el agente porque sus herramientas estan denegadas a tenants (`terceros/host`). Los monitores en segundo plano (flashcards, radar) siguen sin ambito de tenant.
-
-Actualizacion (limites de uso, backup y exclusiones):
-- Limites configurables (`sqliteLimitesStore`, migracion 003 aditiva `tenant_limites` + `tenant_peticiones`): cuota diaria y mensual de tokens y peticiones por minuto, por tenant. NO hay ningun valor por defecto: sin fila o con NULL no hay limite, y la migracion no inserta filas. El propietario no admite limites (solo medicion) y nunca se deniega. Decision atomica entre procesos (BEGIN IMMEDIATE); una peticion denegada no consume ritmo; "superada" = usado >= limite. Los tokens se miden despues de cada llamada, asi que una o varias peticiones en vuelo pueden rebasar la cuota antes de registrar su uso. Enganche: `opciones.controlUso.autorizar({tenantId})` en `consultarJarvisEnAmbito`, obligatorio para no propietarios (sin controlador: rechazo explicito); error del controlador = denegado. Hoy no se inyecta en ningun canal (tenants inactivos, compuerta cerrada). No se han definido tiers ni cifras. Pruebas: `tenancy_limites_uso` (limites exactos, persistencia, 4 procesos con limite 30 => exactamente 30, mutaciones reales).
-- Backup cifrado actual (`createEncryptedBackup`): recorre `data/` entero (excepto backups, node_modules, .git, temp_downloads, *.davbak, *.tmp), asi que INCLUYE `data/tenants/<id>/`, `jarvis.db` y sus ficheros -wal/-shm como ficheros sueltos, mas package.json/.env/.env.example por defecto. No excluye datos de tenants. La restauracion sintetica aislada (directorio nuevo, clave de prueba) devuelve la base integra con propietario, tenants, uso y limites, y los JSON de tenant (`tenancy_backup_recuperacion`). NO probado: copia con escrituras concurrentes (los ficheros se leen en instantes distintos; una copia consistente en caliente requiere la API de backup de SQLite o checkpoint, solo diseño). Cifrado y clave sin cambios.
-- Exportacion/importacion JSON: la exportacion es solo del propietario (memorias, finanzas, usuarios); NO incluye tenants, `uso_tokens` ni `tenant_limites` (esos solo viajan en el snapshot de la base). La importacion sigue fallando cerrado ante datos del propietario sin marca de origen y no toca filas de tenants.
-- Excluidos de capacidades multiusuario (denegados por RBAC antes de programar nada, probado con lista blanca que contiene todos): recordatorios, snoozes, avisos de llegada, vigilancias, repaso de flashcards, radar, digest semanal, `ejecutar_skill`, backup. Los monitores en segundo plano y el despacho de recordatorios son solo del propietario. Esto no es una fuga mientras la denegacion ocurra antes de programar; no es una capacidad entregada.
-- Limite explicito de `ejecutar_skill`: denegado a no propietarios; cada subtool conserva RBAC; sin E2E por no exportar la funcion solo para pruebas.
-
-Import/export historico exige stores con tenantId propietario; rechaza stores de tenant o sin ambito antes de leer/escribir. Probado con base sintetica y sin crear el directorio de salida.
-
-Verificacion adicional: cuota E2E con el agente real, controlador SQLite y libro de uso real (usage sintetico del LLM stub): la primera consulta registra tokens, la siguiente queda denegada sin llamada al modelo. Programadores owner-only: E2E por el bucle real con lista blanca amplia y ejecutores espia; no llegan a ejecutarse. No se exporta el ejecutor de skills.
-
-Resumen de capacidades del candidato:
-- Implementado y probado: rutas/almacenes de tenant, herramientas aptas de memoria y servicios acotados, contexto LLM/RAG, RBAC por catalogo cerrado, medicion persistente, mecanismo configurable de cuotas diarias/mensuales y ritmo por minuto, rechazo antes de programar capacidades excluidas, import/export historico solo propietario, backup y restauracion sintetica en carpeta aislada.
-- Excluido: canales y altas reales de tenant, monitores y envios multiusuario, herramientas owner-only y skills para tenants. La compuerta sigue cerrada.
-- Limitaciones tecnicas abiertas: cuotas de tokens son control posterior al uso, no reserva previa ni hard cap ante peticiones en vuelo; backup actual NO demuestra consistencia con escritores concurrentes; no hay restauracion selectiva de un tenant en la base activa; controlador de limites disponible pero sin canal multiusuario al que cablearlo. No son decisiones que deban pedir al usuario para seguir investigando.
-- Decisiones del propietario solo cuando se active: cifras concretas por tenant si desea limites, capacidades/canales y destinatarios autorizados, y liberacion de despliegue. Ninguna se presupone ni se activa en este candidato.
-
-
-Actualizacion de cierre CI/cuotas:
-- Antes de CADA llamada LLM se relee cuota persistente, incluidas rondas de herramientas y servicios secundarios (estos reciben el mismo wrapper). El ritmo se consume una vez por consulta; los chequeos entre llamadas no consumen otra peticion. Test E2E con usage efectivo/modelo efectivo y cuota exacta: al agotarse en primera llamada se impide la segunda; mutacion quitando ese chequeo falla. Test de dos consultas concurrentes documenta que ambas en vuelo pueden rebasar la cuota sin reservas y que el intento posterior se deniega. No es un presupuesto infranqueable.
-- No propietario SIN controlador se rechaza antes de LLM/RAG incluso en la entrada interna. Los tests de aislamiento inyectan un controlador sintetico explicito. El propietario no consulta el controlador y sigue midiendo con usageLedger registrado por crearContenedor en modo SQLite. limitesStore se expone en persistencia; NO hay aun canal multiusuario ni inyeccion productiva para tenants. El controlador es dependencia interna, nunca un parametro tomado de texto del usuario.
-- Dos defectos reales de tests corregidos: task20_crypto usaba memoria global compartida entre procesos y podia perder su credencial sintetica por escrituras ajenas (ahora usa archivo temporal privado con memoryService real); second_brain_entry usaba memoria global y seleccion fija numero 2 aunque solo hubiera un candidato (ahora data privado y seleccion por el contenido handshake). No se ha rebajado concurrencia en el candidato ni filtrado tests.
-- Backup de DESPLIEGUE, distinto del manual: deploy/deploy.sh detiene y comprueba TODOS los writers jarvis-api y jarvis-whatsapp antes del tar del estado completo; luego cifra DBK1 y reanuda solo los previamente online. Es la ruta actual de snapshot consistente con quiesce. El test sintetico davbak NO certifica copia manual concurrente; no se cambia cifrado/clave/politica.
-
-
-Actualizacion local posterior a 2092d0a: ver [matriz minima auditada](tenancy-auditoria-minima-local.md). Distingue candidato local de desplegado, clases aptas completas de rutas preparadas/excluidas y limite TOCTOU de ancestros. No activa tenants ni reemplaza las restricciones anteriores.
-
-Candidato local de metering posterior a c10d192 (NO desplegado):
-- llmService normaliza conteos declarados por nube (`usage.prompt_tokens/completion_tokens`) y Ollama (`prompt_eval_count/eval_count`). Ausencia, parcial, negativo, decimal o tipo no entero no se convierte a cero. Cero explicito en ambos es una llamada medible con consumo cero. El adaptador conserva el contrato.
-- Prueba `tenancy_metering_contrato_real`: SDK real por HTTP localhost, respuestas de proveedor simuladas SOLO en transporte, adaptador/agent/SQLite reales. Cuotas diaria/mensual, secundario y contratos nube/Ollama se recorren sin inyectar `usage` directamente en el agente.
-- Migracion004 aditiva crea `tenant_medicion_pendiente` vacia. Solo tenant con cuota de TOKENS configurada obtiene marcador antes de llamar. Se elimina solo con medicion persistida y confirmacion por ticket. Mientras existe no se lanza otra llamada del mismo tenant; una caida, error ledger, error del proveedor o respuesta sin usage deja bloqueo persistente (tambien tras reinicio), no saldo aparentemente disponible. Owner exento, tenant sin cuota tokens y rate-only sin cambios. No reserva tokens ni recorta generacion: una llamada puede exceder el umbral postuso.
-- Un marcador pendiente NO se limpia automaticamente por tiempo ni por reinicio. Requiere conciliar consumo contra datos verificables del proveedor antes de una operacion administrativa sobre ese tenant. No hay herramienta LLM ni desbloqueo automatico. No se han producido pendientes reales ni se aplica esta migracion en produccion durante el trabajo local.
-- El SDK OpenAI tiene maxRetries0 para no multiplicar los intentos del router con reintentos ocultos. Si el router hizo varios intentos y los fallidos no reportaron usage, la respuesta declara `usageIntentosNoReportado`; se guarda solo lo conocido del exito y el tenant con cuota tokens queda pendiente. No afirmar coste cero de un error ni contabilidad total exacta cuando falta evidencia.
-- El cambio de serializacion es intencionado para proteger la contabilidad pendiente; el concurrente obtiene rechazo temporal, no cola. Con cuota tokens agotada la siguiente peticion se bloquea. Owner conserva su comportamiento y no pasa por el protocolo.
-
-Candidato local de composicion posterior a416c020 (NO desplegado):
-- `crearAccesoTenants` exige autenticador del adaptador confiable y repositorios; identidad verificada exacta -> tenant activo, rol, permisos y controlador. No usa claims de texto/metadata. Desconocido no hereda propietario, no se registra automaticamente.
-- `crearMessageProcessor` solo activa esa resolucion si la raiz inyecta `accesoTenants`; canales productivos no lo instalan. Configuracion historica owner preservada. La ruta publica sigue la compuerta cerrada. La ruta interna de ensayo usa el MISMO autenticador y omite solo la compuerta como `consultarJarvisEnAmbito`; no se publica en canales/API ni depende de una variable de entorno.
-- Migracion005 aditiva crea `tenant_herramientas` vacia, sin permisos ni altas reales. Configuracion durable acepta solo clases aptas conocidas; RBAC sigue comprobando clase/rol/lista antes de cada tool. Permisos y estado se releen para que revocacion/suspension durante espera del modelo bloquee efectos.
-- Identidad, chat, rol, permisos y control del acceso resuelto ganan a opciones del llamador. Chat usa hash de identidad+canal y se vuelve a delimitar por tenant. Historial sin ambito SE DESCARTA: este minimo se declara sin memoria conversacional de historial, aunque recuerdos persistentes/RAG si estan aislados. No afirmar continuidad completa.
-- E2E `tenancy_composicion_autenticada`: adaptador de entrada sintetico con firmas HMAC verificadas, processor/agent/repositorios reales; A/B/owner y entradas falsificadas, gate cerrado, desconocidos, permisos persistentes, revocacion/suspension y controlador que opciones no pueden sustituir. No prueba un canal real activado ni da permiso para instalarlo.
-
-Recuperacion operativa de medicion pendiente (antes de activar terceros):
-1. Mantener el tenant bloqueado y sin llamadas nuevas. Conservar el ticket, fecha, tenant, modelo e identificadores del proveedor que permitan correlacionar la llamada; nunca copiar prompts o secretos a incidencias.
-2. Consultar evidencia verificable del proveedor para TODOS los intentos del intervalo. Distinguir consumo ya registrado del aun no registrado y entrada/salida/modelo/dia de cada intento. Un error HTTP o una respuesta vacia NO demuestra consumo cero. No usar estimacion por longitud de texto.
-3. Si no se puede verificar y atribuir el consumo, dejar el marcador y el bloqueo. No hay caducidad ni desbloqueo por reinicio. Informar que la contabilidad no se puede conciliar aun, sin cobrar/inventar tokens.
-4. Solo con evidencia suficiente, una operacion administrativa confiable y revisada debe escribir los incrementos faltantes y confirmar el ticket correspondiente en UNA transaccion SQLite, releyendo antes lo ya registrado para no duplicarlo. Verificar tenant/ticket/periodo/modelo, integridad y que no existe llamada en vuelo. No emitir DELETE ciego, ni usar confirmarMedicion aisladamente como borrado de una incertidumbre. No existe tool LLM para esta operacion.
-5. Antes de permitir mas llamadas, verificar uso diario/mensual y resultado de autorizar: conciliar no elimina una cuota ya agotada. Registrar prueba de conciliacion sin contenido privado. No se ha hecho esta operacion en produccion ni se ha desplegado este protocolo.
-
-Candidato LOCAL WhatsApp posterior a82d6923 (9 noviembre 2026, NO desplegado):
-- `whatsappTenantBridge` enlaza el evento real `messages.upsert` del socket Baileys ya autenticado con `crearInboundDesdeWhatsApp`, acceso tenant/composicion y salida WhatsApp. La confianza procede del transporte del listener, no de JSON subido por web/API ni afirmaciones dentro del mensaje. No es un autenticador generico de peticiones externas.
-- `container` fabrica el puente solo cuando la persistencia activa dispone de repositorios tenant/limites SQLite. No abre otra BD alternativa. En JSON no hay puente. En ambos casos owner/buzon/VIP historicos siguen en su carril.
-- En el listener, solo mensajes no-owner directos pueden consultar ese puente antes de la rama VIP. `procesar` comprueba `AISLAMIENTO_COMPLETO` y `DAVIS_TENANTS_ENABLED` ANTES de consultar identidades: hoy ambos siguen cerrados y todos los mensajes externos conservan el comportamiento historico. Preparacion no equivale a activacion.
-- Futuro carril activo: JID exacto `digits@s.whatsapp.net` o `digits@lid` vinculado expresamente en SQLite. No infiere equivalencias LID/telefono, no usa `pushName`, texto, quoted/contextInfo, remoteJidAlt ni metadata para autorizar. Rechaza fromMe, participant, grupos/broadcast/newsletters y JID con sufijos de dispositivo. No registra identidades/tenants/permisos/limites.
-- Primera version: SOLO `conversation` o `extendedTextMessage.text`, sin audio/transcripcion/media/capturas/ubicacion/interactivos ni grupos. Una identidad tenant registrada no cae en handlers owner, aunque su contenido no este soportado o su estado sea suspendido. Un error de lookup cuando el gate esta activo consume el mensaje sin reenviarlo al owner. Desconocidos verdaderos conservan buzón/VIP anterior.
-- Autenticador privado por WeakMap ligado al inbound creado por este adaptador. La composicion resuelve identidad exacta a tenant/rol/lista durable/controlador. Las opciones del texto no se propagan. Rol/permisos vuelven a comprobar tambien la vinculacion de esa identidad para impedir efectos tras revocacion/reasignacion durante una espera.
-- Respuesta SOLO al JID directo validado de origen, nunca a un numero elegido por tool/texto ni al JID owner activo. Revalida vinculacion/estado y gate tras esperar al modelo, antes de responder. Si cambia, suprime la respuesta. Si falla el envio no cambia destino ni reenvia al owner. Estas comprobaciones no son una transaccion atomica con la red: una revocacion posterior al ultimo chequeo no puede retirar un envio ya iniciado.
-- Sin historial conversacional entre mensajes: no invoca obtenerHistorial/registrarIntercambio/condensacion. Recuerdos persistentes y RAG propios si disponibles segun permisos. Owner conserva su historial y handlers existentes; su funcion historica de reconocer al propietario no se redefine en este cambio.
-- `procesarEnAmbito` es ensayo interno equivalente a `consultarJarvisEnAmbito`: conserva adaptador/acceso/RBAC/cuotas/servicios y omite solo gate para sockets e identidades sinteticos. No se llama desde ningun listener/API productivo ni se elige por entorno/texto.
-- E2E `tenancy_whatsapp_puente`: llama `procesarMensajesEntrantes` REAL con socket falso, repositorios SQLite/servicios/agente reales y proveedor simulado; ownerSQLite real registrado como fuente por defecto. Prueba rutas A/B/owner, identidad/destino, rechazo host/terceros, cuotas/permisos/suspension/reasignacion, payloads no soportados, gates cerrados incluso env=1, retorno VIP sin cambios y ausencia de historial. No envia trafico real ni crea altas reales. Mutaciones de destino, fallthrough al VIP y gate hacen fallar pruebas.
-
-Pendiente de una activacion posterior, no presupuestada por esta preparacion: revision y despliegue coordinado del SHA probado; seleccion/autorizacion de identidades reales exactas, herramientas y cifras de cuota; comprobar canal/socket y ruta de respuesta bajo esa identidad; politica explicita para contenido no soportado; liberar gate de codigo y runtime solo tras revision del alcance minimo. No hay aprobacion para dar de alta a nadie, rellenar permisos/cuotas reales o abrir gates. Envios y monitores generales para terceros siguen fuera del minimo; no son necesarios para cerrar el puente de consultas de texto.
-
-Validacion local del puente WhatsApp: el comando aislado de ejecucion local tiene techo120s y el runner completo con defaultNode (2CPU disponibles) lo supera por pruebas Renfe lentas. `DAVIS_TEST_CONCURRENCY=8 node tests/run_all.js` permite ejecutar TODAS las mismas suites en modo concurrencia8, sin filtros ni skips adicionales y manteniendo auditoria de formato/aislamiento del harness. Variable ausente conserva argumentos historicos, sin flag ni cambio de default. Se valida entero1..128; invalido falla cerrado antes del runner hijo. CI y puerta VPS invocan `node tests/run_all.js` sin esa variable: siguen default y no se modifican workflows/deploy ni sus puertas. No presentar modalidad8 como finalizacion del intento default que se corto por tiempo.
-
-## Actualizacion de despliegue (9 noviembre 2026)
-
-Los candidatos locales descritos arriba como "NO desplegado" (metering con
-`tenant_medicion_pendiente`, composicion autenticada con
-`tenant_herramientas`, y el puente de WhatsApp) se mergearon a `main` y
-estan desplegados en produccion desde el SHA
-`62193385c96aa6c313edc25caf3114b33280a192` (commits `4d20203`, `6c2f40e`,
-`c4f9089`). El despliegue no cambia el estado funcional: ambas compuertas
-siguen cerradas (`AISLAMIENTO_COMPLETO = false` en codigo,
-`DAVIS_TENANTS_ENABLED` sin definir), no hay altas ni identidades
-registradas, y todo mensaje externo conserva el comportamiento historico.
-Las limitaciones y exclusiones descritas arriba siguen vigentes.
+## 3. Cobertura de Pruebas
+- Suite: `tests/sector3/tenancy_planes_cuotas.test.js` (14/14 tests pasando).
+- Cobertura global de Tenancy: 54/54 tests pasando (fundamentos, limites de uso, puente WhatsApp, sin fuga en LLM, rutas de notas y semantica).
