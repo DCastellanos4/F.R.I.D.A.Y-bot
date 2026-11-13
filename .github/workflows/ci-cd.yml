@@ -111,5 +111,5 @@ jobs:
             deploy/deploy.sh deploy/snapshot.js deploy/quality-gate.mjs \
             "$ORACLE_SSH_DESTINO:$DTMP/"
           ssh -i "$key" -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes "$ORACLE_SSH_DESTINO" \
-            "DEPLOY_TMP=$DTMP RELEASE_SHA=$RELEASE_SHA bash $DTMP/deploy.sh"
+            "sed -i 's/\r$//' $DTMP/deploy.sh 2>/dev/null || true; DEPLOY_TMP=$DTMP RELEASE_SHA=$RELEASE_SHA bash $DTMP/deploy.sh"
           rm -f "$key"

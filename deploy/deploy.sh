@@ -43,7 +43,8 @@ CORTE=0
 
 # Un solo despliegue a la vez (el workflow tambien serializa con concurrency).
 exec 9>"$LOCK"
-flock -n 9 || { echo "PARADA: otro despliegue en curso." >&2; exit 1; }
+echo "Adquiriendo bloqueo de despliegue ($LOCK)..."
+flock -w 300 9 || { echo "PARADA: timeout de 300s esperando liberacion de otro despliegue en curso." >&2; exit 1; }
 
 echo "== [0/7] Preparacion de referencias =="
 mkdir -p "$RELEASES" "$ESTADO" "$BACKUPS"

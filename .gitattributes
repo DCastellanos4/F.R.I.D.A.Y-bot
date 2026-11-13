@@ -1,0 +1,6 @@
+# Enforce LF endings on shell scripts across all platforms
+*.sh text eol=lf
+*.bash text eol=lf
+*.mjs text eol=lf
+*.js text eol=lf
+*.json text eol=lf
