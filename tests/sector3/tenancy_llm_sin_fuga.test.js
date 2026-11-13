@@ -153,7 +153,7 @@ test('con la lista blanca vacia (produccion) un tenant no ejecuta buscar_recuerd
 });
 
 test('E2E RBAC: programadores owner-only se deniegan antes de ejecutar aun con allowlist completa', async () => {
-  const herramientas = ['crear_recordatorio', 'configurar_repaso_flashcards', 'configurar_radar_ofertas', 'ejecutar_skill', 'trigger_encrypted_backup'];
+  const herramientas = ['crear_recordatorio', 'configurar_repaso_flashcards', 'vigilar_producto', 'ejecutar_skill', 'trigger_encrypted_backup'];
   for (const nombre of herramientas) {
     let efectos = 0; let ronda = 0; const capturas = [];
     const chatCompletion = async (p) => {

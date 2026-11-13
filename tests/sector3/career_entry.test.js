@@ -135,7 +135,7 @@ test('Router: un mensaje de empleo selecciona el catalogo del bloque sin safety 
   assert.equal(ruta.safetyNet, false, 'la intencion empleo existe, no cae en safety net');
   assert.ok(ruta.intenciones.includes('empleo'));
   const nombres = ruta.herramientas.map((t) => t.function.name);
-  for (const nombre of ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura', 'escanear_ofertas_empleo', 'configurar_radar_ofertas']) {
+  for (const nombre of ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura']) {
     assert.ok(nombres.includes(nombre), `falta ${nombre} en el catalogo del router`);
   }
 });

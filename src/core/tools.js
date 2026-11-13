@@ -162,30 +162,8 @@ export const herramientasJarvis = [
       }
     }
   },
-  {
-    type: 'function',
-    function: {
-      name: 'escanear_ofertas_empleo',
-      description: 'Ejecuta ahora una ronda del radar de ofertas de practicas/empleo con la configuracion guardada. Informa del estado real de cada fuente; si falta configuracion o credenciales lo dice en lugar de inventar ofertas.',
-      parameters: { type: 'object', properties: {} }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'configurar_radar_ofertas',
-      description: 'Configura el radar de ofertas: palabras clave, ubicacion, remoto y activacion. Necesario antes del primer escaneo util.',
-      parameters: {
-        type: 'object',
-        properties: {
-          palabrasClave: { type: 'array', items: { type: 'string' }, description: 'Terminos de busqueda (ej: ["full stack", "practicas"]).' },
-          ubicacion: { type: 'string', description: 'Provincia o ciudad objetivo (ej: Madrid).' },
-          remoto: { type: 'boolean', description: 'true para priorizar remoto.' },
-          activo: { type: 'boolean', description: 'true solo si David pidio activar el radar textualmente en su mensaje; la activacion sin peticion explicita se rechaza.' }
-        }
-      }
-    }
-  },
+  
+  
   {
     type: 'function',
     function: {
@@ -1861,14 +1839,7 @@ export const herramientasJarvis = [
       }
     }
   },
-  {
-    type: 'function',
-    function: {
-      name: 'encender_pc',
-      description: 'Enciende el PC de casa por Wake-on-LAN. Requiere DAVIS_WOL_MAC por entorno; sin ella es config-required (nunca pedir la MAC por chat).',
-      parameters: { type: 'object', properties: {} }
-    }
-  },
+  
   {
     type: 'function',
     function: {
@@ -1892,49 +1863,10 @@ export const herramientasJarvis = [
       }
     }
   },
-  {
-    type: 'function',
-    function: {
-      name: 'controlar_domotica',
-      description: 'Controla dispositivos de Home Assistant (requiere DAVIS_HA_URL y DAVIS_HA_TOKEN por entorno; la URL la fija el propietario, nunca llega por chat).',
-      parameters: {
-        type: 'object',
-        properties: {
-          entidad: { type: 'string', description: 'Entidad de HA, p.ej. light.salon.' },
-          accion: { type: 'string', enum: ['encender', 'apagar', 'conmutar'] }
-        },
-        required: ['entidad', 'accion']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'estado_descargas',
-      description: 'Panel de descargas: espacio en disco local (operativo) y cola de qBittorrent (requiere DAVIS_QBIT_URL/USER/PASS por entorno).',
-      parameters: { type: 'object', properties: {} }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'configurar_aviso_descargas',
-      description: 'Activa o desactiva el aviso cuando termina una descarga. activo=true SOLO si David lo pide textualmente.',
-      parameters: {
-        type: 'object',
-        properties: { activo: { type: 'boolean' } },
-        required: ['activo']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'estimar_factura_oracle',
-      description: 'Termometro de la factura de Oracle Cloud via OCI CLI/Cost API: config-required si el servidor no tiene OCI configurado; no inventa cifras.',
-      parameters: { type: 'object', properties: {} }
-    }
-  },
+  
+  
+  
+  
   {
     type: 'function',
     function: {
@@ -2128,7 +2060,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   infraestructura: ['get_infrastructure_status'],
   tuneles: ['manage_tunnel'],
   backup: ['trigger_encrypted_backup'],
-  empleo: ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura', 'escanear_ofertas_empleo', 'configurar_radar_ofertas'],
+  empleo: ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura'],
   estudio: ['planificar_estudio', 'listar_planes_estudio', 'registrar_avance_estudio', 'programar_recordatorios_estudio', 'crear_flashcard', 'repasar_flashcards', 'responder_flashcard', 'configurar_repaso_flashcards'],
   comunicacion: ['activar_traductor', 'desactivar_traductor', 'sugerir_respuestas', 'buscar_en_historial', 'registrar_fecha_senalada', 'listar_fechas_senaladas', 'eliminar_fecha_senalada', 'configurar_avisos_fechas', 'programar_snooze', 'listar_snoozes', 'cancelar_snooze', 'estadisticas_grupo', 'registrar_aviso_llegada', 'listar_avisos_llegada', 'cancelar_aviso_llegada'],
   transporte: ['registrar_parada_favorita', 'listar_paradas_favoritas', 'eliminar_parada_favorita', 'proximas_llegadas_transporte'],
@@ -2137,7 +2069,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   compras: ['buscar_producto', 'verificar_oferta'],
   devtools: ['anotar_idea', 'listar_ideas', 'priorizar_ideas', 'generar_changelog', 'guiar_depuracion', 'revisar_pr', 'explicar_recorrido'],
   ops: ['auditar_dependencias', 'configurar_vigilancia_dependencias', 'informe_metricas', 'configurar_informe_metricas', 'actividad_repos', 'configurar_alertas_repos', 'crear_backup_sesion'],
-  hogar: ['encender_pc', 'listar_dispositivos_red', 'configurar_vigilancia_red', 'controlar_domotica', 'estado_descargas', 'configurar_aviso_descargas', 'estimar_factura_oracle', 'verificar_backup_sesion'],
+  hogar: ['listar_dispositivos_red', 'configurar_vigilancia_red', 'verificar_backup_sesion'],
   viajes: ['vigilar_ruta', 'listar_rutas_vigiladas', 'cancelar_vigilancia_ruta', 'registrar_precio_ruta'],
   carrera: ['iniciar_simulacro_entrevista', 'analizar_cv_oferta', 'resumir_apuntes', 'registrar_entrega', 'listar_entregas', 'eliminar_entrega'],
   procesos: ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'],

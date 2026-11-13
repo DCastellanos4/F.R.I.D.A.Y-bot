@@ -51,7 +51,7 @@ test('Router: frases de hogar solo encajan en hogar y traen sus 7 herramientas',
   const r = analizarIntencion('quien esta conectado a mi red');
   assert.deepEqual(r.intenciones, ['hogar']);
   const nombres = r.herramientas.map((h) => h.function.name);
-  for (const h of ['encender_pc', 'listar_dispositivos_red', 'configurar_vigilancia_red', 'controlar_domotica', 'estado_descargas', 'configurar_aviso_descargas', 'estimar_factura_oracle']) {
+  for (const h of ['listar_dispositivos_red', 'configurar_vigilancia_red']) {
     assert.ok(nombres.includes(h), `falta ${h}`);
   }
   const r2 = analizarIntencion('cuanto me cuesta el oracle este mes');

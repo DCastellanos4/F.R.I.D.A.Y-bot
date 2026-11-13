@@ -489,7 +489,7 @@ export function analizarIntencion(mensaje) {
   }
 
   if (matchEmpleo) {
-    tools.push(...herramientasJarvis.filter(h => ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura', 'escanear_ofertas_empleo', 'configurar_radar_ofertas'].includes(h.function.name)));
+    tools.push(...herramientasJarvis.filter(h => ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura'].includes(h.function.name)));
   }
   if (matchEstudio) {
     tools.push(...herramientasJarvis.filter(h => ['planificar_estudio', 'listar_planes_estudio', 'registrar_avance_estudio', 'programar_recordatorios_estudio', 'crear_flashcard', 'repasar_flashcards', 'responder_flashcard', 'configurar_repaso_flashcards'].includes(h.function.name)));
@@ -525,7 +525,7 @@ export function analizarIntencion(mensaje) {
     tools.push(...herramientasJarvis.filter(h => ['auditar_dependencias', 'configurar_vigilancia_dependencias', 'informe_metricas', 'configurar_informe_metricas', 'actividad_repos', 'configurar_alertas_repos', 'crear_backup_sesion', 'verificar_backup_sesion'].includes(h.function.name)));
   }
   if (matchHogar) {
-    tools.push(...herramientasJarvis.filter(h => ['encender_pc', 'listar_dispositivos_red', 'configurar_vigilancia_red', 'controlar_domotica', 'estado_descargas', 'configurar_aviso_descargas', 'estimar_factura_oracle'].includes(h.function.name)));
+    tools.push(...herramientasJarvis.filter(h => ['listar_dispositivos_red', 'configurar_vigilancia_red'].includes(h.function.name)));
   }
   if (matchViajes) {
     tools.push(...herramientasJarvis.filter(h => ['vigilar_ruta', 'listar_rutas_vigiladas', 'cancelar_vigilancia_ruta', 'registrar_precio_ruta'].includes(h.function.name)));

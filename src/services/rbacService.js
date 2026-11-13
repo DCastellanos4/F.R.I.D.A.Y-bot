@@ -33,8 +33,7 @@ export const HERRAMIENTAS_PERMITIDAS_USUARIO_POR_DEFECTO = Object.freeze([]);
 export const CLASIFICACION_HERRAMIENTAS = Object.freeze({
   host: [
     'execute_bash_command', 'manage_tunnel', 'trigger_encrypted_backup', 'get_infrastructure_status',
-    'encender_pc', 'controlar_domotica', 'estado_descargas', 'estimar_factura_oracle',
-    'configurar_aviso_descargas', 'listar_dispositivos_red', 'configurar_vigilancia_red',
+'listar_dispositivos_red', 'configurar_vigilancia_red',
     'crear_backup_sesion', 'verificar_backup_sesion', 'auditar_dependencias',
     'configurar_vigilancia_dependencias', 'informe_metricas', 'configurar_informe_metricas',
     'consultar_estado_servidor', 'descargar_multimedia', 'capturar_pagina', 'navegar_y_leer_noticia',
@@ -54,7 +53,7 @@ export const CLASIFICACION_HERRAMIENTAS = Object.freeze({
     'buscar_en_historial', 'explicar_recorrido'
   ],
   global_sistema: [
-    'escanear_ofertas_empleo', 'configurar_radar_ofertas', 'generar_digest_cerebro', 'configurar_digest_semanal',
+    'generar_digest_cerebro', 'configurar_digest_semanal',
     'configurar_vigilante_procesos', 'vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso',
     'configurar_modo_nocturno', 'configurar_avisos_suscripciones', 'configurar_avisos_fechas',
     'configurar_repaso_flashcards', 'programar_recordatorios_estudio', 'crear_recordatorio',

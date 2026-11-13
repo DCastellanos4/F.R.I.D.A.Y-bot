@@ -117,11 +117,11 @@ test('lista blanca con TODO el catalogo: un tenant solo ejecuta clases aptas; ho
   const R = await import('../../src/services/rbacService.js');
   const todos = [...NOMBRES_HERRAMIENTAS_JARVIS];
   const nunca = {
-    host: ['generar_changelog', 'verificar_oferta', 'execute_bash_command', 'manage_tunnel', 'trigger_encrypted_backup', 'get_infrastructure_status', 'encender_pc', 'controlar_domotica', 'crear_backup_sesion', 'capturar_pagina', 'descargar_multimedia', 'resumir_enlace'],
+    host: ['generar_changelog', 'verificar_oferta', 'execute_bash_command', 'manage_tunnel', 'trigger_encrypted_backup', 'get_infrastructure_status', 'crear_backup_sesion', 'capturar_pagina', 'descargar_multimedia', 'resumir_enlace'],
     credenciales: ['generate_crypto_credential', 'revisar_pr', 'actividad_repos', 'configurar_alertas_repos'],
     identidad: ['activar_modo_vip', 'agregar_contacto_vip', 'estado_modo_vip', 'ejecutar_skill', 'proponer_skill'],
     terceros: ['programar_mensaje_whatsapp', 'enviar_contacto_vcard', 'crear_encuesta_whatsapp', 'resumir_grupo', 'buscar_en_historial'],
-    global_sistema: ['configurar_radar_ofertas', 'vigilar_producto', 'crear_recordatorio', 'programar_snooze', 'vigilar_ruta', 'configurar_modo_nocturno'],
+    global_sistema: ['vigilar_producto', 'crear_recordatorio', 'programar_snooze', 'vigilar_ruta', 'configurar_modo_nocturno'],
     datos_propietario: ['consultar_clima', 'registrar_gasto', 'guardar_nota_personal', 'leer_diario', 'preguntar_documentos', 'registrar_candidatura']
   };
   for (const [clase, lista] of Object.entries(nunca)) {

@@ -87,14 +87,25 @@ export function validarUrlExterna(urlStr) {
 export function crearLookupSeguro(deps = {}) {
   const resolver = deps.dnsLookup || ((h, cb) => dnsLookupCallbacks(h, { all: true }, cb));
   return (hostname, options, callback) => {
+    let cb = callback;
+    let opts = options;
+    if (typeof opts === 'function') {
+      cb = opts;
+      opts = {};
+    }
     const terminar = (err, addresses) => {
-      if (err) { callback(err); return; }
+      if (err) { if (cb) cb(err); return; }
       const lista = (Array.isArray(addresses) ? addresses : [addresses]).filter(Boolean);
       if (lista.length === 0 || lista.some((r) => esIpPrivadaOReservada(String(r.address || r)))) {
-        callback(new Error('El nombre de host resuelve a una IP privada o reservada.'));
+        if (cb) cb(new Error('El nombre de host resuelve a una IP privada o reservada.'));
         return;
       }
-      callback(null, lista[0].address || lista[0], lista[0].family || 4);
+      if (opts && opts.all) {
+        const formateada = lista.map((r) => (typeof r === 'object' && r.address ? r : { address: String(r), family: 4 }));
+        if (cb) cb(null, formateada);
+      } else {
+        if (cb) cb(null, lista[0].address || lista[0], lista[0].family || 4);
+      }
     };
     try {
       const ret = resolver(hostname, terminar);
@@ -179,9 +190,21 @@ export async function fetchSeguro(urlInicial, opciones = {}, deps = {}) {
       continue;
     }
     if (res.status >= 400) {
-      return { ok: false, status: res.status, text: async () => '' };
+      return {
+        ok: false,
+        status: res.status,
+        headers: res.headers,
+        text: async () => res.texto || '',
+        json: async () => { try { return JSON.parse(res.texto || '{}'); } catch { return {}; } }
+      };
     }
-    return { ok: res.status >= 200 && res.status < 300, status: res.status, text: async () => res.texto };
+    return {
+      ok: res.status >= 200 && res.status < 300,
+      status: res.status,
+      headers: res.headers,
+      text: async () => res.texto,
+      json: async () => JSON.parse(res.texto)
+    };
   }
   throw new Error('Demasiadas redirecciones: no la sigo.');
 }
