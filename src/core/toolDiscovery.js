@@ -14,13 +14,42 @@ export const HERRAMIENTA_DESCUBRIR = Object.freeze({
 });
 const normalizar = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const palabras = s => normalizar(s).split(/[^a-z0-9]+/).filter(p => p.length > 3 && !['para', 'como', 'quiero', 'puedes', 'necesito', 'david', 'esta', 'este', 'cuando'].includes(p));
+
+// Falla 14 nov 2026 (2a): el modelo pedia «enviar la probabilidad de lluvia
+// a paula por whatsapp» y la tool de envio puntuaba 1 (< umbral 2): «enviar»
+// nunca casa con «envia»/«envie» de la descripcion por subcadena exacta.
+// Raiz ligera por desinencia verbal/nominal española (enviar~envia~envio,
+// mandar~manda, programar~programa) con minimo de 4 letras para no confundir
+// lexemas distintos («recorrido» NO debe casar con «recordatorio»).
+// Es un comparador de relevancia, no un stemmer linguistico; el umbral de
+// buscarEsquemasRelevantes sigue filtrando el ruido.
+const raizDe = p => {
+  const w = String(p || '');
+  const m = w.match(/^(.+?)(ando|iendo|aron|aran|aste|aria|ado|ido|ar|er|ir|an|en|as|es|a|e|o|s)?$/);
+  return m && m[1].length >= 4 ? m[1] : w;
+};
+const mismaRaiz = (a, b) => a === b || a.startsWith(b) || b.startsWith(a);
+
+// Verbos de accion discriminativos: cuando el modelo pide «mandar la
+// probabilidad de lluvia a paula» el unico termino que casa es el verbo;
+// un sustantivo suelto es mucho menos indicativo que un verbo de accion.
+// Pesan doble para que una sola coincidencia verbal supere el umbral sin
+// abrir la puerta a preguntas genericas («que sabes hacer» no los usa).
+const VERBOS_ACCION = new Set(['enviar', 'mandar', 'escribir', 'remitir', 'programar', 'registrar', 'guardar', 'borrar', 'eliminar', 'cancelar', 'crear']);
+
 function puntuar(catalogo, { consulta = '', nombres = [] } = {}) {
   const pedidos = new Set(Array.isArray(nombres) ? nombres.filter(n => typeof n === 'string') : []);
   const terminos = palabras(consulta);
   return catalogo.map((h, i) => {
     const nombre = h.function.name;
     const texto = normalizar(`${nombre.replaceAll('_', ' ')} ${h.function.description}`);
-    const score = pedidos.has(nombre) ? 10000 : terminos.reduce((s, t) => s + (texto.includes(t) ? 1 : 0), 0);
+    const raicesTexto = palabras(texto).map(raizDe);
+    const score = pedidos.has(nombre) ? 10000 : terminos.reduce((s, t) => {
+      const peso = VERBOS_ACCION.has(t) ? 2 : 1;
+      if (texto.includes(t)) return s + peso;
+      const raiz = raizDe(t);
+      return s + (raicesTexto.some(r => mismaRaiz(r, raiz)) ? peso : 0);
+    }, 0);
     return { h, score, i };
   }).filter(r => r.score > 0).sort((a, b) => b.score - a.score || a.i - b.i);
 }

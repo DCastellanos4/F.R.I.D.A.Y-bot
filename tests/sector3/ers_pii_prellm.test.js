@@ -272,3 +272,55 @@ test('singleton Ollama conserva host capturado aunque config cambie: wrapper ref
   assert.ok(!JSON.stringify(recibidas[0]).includes('+34611222333'));
   assert.equal(resolverDestinoLlm({ provider: 'ollama' }).host, 'https://ollama.remoto.example:11434');
 });
+
+// Falla observada 14 nov 2026: el cliente cloud JSON.parsea los arguments
+// de tool_calls antes de devolverlos, asi que llegan como OBJETO al
+// envoltorio. La restauracion solo cubria cadenas: el token [PII_TELEFONO_n]
+// pasaba intacto a las herramientas (la guarda de envios lo bloqueaba) y,
+// en la otra direccion, un objeto con PII en el historial salia al
+// proveedor sin anonimizar.
+test('pre-LLM: restaura tokens en arguments ya parseados a objeto por el cliente cloud', async () => {
+  const inner = innerGrabador({
+    message: {
+      role: 'assistant',
+      content: '',
+      tool_calls: [{
+        id: 'c1',
+        type: 'function',
+        function: { name: 'programar_mensaje_whatsapp', arguments: { numero: '[PII_TELEFONO_1]', mensaje: 'Lluvia: 70%', minutosEnElFuturo: 5 } }
+      }]
+    }
+  });
+  const llm = crearAnonimizadorPreLlm({ inner });
+  const r = await llm.chatCompletion({
+    messages: [{ role: 'user', content: 'este es el numero de paula: +34 612 34 56 78' }]
+  });
+  assert.match(inner.recibidas[0].messages[0].content, /\[PII_TELEFONO_1\]/, 'el numero salio anonimizado');
+  const args = r.message.tool_calls[0].function.arguments;
+  assert.equal(args.numero, '+34 612 34 56 78', 'el token en arguments-objeto debe restaurarse al valor real');
+  assert.equal(args.mensaje, 'Lluvia: 70%', 'el resto de campos intactos');
+  assert.equal(args.minutosEnElFuturo, 5, 'los valores no cadena intactos');
+});
+
+test('pre-LLM: anonimiza arguments-objeto en tool_calls del historial hacia el proveedor', async () => {
+  const inner = innerGrabador({ message: { role: 'assistant', content: 'ok' } });
+  const llm = crearAnonimizadorPreLlm({ inner });
+  await llm.chatCompletion({
+    messages: [
+      { role: 'user', content: 'enviale la probabilidad de lluvia a paula' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{
+          id: 'c1',
+          type: 'function',
+          function: { name: 'programar_mensaje_whatsapp', arguments: { numero: '+34 612 34 56 78', mensaje: 'Lluvia: 70%' } }
+        }]
+      },
+      { role: 'tool', content: 'Bloqueado por seguridad', tool_call_id: 'c1' }
+    ]
+  });
+  const enviada = JSON.stringify(inner.recibidas[0]);
+  assert.equal(enviada.includes('612345678'), false, 'el telefono en arguments-objeto NO sale al proveedor');
+  assert.equal(enviada.includes('612 34 56 78'), false, 'ni con formato');
+});
