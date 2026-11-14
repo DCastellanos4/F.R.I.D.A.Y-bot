@@ -91,7 +91,7 @@ export function resolveCloudConfig(options = {}) {
 
   if (!model) {
     if (provider === 'groq' || baseUrl.includes('groq.com')) {
-      model = 'openai/gpt-oss-120b';
+      model = process.env.GROQ_MODEL || process.env.OPENAI_MODEL || 'openai/gpt-oss-120b';
     } else if (provider === 'deepseek' || baseUrl.includes('deepseek.com')) {
       model = 'deepseek-chat';
     } else if (provider === 'openrouter' || baseUrl.includes('openrouter.ai')) {
@@ -536,7 +536,7 @@ export async function chatCompletionCrudo({
     throw new Error('Cloud LLM provider returned empty choices.');
   }
 
-  let rawContent = choice.content || '';
+  let rawContent = choice.content || choice.reasoning || '';
   let toolCalls = undefined;
 
   if (choice.tool_calls && choice.tool_calls.length > 0) {

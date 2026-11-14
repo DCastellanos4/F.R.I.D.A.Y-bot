@@ -239,10 +239,11 @@ export async function clasificarIntencionConModelo(mensaje, deps = {}) {
         { role: 'system', content: promptSistema },
         { role: 'user', content: mensaje }
       ],
-      options: { temperature: 0, num_predict: 60, num_ctx: 8192 }
+      options: { temperature: 0, num_predict: 128, max_tokens: 128, num_ctx: 8192 }
     });
 
-    const clasificacion = parsearClasificacion(res?.message?.content || '');
+    const textoClasificacion = res?.message?.content || res?.message?.reasoning || res?.raw?.choices?.[0]?.message?.reasoning || '';
+    const clasificacion = parsearClasificacion(textoClasificacion);
     if (!clasificacion) {
       almacenMetricas(deps).registrar({ tipo: 'clasificacion', resultado: 'parse_fail' });
       return null;

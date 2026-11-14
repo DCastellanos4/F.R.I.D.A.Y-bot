@@ -19,7 +19,7 @@ export function duracionCabecera(valor) {
   return partes.reduce((n, p) => n + Number(p[1]) * ({ ms: 1, s: 1000, m: 60000, h: 3600000 }[p[2]]), 0);
 }
 
-export function crearPresupuestoGroq({ limite = 8000, ahora = Date.now, esperar = ms => new Promise(r => setTimeout(r, ms)), esperaMaxima = 70000 } = {}) {
+export function crearPresupuestoGroq({ limite = (typeof process !== 'undefined' && Number(process.env.GROQ_TOKEN_BUDGET)) || 8000, ahora = Date.now, esperar = ms => new Promise(r => setTimeout(r, ms)), esperaMaxima = 70000 } = {}) {
   let cola = Promise.resolve();
   let reservas = [];
   let saldo = null;
@@ -32,6 +32,12 @@ export function crearPresupuestoGroq({ limite = 8000, ahora = Date.now, esperar 
     const reset = duracionCabecera(cabecera(headers, 'x-ratelimit-reset-tokens'));
     if (raw != null && Number.isFinite(Number(raw)) && reset > 0) {
       saldo = { tokens: Math.max(0, Number(raw)), hasta: ahora() + reset };
+      if (reservas.length > 0) {
+        const vigencia = ahora() + Math.min(reset, 60000);
+        for (const r of reservas) {
+          if (r.hasta > vigencia) r.hasta = vigencia;
+        }
+      }
     }
     const retry = cabecera(headers, 'retry-after');
     const segundos = Number(retry);
