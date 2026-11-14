@@ -428,7 +428,7 @@ export const herramientasJarvis = [
     type: 'function',
     function: {
       name: 'programar_mensaje_whatsapp',
-      description: 'OBLIGATORIA: Envía o programa un mensaje de WhatsApp a un número de teléfono de destino (o contacto), ya sea INMEDIATAMENTE (ahora / ya) o a una hora/fecha específica futura.',
+      description: 'OBLIGATORIA: Enviar, mandar o escribir un mensaje de WhatsApp a un número de teléfono de destino (o contacto registrado). Sirve para enviarlo INMEDIATAMENTE (ahora / ya) o para programarlo a una hora/fecha específica futura.',
       parameters: {
         type: 'object',
         properties: {

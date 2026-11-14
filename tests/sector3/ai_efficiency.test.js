@@ -83,7 +83,10 @@ test('ReAct carga esquema faltante y conserva historia, resultado y personalidad
 
 test('fallo de clasificador no vuelca catalogo ni elimina regla de requisitos verificados', async () => {
   const principal = [];
-  await consultarJarvisAislado('mandale una cosa de esas cuando puedas', [], {
+  await // Mensaje generico sin dominio: «mandale...» dejo de servir para este
+  // proposito el 14 nov 2026 (2a), cuando el enrutado reconocio verbo+le/se
+  // como envio a terceros; «hazme...» sigue sin casar con ningun dominio.
+  await consultarJarvisAislado('hazme una cosa de esas cuando puedas', [], {
     chatCompletion: async p => {
       if (p.messages[0].content.includes('Clasifica la intencion')) return { message: { content: 'respuesta invalida' } };
       principal.push(structuredClone(p)); return { message: { content: 'Aclara que necesitas.' } };

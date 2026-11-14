@@ -70,7 +70,9 @@ test('Regresion 400 y Renfe: mensaje generico SIN clasificador ofrece el catalog
   const chat = fabricaChat('basura', captura);
   await bot.procesarMensajesEntrantes(sockSimulado(enviados), {
     type: 'notify',
-    messages: [mensajeEntrante('mandale una cosa de esas cuando puedas', 'LIM-1')]
+    // Mismo cambio que en ai_efficiency: «mandale...» ahora enruta a envio
+    // (14 nov 2026 2a); el mensaje generico sin dominio pasa a ser «hazme...».
+    messages: [mensajeEntrante('hazme una cosa de esas cuando puedas', 'LIM-1')]
   }, {
     chatCompletion: async (args) => {
       const sistema = args.messages[0]?.content || '';

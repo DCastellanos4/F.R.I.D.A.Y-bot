@@ -63,6 +63,12 @@ export function normalizarNumeroTelefono(numeroRaw) {
     return { ok: false, error: `El número "${numeroRaw}" contiene caracteres no válidos.` };
   }
 
+  // Prefijo español duplicado por el interlocutor (ej: "+34 +34 690...",
+  // falla observada 14 nov 2026): colapsar antes de validar longitud.
+  if (/^3434[6789]\d{8}$/.test(digitos)) {
+    digitos = digitos.substring(2);
+  }
+
   // Si tiene 9 dígitos y empieza por 6, 7, 8 o 9 (móviles y fijos españoles) -> autodefault +34
   if (digitos.length === 9 && /^[6789]/.test(digitos)) {
     digitos = '34' + digitos;
