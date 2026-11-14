@@ -155,6 +155,118 @@ test('envio por nombre con numeros distintos en el chat: no se adivina la asocia
   assert.equal(llamada.resultado, 'destinatario_no_verificado', 'con dos numeros distintos la guarda debe seguir bloqueando');
 });
 
+// Revision 14 nov 2026 (seguridad de la resolucion chat): la asociacion
+// nombre -> numero exige afirmacion explicita de David. Coincidir palabra
+// y unicidad NO basta; negaciones, ejemplos y citas no son evidencia; las
+// correcciones recientes ganan. Contraejemplos con numeros ficticios.
+
+async function intentoEnvioPorNombre(historial, numeroQuePasaElModelo = 'paula') {
+  const { contactos, programados } = tmpEstado([]);
+  let n = 0;
+  let resultadoTool = '';
+  const { traza } = await consultarJarvisAislado('enviale un mensaje a paula en 5 minutos', historial, {
+    retornarTraza: true,
+    rutaArchivoContactos: contactos,
+    rutaArchivoProgramados: programados,
+    chatCompletion: async () => {
+      n++;
+      if (n === 1) return { message: { content: '', tool_calls: [{ id: 'r1', function: { name: 'programar_mensaje_whatsapp', arguments: { numero: numeroQuePasaElModelo, mensaje: 'prueba', minutosEnElFuturo: 5 } } }] } };
+      return { message: { content: 'Entendido.' } };
+    }
+  });
+  const llamada = traza.llamadas.find(l => l.nombre === 'programar_mensaje_whatsapp');
+  assert.ok(llamada, 'el modelo no llamo a la tool de envio');
+  const toolMsgs = traza.mensajesTool || [];
+  return { llamada, resultadoTool, toolMsgs };
+}
+
+test('resolucion chat: negacion reciente invalida la asociacion anterior', async () => {
+  // «Paula dice que ese no es su numero»: aunque haya una asociacion
+  // afirmativa mas antigua, la negacion mas reciente manda y se pregunta.
+  const { llamada } = await intentoEnvioPorNombre([
+    { role: 'user', content: 'el numero de paula es 612345678' },
+    { role: 'user', content: 'paula dice que ese no es su numero' }
+  ]);
+  assert.equal(llamada.resultado, 'destinatario_no_verificado', 'la negacion reciente debio invalidar la asociacion');
+});
+
+test('resolucion chat: numero de ejemplo no es evidencia de destino', async () => {
+  const { llamada } = await intentoEnvioPorNombre([
+    { role: 'user', content: 'por ejemplo, el numero de paula es 612345678' }
+  ]);
+  assert.equal(llamada.resultado, 'destinatario_no_verificado', 'un ejemplo no debio resolver el destino');
+});
+
+test('resolucion chat: numero citado de otra persona no es evidencia', async () => {
+  const { llamada } = await intentoEnvioPorNombre([
+    { role: 'user', content: 'mario me dijo: "el numero de paula es 612345678"' }
+  ]);
+  assert.equal(llamada.resultado, 'destinatario_no_verificado', 'una cita no debio resolver el destino');
+});
+
+test('resolucion chat: la correccion reciente con nuevo numero gana', async () => {
+  const { contactos, programados } = tmpEstado([]);
+  let n = 0;
+  let resultadoTool = '';
+  const historial = [
+    { role: 'user', content: 'el numero de paula es 612345678' },
+    { role: 'user', content: 'perdon, el numero de paula es 698765432' }
+  ];
+  const { traza } = await consultarJarvisAislado('enviale un mensaje a paula en 5 minutos', historial, {
+    retornarTraza: true,
+    rutaArchivoContactos: contactos,
+    rutaArchivoProgramados: programados,
+    chatCompletion: async p => {
+      n++;
+      if (n === 1) return { message: { content: '', tool_calls: [{ id: 'c1', function: { name: 'programar_mensaje_whatsapp', arguments: { numero: 'paula', mensaje: 'prueba', minutosEnElFuturo: 5 } } }] } };
+      const ultimoTool = [...p.messages].reverse().find(m => m.role === 'tool');
+      if (ultimoTool) resultadoTool = ultimoTool.content;
+      return { message: { content: 'Programado.' } };
+    }
+  });
+  const llamada = traza.llamadas.find(l => l.nombre === 'programar_mensaje_whatsapp');
+  assert.ok(llamada, 'el modelo no llamo a la tool de envio');
+  assert.notEqual(llamada.resultado, 'destinatario_no_verificado', 'la correccion afirmativa reciente debio verificar');
+  assert.match(resultadoTool, /\+34698765432/, 'debio usarse el numero de la correccion mas reciente');
+});
+
+test('guarda de envio: numero con prefijo de otro pais no verifica contra uno nacional', async () => {
+  // David afirmo el 612345678 para paula; el modelo pasa +155612345678
+  // (mismo sufijo, prefijo de otro pais). El endsWith generico anterior lo
+  // aceptaba como mismo destinatario: riesgo de destino erroneo.
+  const { llamada } = await intentoEnvioPorNombre(
+    [{ role: 'user', content: 'el numero de paula es 612345678' }],
+    '+155612345678'
+  );
+  assert.equal(llamada.resultado, 'destinatario_no_verificado', 'un prefijo de otro pais no debio verificar contra el numero nacional');
+});
+
+test('guarda de envio: prefijo +34 duplicado en el argumento verifica contra el numero afirmado', async () => {
+  // Formato malformado pero inequivoco («+34 +34 612...», falla real del
+  // 14 nov 2026): se colapsa antes de comparar y verifica contra el numero
+  // que David afirmo en el chat.
+  const { contactos, programados } = tmpEstado([]);
+  let n = 0;
+  let resultadoTool = '';
+  const historial = [{ role: 'user', content: 'el numero de paula es 612345678' }];
+  const { traza } = await consultarJarvisAislado('enviale un mensaje a paula en 5 minutos', historial, {
+    retornarTraza: true,
+    rutaArchivoContactos: contactos,
+    rutaArchivoProgramados: programados,
+    chatCompletion: async p => {
+      n++;
+      if (n === 1) return { message: { content: '', tool_calls: [{ id: 'd1', function: { name: 'programar_mensaje_whatsapp', arguments: { numero: '+34 +34 612 34 56 78', mensaje: 'prueba', minutosEnElFuturo: 5 } } }] } };
+      const ultimoTool = [...p.messages].reverse().find(m => m.role === 'tool');
+      if (ultimoTool) resultadoTool = ultimoTool.content;
+      return { message: { content: 'Programado.' } };
+    }
+  });
+  const llamada = traza.llamadas.find(l => l.nombre === 'programar_mensaje_whatsapp');
+  assert.ok(llamada, 'el modelo no llamo a la tool de envio');
+  assert.notEqual(llamada.resultado, 'destinatario_no_verificado', 'el +34 duplicado debio colapsar y verificar');
+  assert.match(resultadoTool, /\+34612345678/, 'el envio debio programarse al numero normalizado');
+});
+
 test('descubrir: el inventario de contexto no se repite entero en la misma consulta', async () => {
   const { contactos, programados } = tmpEstado([]);
   let n = 0;
