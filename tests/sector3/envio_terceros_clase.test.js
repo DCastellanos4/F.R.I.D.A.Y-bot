@@ -110,6 +110,77 @@ test('envio por nombre de contacto: se resuelve contra la agenda y pasa la guard
   assert.match(resultadoTool, /\+34690358664/, 'el nombre debio resolverse al telefono del contacto');
 });
 
+test('envio por nombre con agenda vacia: numero aportado en el chat junto al nombre verifica', async () => {
+  const { contactos, programados } = tmpEstado([]);
+  const historial = [{ role: 'user', content: '+34 612 34 56 78 este es el numero de paula' }];
+  let n = 0;
+  let resultadoTool = '';
+  const { traza } = await consultarJarvisAislado('enviale la probabilidad de lluvia a paula', historial, {
+    retornarTraza: true,
+    rutaArchivoContactos: contactos,
+    rutaArchivoProgramados: programados,
+    chatCompletion: async p => {
+      n++;
+      if (n === 1) return { message: { content: '', tool_calls: [{ id: 'c1', function: { name: 'programar_mensaje_whatsapp', arguments: { numero: 'Paula', mensaje: 'Lluvia: 70%', minutosEnElFuturo: 5 } } }] } };
+      const ultimoTool = [...p.messages].reverse().find(m => m.role === 'tool');
+      if (ultimoTool) resultadoTool = ultimoTool.content;
+      return { message: { content: 'Programado, senor.' } };
+    }
+  });
+  const llamada = traza.llamadas.find(l => l.nombre === 'programar_mensaje_whatsapp');
+  assert.ok(llamada, 'el modelo no llamo a la tool de envio');
+  assert.notEqual(llamada.resultado, 'destinatario_no_verificado', 'numero dado en el chat no debio quedar bloqueado');
+  assert.match(resultadoTool, /\+34612345678/, 'el nombre debio resolverse al numero aportado en el chat');
+});
+
+test('envio por nombre con numeros distintos en el chat: no se adivina la asociacion', async () => {
+  const { contactos, programados } = tmpEstado([]);
+  const historial = [
+    { role: 'user', content: 'el numero de paula es 612345678' },
+    { role: 'user', content: 'apunta tambien el de paula por si acaso: 698765432' }
+  ];
+  let n = 0;
+  const { traza } = await consultarJarvisAislado('enviale un mensaje a paula en 5 minutos', historial, {
+    retornarTraza: true,
+    rutaArchivoContactos: contactos,
+    rutaArchivoProgramados: programados,
+    chatCompletion: async () => {
+      n++;
+      if (n === 1) return { message: { content: '', tool_calls: [{ id: 'a1', function: { name: 'programar_mensaje_whatsapp', arguments: { numero: 'paula', mensaje: 'prueba', minutosEnElFuturo: 5 } } }] } };
+      return { message: { content: 'Necesito que me confirmes el numero.' } };
+    }
+  });
+  const llamada = traza.llamadas.find(l => l.nombre === 'programar_mensaje_whatsapp');
+  assert.ok(llamada, 'el modelo no llamo a la tool de envio');
+  assert.equal(llamada.resultado, 'destinatario_no_verificado', 'con dos numeros distintos la guarda debe seguir bloqueando');
+});
+
+test('descubrir: el inventario de contexto no se repite entero en la misma consulta', async () => {
+  const { contactos, programados } = tmpEstado([]);
+  let n = 0;
+  let todosLosToolMsgs = [];
+  await consultarJarvisAislado('si crealo', [], {
+    retornarTraza: true,
+    rutaArchivoContactos: contactos,
+    rutaArchivoProgramados: programados,
+    chatCompletion: async p => {
+      // La primera llamada es el clasificador del safety net: se deja fallar.
+      if ((p.messages[0]?.content || '').includes('Clasifica la intencion')) return { message: { content: 'respuesta invalida' } };
+      n++;
+      if (n <= 2) return { message: { content: '', tool_calls: [{ id: `d${n}`, function: { name: 'descubrir_herramientas', arguments: { consulta: 'registrar contacto de paula', contexto: 'capacidades' } } }] } };
+      todosLosToolMsgs = p.messages.filter(m => m.role === 'tool').map(m => m.content);
+      return { message: { content: 'Hecho.' } };
+    }
+  });
+  assert.equal(todosLosToolMsgs.length, 2, 'debieron ejecutarse las dos llamadas de descubrimiento');
+  assert.match(todosLosToolMsgs[0], /CAPACIDADES REALES/, 'la primera entrega no trajo el inventario completo');
+  assert.match(todosLosToolMsgs[1], /ya entregado en esta consulta/, 'la segunda llamada no recibio el apunte de deduplicacion');
+  assert.doesNotMatch(todosLosToolMsgs[1], /CAPACIDADES REALES/, 'el inventario completo se repitio');
+  // Los esquemas ya cargados en la primera llamada no se repiten; el apunte
+  // remite a ellos (cargar de nuevo seria duplicar tokens).
+  assert.match(todosLosToolMsgs[1], /esquemas ya cargados/, 'el apunte no remite a los esquemas ya cargados');
+});
+
 test('envio bloqueado: reintentos identicos se suprimen en la misma consulta', async () => {
   const { contactos, programados } = tmpEstado([]);
   let n = 0;
