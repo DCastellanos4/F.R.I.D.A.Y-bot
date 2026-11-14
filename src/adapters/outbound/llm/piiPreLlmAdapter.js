@@ -112,6 +112,8 @@ export function crearAnonimizadorPreLlm({ inner, anonimizador = null, permitir =
         const copiaTc = { ...tc, function: tc.function ? { ...tc.function } : tc.function };
         if (copiaTc.function && typeof copiaTc.function.arguments === 'string') {
           copiaTc.function.arguments = anonimizarTexto(copiaTc.function.arguments, mapa, valorAToken);
+        } else if (copiaTc.function && copiaTc.function.arguments && typeof copiaTc.function.arguments === 'object') {
+          copiaTc.function.arguments = mapTextosProfundo(copiaTc.function.arguments, (t) => anonimizarTexto(t, mapa, valorAToken));
         }
         return copiaTc;
       });
@@ -122,6 +124,23 @@ export function crearAnonimizadorPreLlm({ inner, anonimizador = null, permitir =
   function restaurarTexto(texto, mapa) {
     if (typeof texto !== 'string' || !texto) return texto;
     return pii.restaurar(texto, mapa);
+  }
+
+  // Los argumentos de tool_calls pueden llegar YA parseados a objeto (el
+  // cliente cloud los JSON.parsea antes de devolverlos; falla observada 14
+  // nov 2026: el token [PII_TELEFONO_n] llegaba sin restaurar a la guarda
+  // de envios y el envio quedaba bloqueado). Se recorren las cadenas en
+  // profundidad en ambas direcciones: sin esto, ademas, un objeto con PII
+  // en el historial saldria al proveedor SIN anonimizar.
+  function mapTextosProfundo(valor, fn) {
+    if (typeof valor === 'string') return fn(valor);
+    if (Array.isArray(valor)) return valor.map((v) => mapTextosProfundo(v, fn));
+    if (valor && typeof valor === 'object') {
+      const out = {};
+      for (const [k, v] of Object.entries(valor)) out[k] = mapTextosProfundo(v, fn);
+      return out;
+    }
+    return valor;
   }
 
   return Object.freeze({
@@ -168,6 +187,8 @@ export function crearAnonimizadorPreLlm({ inner, anonimizador = null, permitir =
           const copiaTc = { ...tc, function: tc.function ? { ...tc.function } : tc.function };
           if (copiaTc.function && typeof copiaTc.function.arguments === 'string') {
             copiaTc.function.arguments = restaurarTexto(copiaTc.function.arguments, mapa);
+          } else if (copiaTc.function && copiaTc.function.arguments && typeof copiaTc.function.arguments === 'object') {
+            copiaTc.function.arguments = mapTextosProfundo(copiaTc.function.arguments, (t) => restaurarTexto(t, mapa));
           }
           return copiaTc;
         });
