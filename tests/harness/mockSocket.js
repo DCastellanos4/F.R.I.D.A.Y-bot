@@ -113,7 +113,7 @@ export function createMockSocket(config = {}) {
         id: groupJid,
         subject: 'Mock Group',
         participants: [
-          { id: '34635605605@s.whatsapp.net', admin: 'admin' },
+          { id: '34600000000@s.whatsapp.net', admin: 'admin' },
           { id: '34600112233@s.whatsapp.net', admin: null }
         ],
         creation: Math.floor(Date.now() / 1000)

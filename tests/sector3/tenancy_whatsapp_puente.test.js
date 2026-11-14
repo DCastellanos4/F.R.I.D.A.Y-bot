@@ -23,7 +23,7 @@ const ownerBefore=JSON.stringify(ownerContainer.persistencia.memoryStore.leer())
 const { setVipMode }=await import('../../src/services/vipFilterService.js');setVipMode(true);
 const db=abrirBaseDatos(path.join(DIR,'state.db'));ejecutarMigraciones(db);
 const repo=crearSqliteTenantRepository(db),lim=crearSqliteLimitesStore(db),uso=crearSqliteUsageStore(db);
-const A='34000000001@s.whatsapp.net',B='900000002@lid',OWNER='149868706304033@lid';
+const A='34000000001@s.whatsapp.net',B='900000002@lid',OWNER='123456789012345@lid';
 for(const [id,jid]of [['sint-a',A],['sint-b',B]]){repo.registrarTenant({id,nombre:id});repo.vincularIdentidad(id,'whatsapp',jid);repo.configurarPermisos(id,['guardar_memoria','listar_memorias']);}
 fs.writeFileSync(path.join(DIR,'brain_memory.json'),JSON.stringify([{id:'o1',sujeto:'tesoro owner',dato:'SECRETO-OWNER-NUNCA'}]));
 let plan=null,cap=[],calls=0,beforeReply=null;

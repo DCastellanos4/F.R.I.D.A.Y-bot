@@ -287,7 +287,7 @@ test('mcp-server-lifestyle: ejecucion stdio JSON-RPC 2.0 via subproceso', async 
         arguments: {
           accion: 'marcar',
           criterio: 'flexiones',
-          fecha: '2026-11-12'
+          fecha: new Date().toISOString().slice(0, 10)
         }
       }
     });

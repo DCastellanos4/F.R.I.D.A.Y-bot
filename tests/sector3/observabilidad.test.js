@@ -31,7 +31,7 @@ import {
 import { consultarJarvis } from '../../src/core/jarvisAgent.js';
 
 const MENSAJE_SECRETO = 'texto-privado-que-nunca-debe-aparecer-XYZ123';
-const CHAT_ID = 'chat-privado-34635605605@test';
+const CHAT_ID = 'chat-privado-34600000000@test';
 
 let exporter;
 let processor;
@@ -259,7 +259,7 @@ test('hashSesion: estable, opaco y truncado', () => {
   assert.equal(h1, h2);
   assert.equal(h1.length, 16);
   assert.notEqual(h1, CHAT_ID);
-  assert.ok(!h1.includes('34635605605'), 'el hash no contiene el telefono');
+  assert.ok(!h1.includes('34600000000'), 'el hash no contiene el telefono');
 });
 
 test('registro directo de metricas sin trazas activas', async () => {

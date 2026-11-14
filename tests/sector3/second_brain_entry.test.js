@@ -25,7 +25,7 @@ const { generarWiki } = await import('../../src/services/wikiService.js');
 const { preguntarDocumentos } = await import('../../src/services/preguntasDocumentosService.js');
 const { capturarPagina } = await import('../../src/services/capturaService.js');
 
-const JID_DAVID = '149868706304033@lid';
+const JID_DAVID = '123456789012345@lid';
 const carpetaNotas = path.join(dirEntorno, 'notas');
 
 function sockSimulado(enviados) {

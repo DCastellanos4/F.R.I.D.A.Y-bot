@@ -95,8 +95,8 @@ describe('Sector 1 - Deep Unit Verification: Task 2 & Task 5', () => {
     it('should verify David identification by phone, LID, and prefixes', () => {
       assert.strictEqual(vipFilterService.isDavid(TEST_JIDS.DAVID_JID), true);
       assert.strictEqual(vipFilterService.isDavid(TEST_JIDS.DAVID_LID), true);
-      assert.strictEqual(vipFilterService.isDavid('34635605605@s.whatsapp.net'), true);
-      assert.strictEqual(vipFilterService.isDavid('149868706304033@lid'), true);
+      assert.strictEqual(vipFilterService.isDavid('34600000000@s.whatsapp.net'), true);
+      assert.strictEqual(vipFilterService.isDavid('123456789012345@lid'), true);
       assert.strictEqual(vipFilterService.isDavid(TEST_JIDS.EXTERNAL_JID), false);
       assert.strictEqual(vipFilterService.isDavid(null), false);
       assert.strictEqual(vipFilterService.isDavid(''), false);

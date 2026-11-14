@@ -24,7 +24,7 @@ const { estadisticasChat } = await import('../../src/services/groupStatsService.
 const { registrarMensaje } = await import('../../src/services/conversationHistoryService.js');
 const { procesarUbicacionEntrante, registrarAvisoLlegada } = await import('../../src/services/arrivalWatchService.js');
 
-const JID_DAVID = '149868706304033@lid';
+const JID_DAVID = '123456789012345@lid';
 
 function sockSimulado(enviados) {
   return {

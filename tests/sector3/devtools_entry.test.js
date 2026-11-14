@@ -17,7 +17,7 @@ process.env.NODE_ENV = 'test';
 const bot = await import('../../whatsappBot.js');
 const { analizarIntencion } = await import('../../src/core/jarvisAgent.js');
 
-const JID_DAVID = '149868706304033@lid';
+const JID_DAVID = '123456789012345@lid';
 const rutaIdeas = path.join(dirEntorno, 'ideas.json');
 
 function sockSimulado(enviados) {

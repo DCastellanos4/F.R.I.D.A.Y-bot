@@ -23,7 +23,7 @@ const { analizarCvContraOferta } = await import('../../src/services/cvAnalyzerSe
 const { resumirApuntes } = await import('../../src/services/notesSummarizerService.js');
 const { estadoEntrevista } = await import('../../src/services/interviewService.js');
 
-const JID_DAVID = '149868706304033@lid';
+const JID_DAVID = '123456789012345@lid';
 
 function sockSimulado(enviados) {
   return {

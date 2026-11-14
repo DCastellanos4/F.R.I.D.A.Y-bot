@@ -22,7 +22,7 @@ process.env.NODE_ENV = 'test';
 
 const bot = await import('../../whatsappBot.js');
 
-const JID_DAVID = '149868706304033@lid';
+const JID_DAVID = '123456789012345@lid';
 let secuencia = 0;
 
 function sockSimulado(enviados) {

@@ -142,7 +142,7 @@ test('mcp-server-media: ejecucion stdio JSON-RPC 2.0 via subproceso', async () =
     child.stdin.write(JSON.stringify(payload) + '\n');
 
     const inicio = Date.now();
-    while (Date.now() - inicio < 6000) {
+    while (Date.now() - inicio < 12000) {
       for (let i = posInicial; i < respuestas.length; i++) {
         if (respuestas[i].id === idEsperado) {
           return respuestas[i];

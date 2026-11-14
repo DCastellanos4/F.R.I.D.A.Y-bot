@@ -21,7 +21,7 @@ function deps(extra = {}) {
   return {
     rutaArchivo: path.join(dirEntorno, `fin-${Math.random().toString(36).slice(2)}.json`),
     ahora: '2026-11-05T12:00:00Z',
-    chatId: '149868706304033@lid',
+    chatId: '123456789012345@lid',
     enqueue: extra.enqueue || (() => {}),
     ...extra
   };

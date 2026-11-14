@@ -30,13 +30,13 @@ export function isDavid(jid) {
   if (!jid || typeof jid !== 'string') return false;
   const clean = normalizeJid(jid);
 
-  const phone = (config && config.userPhone) ? String(config.userPhone).trim() : '34635605605';
-  const lid = (config && config.userLid) ? String(config.userLid).trim() : '149868706304033';
+  const phone = (config && config.userPhone) ? String(config.userPhone).trim() : '34600000000';
+  const lid = (config && config.userLid) ? String(config.userLid).trim() : '123456789012345';
 
   if (phone && clean.includes(phone)) return true;
   if (lid && clean.includes(lid)) return true;
-  if (clean.startsWith('34635605605')) return true;
-  if (clean.startsWith('149868706304033')) return true;
+  if (clean.startsWith('34600000000')) return true;
+  if (clean.startsWith('123456789012345')) return true;
 
   return false;
 }

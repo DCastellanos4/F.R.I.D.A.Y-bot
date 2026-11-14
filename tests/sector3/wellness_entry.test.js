@@ -27,7 +27,7 @@ const { crearQuedada, redactarInvitacion } = await import('../../src/services/qu
 const { recomendarSeriePelicula } = await import('../../src/services/recommenderService.js');
 const { RAMAS_CURADAS } = await import('../../src/services/newsService.js');
 
-const JID_DAVID = '149868706304033@lid';
+const JID_DAVID = '123456789012345@lid';
 
 function sockSimulado(enviados) {
   return {

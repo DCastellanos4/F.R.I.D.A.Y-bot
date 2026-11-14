@@ -46,13 +46,13 @@ const hasCloudKey = Boolean(
   process.env.DEEPSEEK_API_KEY
 );
 
-const defaultProvider = (process.env.LLM_PROVIDER || (hasCloudKey ? 'openai' : 'ollama')).toLowerCase();
+const defaultProvider = (process.env.LLM_PROVIDER || (process.env.GROQ_API_KEY ? 'groq' : process.env.OPENAI_API_KEY ? 'openai' : process.env.OPENROUTER_API_KEY ? 'openrouter' : process.env.DEEPSEEK_API_KEY ? 'deepseek' : 'ollama')).toLowerCase();
 
 export const config = {
   // Identidades Telefónicas (WhatsApp Multi-Device Baileys)
-  userPhone: process.env.AUTHORIZED_USER_PHONE || '34635605605',
-  botPhone: process.env.BOT_PHONE || '34711222006',
-  userLid: process.env.AUTHORIZED_USER_LID || '149868706304033',
+  userPhone: process.env.AUTHORIZED_USER_PHONE || '34600000000',
+  botPhone: process.env.BOT_PHONE || '34700000000',
+  userLid: process.env.AUTHORIZED_USER_LID || '123456789012345',
 
   // Configuración de Proveedor de Inteligencia Artificial
   // 'ollama' (self-hosted local) | 'openai' | 'groq' | 'openrouter' | 'deepseek'

@@ -27,7 +27,7 @@ const episodica = await import('../../src/services/episodicMemoryService.js');
 const bot = await import('../../whatsappBot.js');
 
 // JID LID de David: via real de sus mensajes directos.
-const JID_DAVID = '149868706304033@lid';
+const JID_DAVID = '123456789012345@lid';
 
 function sockSimulado(enviados) {
   return {

@@ -184,7 +184,7 @@ test('error de herramienta de solo lectura: el modelo recibe la pista y reintent
 // ---------- Cableado del aviso de salud: desactivado por defecto ----------
 
 const bot = await import('../../whatsappBot.js');
-const JID_DAVID = '149868706304033@lid';
+const JID_DAVID = '123456789012345@lid';
 
 function sembrarMetricasFallidas(ruta, n = 10) {
   fs.mkdirSync(path.dirname(ruta), { recursive: true });

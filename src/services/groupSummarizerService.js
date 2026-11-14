@@ -32,8 +32,8 @@ function normalizeText(text) {
  * @returns {boolean}
  */
 export function isDavidMentioned(text, mentionedJids = []) {
-  const davidPhone = (config && config.userPhone) ? String(config.userPhone).trim() : '34635605605';
-  const davidLid = (config && config.userLid) ? String(config.userLid).trim() : '149868706304033';
+  const davidPhone = (config && config.userPhone) ? String(config.userPhone).trim() : '34600000000';
+  const davidLid = (config && config.userLid) ? String(config.userLid).trim() : '123456789012345';
 
   // 1. Comprobacion de menciones formales en metadatos de WhatsApp
   if (Array.isArray(mentionedJids) && mentionedJids.length > 0) {

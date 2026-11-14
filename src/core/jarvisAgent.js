@@ -1,3 +1,4 @@
+import { consultarEventos } from '../services/calendarService.js';
 import { verificarArbolTenant } from './tenancy.js';
 import { config } from '../config/config.js';
 import { herramientasJarvis, herramientasParaIntenciones, limitarHerramientasParaProveedor, LIMITE_HERRAMIENTAS_PROVEEDOR, NOMBRES_HERRAMIENTAS_JARVIS } from './tools.js';
@@ -803,6 +804,10 @@ const AFIRMACION_INCAPACIDAD = /(no dispongo de acceso|sin (la )?(clave|token|cr
 // de la herramienta con presentacion determinista verificable; no basta
 // detectar la frase de incapacidad (el modelo tambien puede inventar
 // horarios sin llamar a la tool). Vigilancia/precios van por otra via.
+function esConsultaCalendario(texto) {
+  return /(qu[eé]\s+tengo\s+hoy|(mi\s+)?(agenda|calendario)\s+(de\s+hoy|hoy)|qu[eé]\s+eventos\s+tengo|tengo\s+algo\s+hoy)/i.test(texto || '');
+}
+
 function esConsultaSalidasTrenes(texto) {
   const t = String(texto || '');
   if (!CONSULTA_TRENES.test(t)) return false;
@@ -2332,6 +2337,38 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
     console.log('[J.A.R.V.I.S.] Salidas de tren servidas por camino determinista (fuente GTFS, sin LLM).');
     if (opciones.retornarObjeto || opciones.retornarTraza) return { respuesta: respuestaDet, traza };
     return respuestaDet;
+  }
+
+  if (esConsultaCalendario(mensajeUsuario)) {
+    if (opciones.tenantId && opciones.tenantId !== 'propietario') return 'Capacidad no disponible para este usuario.';
+    try {
+      const hoyInicio = new Date();
+      hoyInicio.setHours(0, 0, 0, 0);
+      const hoyFin = new Date();
+      hoyFin.setHours(23, 59, 59, 999);
+      const resCal = await consultarEventos({ desde: hoyInicio.toISOString(), hasta: hoyFin.toISOString() });
+      let textoCal = '';
+      if (!resCal.ok || !resCal.eventos || resCal.eventos.length === 0) {
+        textoCal = 'David, para hoy no tienes eventos programados en el calendario.';
+      } else {
+        const lineas = resCal.eventos.map(e => {
+          const hora = e.inicio ? new Date(e.inicio).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : 'Todo el dia';
+          return `- ${hora}: ${e.titulo || e.summary || 'Evento'}${e.ubicacion ? ` (${e.ubicacion})` : ''}`;
+        });
+        textoCal = `David, tienes ${resCal.eventos.length} evento(s) para hoy:\n${lineas.join('\n')}`;
+      }
+      traza.via = 'determinista_calendario';
+      registrarFinConsulta({ via: 'determinista_calendario', duracionSeg: (Date.now() - traza.inicio) / 1000 });
+      const respuestaCal = limpiarRespuestaJarvis(textoCal);
+      traza.respuestaFinal = respuestaCal;
+      traza.duracionMs = Date.now() - traza.inicio;
+      guardarTraza(traza, opciones);
+      console.log('[J.A.R.V.I.S.] Eventos de calendario servidos por camino determinista (Google Calendar, sin LLM).');
+      if (opciones.retornarObjeto || opciones.retornarTraza) return { respuesta: respuestaCal, traza };
+      return respuestaCal;
+    } catch (errCal) {
+      console.warn('[J.A.R.V.I.S.] Error en camino determinista de calendario:', errCal.message);
+    }
   }
 
   if (analisis.safetyNet) {

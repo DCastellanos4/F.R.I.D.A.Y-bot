@@ -28,7 +28,7 @@ process.env.NODE_ENV = 'test';
 const skills = await import('../../src/services/skillsService.js');
 const bot = await import('../../whatsappBot.js');
 
-const JID_DAVID = '149868706304033@lid';
+const JID_DAVID = '123456789012345@lid';
 const depsSkills = () => ({ rutaSkills: path.join(dirEntorno, 'data', `skills-${Math.random().toString(36).slice(2)}.json`) });
 
 function sockSimulado(enviados) {

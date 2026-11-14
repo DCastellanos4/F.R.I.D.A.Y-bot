@@ -128,7 +128,7 @@ test('tenantId obligatorio y validado en los almacenes', () => {
 });
 
 test('identidad propietario: reproduce la resolucion historica y no acepta de mas', () => {
-  const PHONE = '34635605605'; const LID = '149868706304033';
+  const PHONE = '34600000000'; const LID = '123456789012345';
   const mapeo = { 'x999': `${PHONE}` };
   const deps = { phone: PHONE, lid: LID, leerMapeoInverso: (id) => mapeo[id] ?? null };
   // Referencia: logica original de whatsappBot (copia literal).
@@ -152,7 +152,7 @@ test('identidad propietario: reproduce la resolucion historica y no acepta de ma
 test('desconocidos no crean tenants; identidad exacta de tenant registrado resuelve; el resto null', () => {
   const db = dbNueva(); ejecutarMigraciones(db);
   const repo = crearSqliteTenantRepository(db);
-  const cfg = { phone: '34635605605', lid: '149868706304033' };
+  const cfg = { phone: '34600000000', lid: '123456789012345' };
   const antes = db.prepare('SELECT count(*) c FROM tenants').get().c;
   assert.equal(resolverTenant('256700000000@s.whatsapp.net', { propietario: cfg, repositorioIdentidades: repo }), null);
   assert.equal(resolverTenant('120363000000@g.us', { propietario: cfg, repositorioIdentidades: repo }), null);

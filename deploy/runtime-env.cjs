@@ -6,7 +6,11 @@ const KEYS={
 };
 function cargarEntornoRuntime({file=process.env.DAVIS_RUNTIME_CONFIG||path.join(os.homedir(),'jarvis-estado','secrets','runtime-env.json'),required=process.env.DAVIS_RUNTIME_CONFIG_REQUIRED==='1'||fs.existsSync(path.join(path.dirname(file),'runtime-env.required'))}={}){
  if(!fs.existsSync(file)){if(required)throw new Error('DAVIS_PRIVATE_RUNTIME_CONFIG_REQUIRED');return{};}
- const stat=fs.lstatSync(file);if(!stat.isFile()||stat.isSymbolicLink()||(stat.mode&0o077)!==0||stat.uid!==process.getuid())throw new Error('DAVIS_PRIVATE_RUNTIME_CONFIG_PERMISSIONS');
+ const stat=fs.lstatSync(file);
+ if(!stat.isFile()||stat.isSymbolicLink())throw new Error('DAVIS_PRIVATE_RUNTIME_CONFIG_PERMISSIONS');
+ if(process.platform!=='win32'){
+  if((stat.mode&0o077)!==0||(typeof process.getuid==='function'&&stat.uid!==process.getuid()))throw new Error('DAVIS_PRIVATE_RUNTIME_CONFIG_PERMISSIONS');
+ }
  let value;try{value=JSON.parse(fs.readFileSync(file,'utf8'));}catch{throw new Error('DAVIS_PRIVATE_RUNTIME_CONFIG_FORMAT');}
  if(!value||value.schema!==1||!value.apps||Object.keys(value).sort().join(',')!=='apps,schema'||Object.keys(value.apps).sort().join(',')!=='jarvis-api,jarvis-whatsapp')throw new Error('DAVIS_PRIVATE_RUNTIME_CONFIG_SCHEMA');
  const result={};for(const [name,env] of Object.entries(value.apps)){

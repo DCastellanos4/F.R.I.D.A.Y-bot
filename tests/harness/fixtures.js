@@ -4,9 +4,9 @@ import crypto from 'node:crypto';
  * Standard test JIDs and constants.
  */
 export const TEST_JIDS = {
-  DAVID_PHONE: '34635605605',
-  DAVID_JID: '34635605605@s.whatsapp.net',
-  DAVID_LID: '149868706304033@lid',
+  DAVID_PHONE: '34600000000',
+  DAVID_JID: '34600000000@s.whatsapp.net',
+  DAVID_LID: '123456789012345@lid',
   EXTERNAL_JID: '34600112233@s.whatsapp.net',
   EXTERNAL_PHONE: '34600112233',
   VIP_EXTERNAL_JID: '34699887766@s.whatsapp.net',

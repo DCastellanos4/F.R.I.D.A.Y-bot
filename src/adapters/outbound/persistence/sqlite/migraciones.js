@@ -311,6 +311,144 @@ export const MIGRACIONES = [
       ALTER TABLE outbox_events ADD COLUMN lease_until TEXT;
       CREATE INDEX idx_outbox_lease ON outbox_events(estado, lease_until);
     `
+  },
+  {
+    version: 11,
+    nombre: '011_unificacion_sqlite_total',
+    sql: `
+      CREATE TABLE IF NOT EXISTS recordatorios (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        chat_id TEXT NOT NULL,
+        mensaje TEXT NOT NULL,
+        fecha_objetivo TEXT NOT NULL,
+        recurrencia TEXT,
+        estado TEXT NOT NULL DEFAULT 'pendiente',
+        creado_en TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_recordatorios_tenant_estado ON recordatorios(tenant_id, estado);
+
+      CREATE TABLE IF NOT EXISTS snoozes (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        chat_id TEXT NOT NULL,
+        mensaje_original_id TEXT,
+        fecha_aviso TEXT NOT NULL,
+        estado TEXT NOT NULL DEFAULT 'pendiente',
+        creado_en TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_snoozes_tenant ON snoozes(tenant_id, estado);
+
+      CREATE TABLE IF NOT EXISTS habitos (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        nombre TEXT NOT NULL,
+        frecuencia TEXT NOT NULL DEFAULT 'diaria',
+        dias TEXT NOT NULL DEFAULT '[]',
+        hora TEXT,
+        activo INTEGER NOT NULL DEFAULT 1,
+        creado_en TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_habitos_tenant ON habitos(tenant_id, activo);
+
+      CREATE TABLE IF NOT EXISTS habitos_logs (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        habito_id TEXT NOT NULL,
+        fecha TEXT NOT NULL,
+        completado INTEGER NOT NULL DEFAULT 1
+      );
+      CREATE INDEX IF NOT EXISTS idx_habitos_logs_tenant ON habitos_logs(tenant_id, habito_id, fecha);
+
+      CREATE TABLE IF NOT EXISTS lista_compra (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        item TEXT NOT NULL,
+        cantidad TEXT NOT NULL DEFAULT '1',
+        tachado INTEGER NOT NULL DEFAULT 0,
+        fecha TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_compra_tenant ON lista_compra(tenant_id, tachado);
+
+      CREATE TABLE IF NOT EXISTS contactos (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        nombre TEXT NOT NULL,
+        telefono TEXT,
+        notas TEXT,
+        creado_en TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_contactos_tenant ON contactos(tenant_id, nombre);
+
+      CREATE TABLE IF NOT EXISTS quedadas_agenda (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        titulo TEXT NOT NULL,
+        fecha TEXT NOT NULL,
+        participantes TEXT NOT NULL DEFAULT '[]',
+        descripcion TEXT,
+        creado_en TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_quedadas_tenant ON quedadas_agenda(tenant_id, fecha);
+
+      CREATE TABLE IF NOT EXISTS estudio_entregas (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        asignatura TEXT NOT NULL,
+        descripcion TEXT NOT NULL,
+        fecha_limite TEXT NOT NULL,
+        completada INTEGER NOT NULL DEFAULT 0,
+        creada_en TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_entregas_tenant ON estudio_entregas(tenant_id, completada);
+
+      CREATE TABLE IF NOT EXISTS estudio_flashcards (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        asignatura TEXT NOT NULL,
+        pregunta TEXT NOT NULL,
+        respuesta TEXT NOT NULL,
+        proximo_repaso TEXT NOT NULL,
+        intervalo_dias INTEGER NOT NULL DEFAULT 1,
+        facilidad REAL NOT NULL DEFAULT 2.5,
+        repeticiones INTEGER NOT NULL DEFAULT 0,
+        creada_en TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_flashcards_tenant ON estudio_flashcards(tenant_id, proximo_repaso);
+
+      CREATE TABLE IF NOT EXISTS ideas (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        texto TEXT NOT NULL,
+        prioridad TEXT NOT NULL DEFAULT 'media',
+        tags TEXT NOT NULL DEFAULT '[]',
+        creada_en TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_ideas_tenant ON ideas(tenant_id, prioridad);
+
+      CREATE TABLE IF NOT EXISTS articulos_vigilados (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        url TEXT NOT NULL,
+        titulo TEXT,
+        precio_objetivo REAL,
+        precio_actual REAL,
+        activo INTEGER NOT NULL DEFAULT 1,
+        creado_en TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_articulos_tenant ON articulos_vigilados(tenant_id, activo);
+
+      CREATE TABLE IF NOT EXISTS mensajes_programados (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        jid TEXT NOT NULL,
+        mensaje TEXT NOT NULL,
+        fecha_envio TEXT NOT NULL,
+        estado TEXT NOT NULL DEFAULT 'pendiente',
+        creado_en TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_mensajes_prog_tenant ON mensajes_programados(tenant_id, estado);
+    `
   }
 ];
 

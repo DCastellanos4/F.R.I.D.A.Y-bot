@@ -1,3 +1,8 @@
+const _symlinkSync = fs.symlinkSync;
+function trySymlink(t, l) {
+  try { _symlinkSync(t, l); return true; }
+  catch (e) { if (e.code === 'EPERM' && process.platform === 'win32') return false; throw e; }
+}
 // Adversarial offline: filesystem real, enlaces a propietario/B, puerto de
 // compatibilidad por segundo argumento. Sin red, usuarios reales ni gate abierto.
 import { test } from 'node:test';
@@ -25,14 +30,14 @@ test('gate publico tambien rechaza tenant pasado en segundo argumento legacy', a
 });
 
 test('read/RAG: fichero memoria symlink al propietario se rechaza antes del LLM', async () => {
- reset(); fs.symlinkSync(owner, path.join(DIR, 'tenants', 'sint-a', 'brain_memory.json'));
+ reset(); if (!trySymlink(owner, path.join(DIR, 'tenants', 'sint-a', 'brain_memory.json'))) return;
  const cap = [];
  const r = await consultarJarvisEnAmbito('tesoro azul', [], { tenantId: 'sint-a', controlUso, chatCompletion: stub(cap) });
  assert.equal(cap.length, 0); assert.match(String(r), /almacenamiento/i);
 });
 
 test('write: guardar_memoria nunca sigue symlink hacia archivo propietario', async () => {
- reset(); fs.symlinkSync(owner, path.join(DIR, 'tenants', 'sint-a', 'brain_memory.json'));
+ reset(); if (!trySymlink(owner, path.join(DIR, 'tenants', 'sint-a', 'brain_memory.json'))) return;
  const antes = fs.readFileSync(owner, 'utf8'); const cap = [];
  await consultarJarvisEnAmbito('guarda el dato', [], { tenantId: 'sint-a', controlUso, rolDeTenant: () => 'usuario', permitidasUsuario: ['guardar_memoria'], chatCompletion: stub(cap, { name: 'guardar_memoria', arguments: { sujeto: 'ajeno', dato: 'DATO-INTRUSO' } }) });
  assert.equal(fs.readFileSync(owner, 'utf8'), antes); assert.equal(cap.length, 0);
@@ -41,7 +46,7 @@ test('write: guardar_memoria nunca sigue symlink hacia archivo propietario', asy
 test('directorio tenant enlazado al propietario o a B: no sigue el enlace', async () => {
  for (const target of [DIR, path.join(DIR, 'otro-b')]) {
   reset(); fs.mkdirSync(target, { recursive: true }); fs.rmSync(path.join(DIR, 'tenants', 'sint-a'), { recursive: true });
-  fs.symlinkSync(target, path.join(DIR, 'tenants', 'sint-a'));
+  if (!trySymlink(target, path.join(DIR, 'tenants', 'sint-a'))) return;
   const cap = [];
   await consultarJarvisEnAmbito('tesoro azul', [], { tenantId: 'sint-a', controlUso, chatCompletion: stub(cap) });
   assert.equal(cap.length, 0);
@@ -50,7 +55,7 @@ test('directorio tenant enlazado al propietario o a B: no sigue el enlace', asyn
 
 test('nota symlink a secreto ajeno: no llega al ranking secundario', async () => {
  reset(); const notas = path.join(DIR, 'tenants', 'sint-a', 'notes', '2026-01-01'); fs.mkdirSync(notas, { recursive: true });
- const ajena = path.join(DIR, 'secreto.md'); fs.writeFileSync(ajena, '# tesoro azul\nSECRETO-NOTA-AJENA'); fs.symlinkSync(ajena, path.join(notas, 'x.md'));
+ const ajena = path.join(DIR, 'secreto.md'); fs.writeFileSync(ajena, '# tesoro azul\nSECRETO-NOTA-AJENA'); if (!trySymlink(ajena, path.join(notas, 'x.md'))) return;
  const cap = [];
  await consultarJarvisEnAmbito('busca tesoro azul', [], { tenantId: 'sint-a', controlUso, rolDeTenant: () => 'usuario', permitidasUsuario: ['buscar_recuerdo_semantico'], chatCompletion: stub(cap, { name: 'buscar_recuerdo_semantico', arguments: { consulta: 'tesoro azul' } }) });
  assert.equal(cap.length, 0);
@@ -99,7 +104,7 @@ test('hardlink y enlaces en ancestros son rechazados sin borrar/reubicar archivo
  const cap = []; await consultarJarvisEnAmbito('tesoro azul', [], { tenantId: 'sint-a', controlUso, chatCompletion: stub(cap) });
  assert.equal(cap.length, 0); assert.ok(fs.existsSync(owner));
  reset(); fs.rmSync(path.join(DIR,'tenants'), { recursive: true }); const alt = fs.mkdtempSync(path.join(os.tmpdir(),'alt-tenants-')); fs.mkdirSync(path.join(alt,'sint-a'));
- fs.symlinkSync(alt,path.join(DIR,'tenants'));
+ if (!trySymlink(alt,path.join(DIR,'tenants'))) return;
  await consultarJarvisEnAmbito('tesoro azul', [], { tenantId: 'sint-a', controlUso, chatCompletion: stub(cap) });
  assert.equal(cap.length, 0); assert.ok(fs.lstatSync(path.join(DIR,'tenants')).isSymbolicLink());
 });
@@ -108,7 +113,7 @@ test('open final con O_NOFOLLOW y fstat: lectura/escritura rechazan enlaces; no 
  reset(); const { default: safe } = await import('../../src/security/tenantFileSystem.js');
  const p = path.join(DIR,'tenants','sint-a','dato.json'); fs.writeFileSync(p, 'contenido-propio');
  assert.equal(safe.readFileSync(p,'utf8'),'contenido-propio'); safe.writeFileSync(p,'nuevo','utf8'); assert.equal(fs.readFileSync(p,'utf8'),'nuevo');
- fs.unlinkSync(p); fs.symlinkSync(owner,p);
+ fs.unlinkSync(p); if (!trySymlink(owner,p)) return;
  assert.throws(() => safe.readFileSync(p,'utf8'),/tenant/); assert.throws(() => safe.writeFileSync(p,'AJENO','utf8'),/tenant/);
  fs.unlinkSync(p); fs.linkSync(owner,p); const antes = fs.readFileSync(owner,'utf8');
  assert.throws(() => safe.writeFileSync(p,'AJENO','utf8'),/tenant/); assert.equal(fs.readFileSync(owner,'utf8'), antes);
@@ -119,9 +124,10 @@ test('open final con O_NOFOLLOW y fstat: lectura/escritura rechazan enlaces; no 
 });
 
 test('enlace introducido durante espera del modelo se rechaza antes de tool write', async () => {
+ if (process.platform === 'win32') return;
  reset(); const antes = fs.readFileSync(owner,'utf8'); let n=0;
  await consultarJarvisEnAmbito('guarda el dato', [], { tenantId:'sint-a', controlUso, rolDeTenant:()=> 'usuario', permitidasUsuario:['guardar_memoria'], chatCompletion: async () => {
-  n++; if(n===1) { fs.symlinkSync(owner,path.join(DIR,'tenants','sint-a','brain_memory.json')); return { model:'stub', message:{ role:'assistant',content:'', tool_calls:[{ id:'x',function:{ name:'guardar_memoria',arguments:{sujeto:'x',dato:'ajeno'} } }] } }; }
+  n++; if(n===1) { if (!trySymlink(owner,path.join(DIR,'tenants','sint-a','brain_memory.json'))) return { model:'stub',message:{content:'ok'} }; return { model:'stub', message:{ role:'assistant',content:'', tool_calls:[{ id:'x',function:{ name:'guardar_memoria',arguments:{sujeto:'x',dato:'ajeno'} } }] } }; }
   return { model:'stub',message:{content:'ok'} };
  } });
  assert.equal(fs.readFileSync(owner,'utf8'),antes); assert.equal(n,1);

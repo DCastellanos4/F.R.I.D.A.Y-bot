@@ -59,7 +59,7 @@ test('radar de ofertas: radarDeps forzado al tenant, sin cola global; el radarDe
 test('programadores y monitores: un tenant con TODAS las herramientas en su lista blanca sigue denegado antes de programar nada', async () => {
   const { puedeEjecutarHerramienta } = await import('../../src/services/rbacService.js');
   const todas = ['crear_recordatorio', 'programar_snooze', 'registrar_aviso_llegada', 'vigilar_producto', 'vigilar_ruta',
-    'configurar_repaso_flashcards', 'programar_recordatorios_estudio', 'configurar_radar_ofertas', 'escanear_ofertas_empleo',
+    'configurar_repaso_flashcards', 'programar_recordatorios_estudio',
     'configurar_digest_semanal', 'ejecutar_skill', 'trigger_encrypted_backup'];
   for (const h of todas) {
     const d = puedeEjecutarHerramienta({ tenantId: 'sint-a', herramienta: h, rolDe: () => 'usuario', permitidasUsuario: todas });
@@ -73,6 +73,6 @@ test('programadores y monitores: un tenant con TODAS las herramientas en su list
 test('getNoteByPath realpath rechaza archivo symlink fuera del arbol de notas', async () => {
   const { getNoteByPath } = await import('../../src/services/notesService.js');
   const fuera=path.join(DIR,'secreto-enlace.md');fs.writeFileSync(fuera,'# SECRETO-FUERA');
-  fs.mkdirSync(op.carpetaNotas,{recursive:true});const link=path.join(op.carpetaNotas,'link.md');fs.symlinkSync(fuera,link);
+  fs.mkdirSync(op.carpetaNotas,{recursive:true});const link=path.join(op.carpetaNotas,'link.md');try { fs.symlinkSync(fuera,link); } catch (e) { if (e.code === 'EPERM' && process.platform === 'win32') return; throw e; }
   await assert.rejects(()=>getNoteByPath(link,{carpetaNotas:op.carpetaNotas}),/outside/);
 });

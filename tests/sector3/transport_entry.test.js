@@ -24,7 +24,7 @@ const { analizarIntencion } = await import('../../src/core/jarvisAgent.js');
 const { proximasLlegadas, registrarParadaFavorita } = await import('../../src/services/transportService.js');
 const { llegadasEmt } = await import('../../src/services/emtAdapter.js');
 
-const JID_DAVID = '149868706304033@lid';
+const JID_DAVID = '123456789012345@lid';
 
 function sockSimulado(enviados) {
   return {

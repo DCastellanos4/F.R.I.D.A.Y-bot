@@ -59,8 +59,8 @@ test('reanudacion: accion completada no se repite y la incierta se declara bloqu
   // Fase 2 (reanudacion): el modelo pide la MISMA accion otra vez; no
   // debe reejecutarse. Ademas, una accion planificada no completada del
   // checkpoint se declara incierta y se bloquea.
-  const claveCompletada = `${TOOL_EFECTO}:${JSON.stringify(JSON.stringify({ valor: 'A' }))}`;
-  const claveIncierta = `${TOOL_EFECTO}:${JSON.stringify(JSON.stringify({ valor: 'B' }))}`;
+  const claveCompletada = `${TOOL_EFECTO}:${JSON.stringify({ valor: 'A' })}`;
+  const claveIncierta = `${TOOL_EFECTO}:${JSON.stringify({ valor: 'B' })}`;
   const checkpointInicial = {
     accionesConEfectos: [...(ultimo.accionesConEfectos || [])],
     accionesPlanificadas: [claveIncierta]

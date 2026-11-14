@@ -27,7 +27,7 @@ test('BullMQ adapter passes only ID/custom jobId, single attempt, no linear back
 test('malformed IDs cannot reach broker data or consumer execution',async()=>{const a=crearBullmqQueueAdapter({cargarModulo:async()=>{throw new Error('must not load');}});for(const id of ['123','with:colon','evt_bad','PRIVATE'])await assert.rejects(a.publicar({id}),/ID_NOTIFICATION/);assert.throws(()=>crearBullmqQueueAdapter({url:'redis://remote.example:6379'}),/LOCAL_REDIS/);await a.cerrar();});
 test('actual core preserves planned uncertain action through three resumes/checkpoints without tool replay',async()=>{
  const {consultarJarvisAislado}=await import('../helpers/jarvisAislado.js');
- const name='herramienta_efecto_prueba',args=JSON.stringify({valor:'A'}),key=`${name}:${JSON.stringify(args)}`;let checkpoint={accionesPlanificadas:[key],accionesConEfectos:[]};let calls=0;
+ const name='herramienta_efecto_prueba',args=JSON.stringify({valor:'A'}),key=`${name}:${args}`;let checkpoint={accionesPlanificadas:[key],accionesConEfectos:[]};let calls=0;
  for(let resume=0;resume<3;resume++){
   let rounds=0;const saved=[];
   await consultarJarvisAislado('ejecuta la accion de prueba',[],{chatId:'uncertain-resume-'+resume,checkpointInicial:checkpoint,ejecutores:{[name]:async()=>{calls++;return 'must not replay';}},chatCompletion:async()=>({message:++rounds===1?{content:'',tool_calls:[{id:'c1',function:{name,arguments:args}}]}:{content:'final'}}),onCheckpointRonda:(r,s)=>saved.push(s)});

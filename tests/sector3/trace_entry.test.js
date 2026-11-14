@@ -19,7 +19,7 @@ process.env.DAVIS_HISTORY_DIR = path.join(dirEntorno, 'history');
 const { iniciarTraza, guardarTraza, ultimaTraza, explicarUltimoRecorrido } = await import('../../src/services/traceService.js');
 const bot = await import('../../whatsappBot.js');
 
-const JID_DAVID = '149868706304033@lid';
+const JID_DAVID = '123456789012345@lid';
 const carpetaTrazas = path.join(dirEntorno, 'trazas');
 
 function sockSimulado(enviados) {

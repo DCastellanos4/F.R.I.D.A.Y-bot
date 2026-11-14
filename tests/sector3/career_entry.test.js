@@ -25,7 +25,7 @@ const bot = await import('../../whatsappBot.js');
 
 // JID LID de David: via real de sus mensajes directos (esMensajeDeDavid lo
 // acepta y no cae en la captura de notas del self-chat)
-const JID_DAVID = '149868706304033@lid';
+const JID_DAVID = '123456789012345@lid';
 
 function sockSimulado(enviados) {
   return {
