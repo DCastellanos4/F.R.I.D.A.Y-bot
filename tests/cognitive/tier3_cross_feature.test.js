@@ -179,7 +179,7 @@ describe('Tier 3: Cross-Feature Combinations', () => {
       {
         message: {
           role: 'assistant',
-          content: 'El servidor VPS de produccion tiene la IP 51.170.48.166 segun tu Second Brain.'
+          content: 'El servidor VPS de produccion tiene la IP 198.51.100.1 segun tu Second Brain.'
         },
         finishReason: 'stop'
       }
@@ -206,7 +206,7 @@ describe('Tier 3: Cross-Feature Combinations', () => {
 
     assert.equal(llamadas.length, 1);
     assert.equal(llamadas[0].name, 'buscar_memoria_semantica');
-    assert.match(respuesta, /51\.170\.48\.166/);
+    assert.match(respuesta, /198\.51\.100\.1/);
     assertNoEmojis(respuesta);
 
     await fs.rm(tmpDir, { recursive: true, force: true });

@@ -95,7 +95,7 @@ export function generarMemoriasEjemplo() {
     {
       id: 'mem_vps_root_001',
       sujeto: 'Acceso Servidor VPS Oracle',
-      dato: 'El servidor de produccion se encuentra en la IP 51.170.48.166 accesible mediante usuario ubuntu',
+      dato: 'El servidor de produccion se encuentra en la IP 198.51.100.1 accesible mediante usuario ubuntu',
       categoria: 'ops',
       tags: ['vps', 'oracle', 'servidor', 'ssh', 'produccion'],
       fechaRegistro: '2026-11-01T10:00:00.000Z'
