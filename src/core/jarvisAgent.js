@@ -997,7 +997,11 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
     const tieneHerramienta = await mcpRegistryTieneHerramientaAsync(opciones.mcpRegistry, nombreFuncion);
     if (tieneHerramienta) {
       try {
-        const mcpRes = await opciones.mcpRegistry.callTool(nombreFuncion, args, opciones);
+        const argsMcp = (args && typeof args === 'object') ? { ...args } : {};
+        if (opciones.tenantId && !argsMcp.tenant_id) {
+          argsMcp.tenant_id = opciones.tenantId;
+        }
+        const mcpRes = await opciones.mcpRegistry.callTool(nombreFuncion, argsMcp, opciones);
         if (mcpRes && typeof mcpRes === 'object') {
           if (mcpRes.isError) {
             const errDetalle = Array.isArray(mcpRes.content)
@@ -1363,7 +1367,7 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
           ? 'No tienes contactos guardados. Dime por ejemplo: "apunta el contacto de Ana, 600123123, amiga de la uni".'
           : 'Tus contactos:\n' + lista.map((c) => `- ${c.nombre}${c.telefono ? `: ${c.telefono}` : ''}${c.relacion ? ` (${c.relacion})` : ''}`).join('\n');
       } else if (nombreFuncion === 'buscar_recuerdo_semantico') {
-        const res = await buscarSemantico(args.consulta, { carpetaNotas: opciones.carpetaNotas, rutaArchivoMemorias: opciones.rutaArchivoMemorias, chatCompletion: opciones.chatCompletion, qdrantSecondBrain: opciones.qdrantSecondBrain, buscadorHibrido: opciones.buscadorHibrido });
+        const res = await buscarSemantico(args.consulta, { carpetaNotas: opciones.carpetaNotas, rutaArchivoMemorias: opciones.rutaArchivoMemorias, chatCompletion: opciones.chatCompletion, qdrantSecondBrain: opciones.qdrantSecondBrain, buscadorHibrido: opciones.buscadorHibrido, tenantId: opciones.tenantId });
         resultadoTool = !res.ok ? res.error
           : res.resultados.length === 0 ? 'No encuentro nada relacionado en tus memorias ni en tus notas.'
           : `He encontrado esto${res.semantica ? '' : ' (busqueda por palabras; sin el modelo no puedo hacerla semantica)'}:\n` + res.resultados.map((r) => `- [${r.tipo}] ${r.texto.slice(0, 200)}`).join('\n');
@@ -1864,6 +1868,9 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
         resultadoTool = res.ok ? `Descarga completada con éxito: ${res.fileName} (${(res.fileSize / 1024 / 1024).toFixed(2)} MB). Tramitado para entrega directa al chat.` : `Error en la descarga multimedia: ${res.error}`;
       } else if (nombreFuncion === 'guardar_nota_personal') {
         const res = await savePersonalNote(args.texto, { category: args.categoria, tags: args.etiquetas, carpetaNotas: opciones.carpetaNotas });
+        if (res.ok && opciones.qdrantSecondBrain && typeof opciones.qdrantSecondBrain.indexarTodasLasNotas === 'function') {
+          opciones.qdrantSecondBrain.indexarTodasLasNotas({ tenantId: opciones.tenantId, carpetaNotas: opciones.carpetaNotas }).catch(() => {});
+        }
         resultadoTool = res.ok ? `Nota personal guardada en el Second Brain (${res.category}): ${res.filename}.` : `Error al guardar nota: ${res.error}`;
       } else if (nombreFuncion === 'listar_notas_recientes') {
         const notas = await listRecentNotes(args.limite || 10, { category: args.categoria, carpetaNotas: opciones.carpetaNotas });

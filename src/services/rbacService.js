@@ -84,10 +84,23 @@ export const CLASIFICACION_HERRAMIENTAS = Object.freeze({
   ]
 });
 
+export const CLASIFICACION_HERRAMIENTAS_MCP = Object.freeze({
+  datos_tenant: [
+    'consultar_disponibilidad', 'reservar_cita', 'cancelar_cita', 'listar_citas'
+  ],
+  host: [
+    'consultar_estado_servidor', 'ejecutar_comando_bash', 'inspeccionar_docker',
+    'verificar_almacenamiento', 'comprobar_certificados_ssl'
+  ]
+});
+
 export const CLASES_APTAS_TENANT = Object.freeze(['datos_tenant', 'sin_estado']);
 
 export function claseDeHerramienta(nombre) {
   for (const [clase, lista] of Object.entries(CLASIFICACION_HERRAMIENTAS)) {
+    if (lista.includes(nombre)) return clase;
+  }
+  for (const [clase, lista] of Object.entries(CLASIFICACION_HERRAMIENTAS_MCP)) {
     if (lista.includes(nombre)) return clase;
   }
   return null;

@@ -755,6 +755,50 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
         const remitenteLimpio = remoteJid.split('@')[0].replace(/\D/g, '');
         console.log(`[WhatsApp Mensaje Externo] Recibido de +${remitenteLimpio}: ${remoteJid}`);
         const textoExterno = extraerTextoMensaje(msg);
+
+        // Flujo de Autoservicio / Onboarding Multi-Tenant (Tarea 2.5)
+        if (textoExterno && /^\/(registro|alta|crearcuenta)\b/i.test(textoExterno.trim()) && tenantsHabilitados()) {
+          const match = textoExterno.trim().match(/^\/(?:registro|alta|crearcuenta)\s+(.+)$/i);
+          const nombreOrg = match ? match[1].trim() : `Negocio ${remitenteLimpio}`;
+          const slugBase = 'tenant_' + nombreOrg.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 25);
+          const slug = (slugBase + '_' + remitenteLimpio.slice(-4)).replace(/^_+|_+$/g, '');
+
+          try {
+            const p = contenedorCompartido.persistencia;
+            const prov = await provisionarTenant({
+              id: slug,
+              nombre: nombreOrg,
+              plan: 'demo',
+              canal: 'whatsapp',
+              identificador: remoteJid
+            }, {
+              tenantRepository: p?.tenantRepository,
+              quotaService: contenedorCompartido.quotaService,
+              qdrantSecondBrain: contenedorCompartido.qdrantSecondBrain
+            });
+
+            const mensajeBienvenida = `Bienvenido a D.A.V.I.S., ${nombreOrg}.
+
+Tu cuenta y Second Brain privado han sido activados con exito.
+- Identificador de cuenta: ${slug}
+- Plan: Demo (${prov.cuotaDiaria} tokens/dia)
+- Almacenamiento: Directorio y memoria vectorial aislados
+
+Ya puedes gestionar tus citas, notas y recordatorios en este chat de forma completamente privada.
+Prueba a decirme:
+- "Guarda una nota sobre mi primera reunion"
+- "Que citas tengo"
+- "Apunta un gasto de 25 euros en transporte"`;
+
+            await sock.sendMessage(remoteJid, { text: mensajeBienvenida }, { quoted: msg });
+            console.log(`[WhatsApp Onboarding] Tenant "${slug}" (${nombreOrg}) registrado exitosamente para +${remitenteLimpio}.`);
+            continue;
+          } catch (errProv) {
+            console.error(`[WhatsApp Onboarding] Error registrando tenant para +${remitenteLimpio}:`, errProv.message);
+            await sock.sendMessage(remoteJid, { text: 'No se pudo completar el registro en este momento. Intentalo de nuevo mas tarde.' }, { quoted: msg });
+            continue;
+          }
+        }
         if (textoExterno) {
           const filter = shouldFilterMessage(remoteJid, msg.key?.participant, textoExterno);
           if (!filter.allowed) {

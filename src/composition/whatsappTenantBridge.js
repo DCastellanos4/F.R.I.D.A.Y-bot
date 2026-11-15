@@ -10,7 +10,7 @@ import { crearMessageProcessor } from '../core/messageProcessor.js';
 import { tenantsHabilitados } from '../core/tenancy.js';
 import { normalizarMarkdownWhatsApp } from '../services/textFormatService.js';
 
-export function crearPuenteWhatsAppTenants({ tenantRepository, limitesStore, quotaService, llmProvider, esPropietario } = {}) {
+export function crearPuenteWhatsAppTenants({ tenantRepository, limitesStore, quotaService, llmProvider, esPropietario, mcpRegistry, qdrantSecondBrain, memoryRepository } = {}) {
   const storeUso = quotaService || limitesStore;
   if (!tenantRepository || !storeUso || typeof esPropietario !== 'function') throw new TypeError('Puente WhatsApp requiere repositorios y comprobacion owner.');
   // La identidad verificada se liga al objeto inbound creado AQUI; copiar sus
@@ -20,7 +20,7 @@ export function crearPuenteWhatsAppTenants({ tenantRepository, limitesStore, quo
     autenticar: (inbound) => identidades.get(inbound) || null,
     esPropietario: () => false // owner nunca entra en este carril
   });
-  const processor = crearMessageProcessor({ accesoTenants: acceso, llmProvider });
+  const processor = crearMessageProcessor({ accesoTenants: acceso, llmProvider, mcpRegistry, qdrantSecondBrain, memoryRepository });
 
   async function procesar(sock, msg, ensayo = false) {
     if (!ensayo && !tenantsHabilitados()) return { gestionado: false };

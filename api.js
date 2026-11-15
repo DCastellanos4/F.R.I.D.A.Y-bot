@@ -6,6 +6,7 @@ import { config } from './src/config/config.js';
 import { procesarMensajeEntrante, contenedorCompartido } from './src/composition/container.js';
 import { crearInboundMessage } from './src/ports/inbound/InboundMessage.js';
 import { esTenantIdValido } from './src/core/tenancy.js';
+import { provisionarTenant } from './src/services/tenantProvisioningService.js';
 import { esNombrePlanValido, PLANES } from './src/services/tenantQuotaService.js';
 import {
   listarRecordatorios,
@@ -322,7 +323,7 @@ export async function handleApiRequest(req, res) {
   }
 
   // Endpoint de gestion y alta de Tenants
-  if (url.pathname === '/api/tenants') {
+  if (url.pathname === '/api/tenants' || url.pathname === '/api/v1/tenants/register') {
     const tenantRepo = contenedorCompartido.persistencia?.tenantRepository;
     const quotaService = contenedorCompartido.quotaService;
 
@@ -369,42 +370,31 @@ export async function handleApiRequest(req, res) {
           return;
         }
 
-        let t = tenantRepo.obtener(id);
-        if (!t) {
-          t = tenantRepo.registrarTenant({ id, nombre: nombre || id, rol: 'usuario' });
-        }
-
-        if (quotaService) {
-          quotaService.asignarPlan(id, plan);
-        }
-
-        if (Array.isArray(herramientas) && herramientas.length > 0) {
-          tenantRepo.configurarPermisos(id, herramientas);
-        }
-
-        if (identificador) {
-          let idFinal = identificador;
-          if (canal === 'whatsapp' && !idFinal.includes('@')) {
-            const digitos = idFinal.replace(/\D/g, '');
-            idFinal = `${digitos}@s.whatsapp.net`;
-          }
-          try {
-            tenantRepo.vincularIdentidad(id, canal, idFinal);
-          } catch (errIdent) {
-            console.warn('[API Tenants] Aviso vinculando identidad:', errIdent.message);
-          }
-        }
+        const provisionado = await provisionarTenant({
+          id,
+          nombre: nombre || id,
+          plan,
+          canal,
+          identificador,
+          herramientas
+        }, {
+          tenantRepository: tenantRepo,
+          quotaService,
+          qdrantSecondBrain: contenedorCompartido.qdrantSecondBrain
+        });
 
         res.writeHead(201, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           ok: true,
           tenant: {
-            id: t.id,
-            nombre: t.nombre,
-            plan,
-            cuotaDiaria: PLANES[plan]?.tokensDia,
-            peticionesMinuto: PLANES[plan]?.peticionesMinuto,
-            identificadorVinculado: identificador || null
+            id: provisionado.tenantId,
+            nombre: provisionado.nombre,
+            plan: provisionado.plan,
+            cuotaDiaria: provisionado.cuotaDiaria,
+            peticionesMinuto: provisionado.peticionesMinuto,
+            identificadorVinculado: provisionado.identificadorVinculado,
+            qdrantColeccion: provisionado.qdrantColeccion,
+            estructuraArchivos: provisionado.estructuraArchivos?.raizTenant
           }
         }));
       } catch (err) {

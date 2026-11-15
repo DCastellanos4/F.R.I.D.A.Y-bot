@@ -123,11 +123,17 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
     CREATE INDEX IF NOT EXISTS idx_citas_estado ON citas(estado);
   `);
 
+  try {
+    db.exec("ALTER TABLE citas ADD COLUMN tenant_id TEXT DEFAULT 'propietario'");
+  } catch (_) {}
+  db.exec("CREATE INDEX IF NOT EXISTS idx_citas_tenant ON citas(tenant_id);");
+
   /**
    * Consulta disponibilidad de huecos sin colisiones en una fecha dada.
    */
   function consultarDisponibilidad({
     fecha,
+    tenant_id = 'propietario',
     duracion_minutos = HORARIO_COMERCIAL_DEFECTO.duracion_minutos_defecto,
     hora_apertura = HORARIO_COMERCIAL_DEFECTO.hora_apertura,
     hora_cierre = HORARIO_COMERCIAL_DEFECTO.hora_cierre,
@@ -165,9 +171,10 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
       SELECT id, cliente_nombre, cliente_telefono, fecha_inicio, duracion_minutos, servicio, estado
       FROM citas
       WHERE estado = 'confirmada'
+        AND tenant_id = ?
         AND fecha_inicio >= ?
         AND fecha_inicio <= ?
-    `).all(ventanaInicioIso, ventanaFinIso);
+    `).all(tenant_id, ventanaInicioIso, ventanaFinIso);
 
     const citasMs = citasExistentes.map((c) => {
       const s = new Date(c.fecha_inicio).getTime();
@@ -226,6 +233,7 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
     fecha_inicio,
     duracion_minutos = HORARIO_COMERCIAL_DEFECTO.duracion_minutos_defecto,
     servicio,
+    tenant_id = 'propietario',
     hora_apertura = HORARIO_COMERCIAL_DEFECTO.hora_apertura,
     hora_cierre = HORARIO_COMERCIAL_DEFECTO.hora_cierre
   } = {}) {
@@ -276,9 +284,10 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
         SELECT id, cliente_nombre, cliente_telefono, fecha_inicio, duracion_minutos, servicio, estado
         FROM citas
         WHERE estado = 'confirmada'
+          AND tenant_id = ?
           AND fecha_inicio >= ?
           AND fecha_inicio <= ?
-      `).all(ventanaInicio, ventanaFin);
+      `).all(tenant_id, ventanaInicio, ventanaFin);
 
       for (const cita of citasActivas) {
         const citaStartMs = new Date(cita.fecha_inicio).getTime();
@@ -292,10 +301,11 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
       const creado_en = new Date().toISOString();
 
       db.prepare(`
-        INSERT INTO citas (id, cliente_nombre, cliente_telefono, fecha_inicio, duracion_minutos, servicio, estado, creado_en)
-        VALUES (?, ?, ?, ?, ?, ?, 'confirmada', ?)
+        INSERT INTO citas (id, tenant_id, cliente_nombre, cliente_telefono, fecha_inicio, duracion_minutos, servicio, estado, creado_en)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmada', ?)
       `).run(
         id,
+        tenant_id,
         cliente_nombre.trim(),
         cliente_telefono.trim(),
         fechaInicioIso,
@@ -306,6 +316,7 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
 
       return {
         id,
+        tenant_id,
         cliente_nombre: cliente_nombre.trim(),
         cliente_telefono: cliente_telefono.trim(),
         fecha_inicio: fechaInicioIso,
@@ -431,9 +442,14 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
   /**
    * Lista citas con filtros opcionales.
    */
-  function listarCitas({ fecha, cliente_telefono, telefono, cliente_nombre, estado } = {}) {
-    let sql = 'SELECT id, cliente_nombre, cliente_telefono, fecha_inicio, duracion_minutos, servicio, estado FROM citas WHERE 1=1';
+  function listarCitas({ fecha, cliente_telefono, telefono, cliente_nombre, estado, tenant_id = 'propietario' } = {}) {
+    let sql = 'SELECT id, tenant_id, cliente_nombre, cliente_telefono, fecha_inicio, duracion_minutos, servicio, estado FROM citas WHERE 1=1';
     const params = [];
+
+    if (tenant_id) {
+      sql += ' AND tenant_id = ?';
+      params.push(tenant_id);
+    }
 
     if (fecha && typeof fecha === 'string') {
       sql += ' AND fecha_inicio LIKE ?';

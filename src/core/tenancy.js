@@ -205,7 +205,7 @@ export function aislarOpcionesTenant(opciones, dataDir) {
   // contenedor del propietario ni opcion desconocida se hereda por spread.
   const resto = {};
   for (const k of ['tenantId', 'chatCompletion', 'llmProvider', 'controlUso', 'rolDeTenant', 'permitidasUsuario', 'permisosDeTenant',
-    'maxRondasHerramientas', 'retornarObjeto', 'retornarTraza', 'topKMemorias', 'minScoreMemoria']) {
+    'maxRondasHerramientas', 'retornarObjeto', 'retornarTraza', 'topKMemorias', 'minScoreMemoria', 'mcpRegistry', 'qdrantSecondBrain']) {
     if (Object.prototype.hasOwnProperty.call(opciones, k)) resto[k] = opciones[k];
   }
   const rutasPersonales = {};

@@ -391,6 +391,10 @@ export function crearPuenteWhatsAppTenantsCompuesto({ esPropietario, quotaServic
   return crearPuenteWhatsAppTenants({
     tenantRepository: p.tenantRepository, limitesStore: qs || p.limitesStore,
     quotaService: qs,
-    llmProvider: contenedorPorDefecto.llmProvider, esPropietario
+    llmProvider: contenedorPorDefecto.llmProvider,
+    mcpRegistry: contenedorPorDefecto.mcpRegistry,
+    qdrantSecondBrain: contenedorPorDefecto.qdrantSecondBrain,
+    memoryRepository: p.memoryRepository,
+    esPropietario
   });
 }

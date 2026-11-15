@@ -208,7 +208,8 @@ export function crearManejadorRpc(bookingDb) {
               duracion_minutos: args.duracion_minutos,
               hora_apertura: args.hora_apertura,
               hora_cierre: args.hora_cierre,
-              paso_minutos: args.paso_minutos
+              paso_minutos: args.paso_minutos,
+              tenant_id: args.tenant_id
             });
             break;
 
@@ -218,15 +219,18 @@ export function crearManejadorRpc(bookingDb) {
               cliente_telefono: args.cliente_telefono || args.telefono,
               fecha_inicio: args.fecha_inicio,
               duracion_minutos: args.duracion_minutos,
-              servicio: args.servicio
+              servicio: args.servicio,
+              tenant_id: args.tenant_id
             });
             break;
 
           case 'cancelar_cita':
             datosResultado = bookingDb.cancelarCita({
               cita_id: args.cita_id || args.id,
+              cliente_nombre: args.cliente_nombre,
               cliente_telefono: args.cliente_telefono || args.telefono,
-              fecha: args.fecha || args.fecha_inicio
+              fecha: args.fecha || args.fecha_inicio,
+              tenant_id: args.tenant_id
             });
             break;
 
@@ -235,7 +239,8 @@ export function crearManejadorRpc(bookingDb) {
               fecha: args.fecha,
               cliente_telefono: args.cliente_telefono || args.telefono,
               cliente_nombre: args.cliente_nombre,
-              estado: args.estado
+              estado: args.estado,
+              tenant_id: args.tenant_id
             });
             break;
 
