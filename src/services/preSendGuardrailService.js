@@ -77,7 +77,6 @@ export const HERRAMIENTAS_IDEMPOTENTES_SET = new Set([
   'actividad_repos',
   'auditar_dependencias',
   'listar_dispositivos_red',
-  'estimar_factura_oracle',
   'buscar_producto',
   'verificar_oferta',
   'escanear_ofertas_empleo',

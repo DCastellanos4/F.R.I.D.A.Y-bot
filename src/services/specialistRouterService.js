@@ -60,13 +60,8 @@ export const HERRAMIENTAS_OPS = Object.freeze([
   'configurar_informe_metricas',
   'crear_backup_sesion',
   'verificar_backup_sesion',
-  'encender_pc',
   'listar_dispositivos_red',
   'configurar_vigilancia_red',
-  'estimar_factura_oracle',
-  'estado_descargas',
-  'configurar_aviso_descargas',
-  'controlar_domotica',
   'explicar_recorrido'
 ]);
 
@@ -619,15 +614,25 @@ export function enrutarYFiltrarHerramientas(mensajeUsuario, herramientasDisponib
   }
 
   // Visibilidad: nombres configurados para el especialista que no existen en
-  // el catalogo ESTATICO completo (herramientas aun no conectadas o
-  // renombradas). `catalogo` suele ser solo la preseleccion de esta peticion,
-  // asi que ausente de ahi NO significa inexistente: el aviso anterior
-  // acusaba "no existen en el catalogo" a decenas de herramientas reales que
-  // simplemente no venian preseleccionadas (ruido observado en vivo).
+  // el catalogo ESTATICO completo ni en los microservidores MCP (herramientas
+  // aun no conectadas o renombradas).
+  const HERRAMIENTAS_MCP_CONOCIDAS = new Set([
+    'consultar_disponibilidad',
+    'reservar_cita',
+    'cancelar_cita',
+    'listar_citas',
+    'verificar_almacenamiento',
+    'comprobar_certificados_ssl',
+    'registrar_gasto',
+    'listar_gastos',
+    'resumen_gastos_mes',
+    'extraer_ticket_vision',
+    'exportar_resumen_trimestral'
+  ]);
   const nombresCatalogoCompleto = new Set(
     herramientasJarvis.map((h) => (typeof h === 'string' ? h : (h?.function?.name || h?.name))).filter(Boolean)
   );
-  const inexistentes = [...permitidas].filter((n) => !nombresCatalogoCompleto.has(n));
+  const inexistentes = [...permitidas].filter((n) => !nombresCatalogoCompleto.has(n) && !HERRAMIENTAS_MCP_CONOCIDAS.has(n));
   if (inexistentes.length > 0) {
     console.warn(`[RouterEspecialista] ${inexistentes.length} herramientas permitidas para ${especialista} no existen en el catalogo completo y se ignoran: ${inexistentes.join(', ')}`);
   }

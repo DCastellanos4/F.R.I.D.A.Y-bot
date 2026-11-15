@@ -41,7 +41,7 @@ export const CLASIFICACION_HERRAMIENTAS = Object.freeze({
     'listar_paradas_favoritas', 'eliminar_parada_favorita'
   ],
   credenciales: [
-    'generate_crypto_credential', 'confirm_bash_otp', 'actividad_repos', 'configurar_alertas_repos', 'revisar_pr'
+    'generate_crypto_credential', 'actividad_repos', 'configurar_alertas_repos', 'revisar_pr'
   ],
   identidad: [
     'activar_modo_vip', 'estado_modo_vip', 'agregar_contacto_vip', 'ejecutar_skill', 'proponer_skill', 'listar_skills'
