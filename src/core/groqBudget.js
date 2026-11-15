@@ -30,10 +30,10 @@ export function crearPresupuestoGroq({ limite = (typeof process !== 'undefined' 
     if (Number.isFinite(lim) && lim > 0) limiteEfectivo = Math.min(limite, lim);
     const raw = cabecera(headers, 'x-ratelimit-remaining-tokens');
     const reset = duracionCabecera(cabecera(headers, 'x-ratelimit-reset-tokens'));
-    if (raw != null && Number.isFinite(Number(raw)) && reset > 0) {
-      saldo = { tokens: Math.max(0, Number(raw)), hasta: ahora() + reset };
+    if (raw != null && Number.isFinite(Number(raw))) {
+      saldo = { tokens: Math.max(0, Number(raw)), hasta: ahora() + Math.max(reset || 0, 200) };
       if (reservas.length > 0) {
-        const vigencia = ahora() + Math.min(reset, 60000);
+        const vigencia = ahora() + Math.min(reset > 0 ? reset : 1000, 60000);
         for (const r of reservas) {
           if (r.hasta > vigencia) r.hasta = vigencia;
         }
@@ -84,7 +84,8 @@ export function crearPresupuestoGroq({ limite = (typeof process !== 'undefined' 
         try {
           const { data, headers } = await enviar();
           // El proveedor puede contabilizar al completar, no al enviar.
-          reserva.hasta = ahora() + 60000;
+          const resetPost = duracionCabecera(cabecera(headers, 'x-ratelimit-reset-tokens'));
+          reserva.hasta = ahora() + (resetPost > 0 ? resetPost : 1000);
           // Sin usage fiable se conserva la reserva completa. No presumir hits.
           const u = data?.usage;
           if (Number.isSafeInteger(u?.prompt_tokens) && u.prompt_tokens >= 0 && Number.isSafeInteger(u?.completion_tokens) && u.completion_tokens >= 0) {
@@ -93,8 +94,10 @@ export function crearPresupuestoGroq({ limite = (typeof process !== 'undefined' 
           observar(headers);
           return { data, presupuesto: { entradaEstimada: estimacion.entrada, salidaReservada: estimacion.salida, esperaMs } };
         } catch (err) {
-          reserva.hasta = ahora() + 60000;
-          observar(err?.headers);
+          const errHeaders = err?.headers || err?.response?.headers;
+          const retryMs = duracionCabecera(cabecera(errHeaders, 'retry-after'));
+          reserva.hasta = ahora() + (retryMs > 0 ? retryMs : 2000);
+          observar(errHeaders);
           // Un error puede haber consumido tokens: reserva conservadora.
           throw err;
         }
