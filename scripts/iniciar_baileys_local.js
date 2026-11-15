@@ -14,7 +14,7 @@
 
 import path from 'node:path';
 import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,6 +36,7 @@ if (!fs.existsSync(authDir)) {
 process.env.DAVIS_PERSISTENCE = process.env.DAVIS_PERSISTENCE || 'sqlite';
 process.env.DAVIS_MCP_ENABLED = process.env.DAVIS_MCP_ENABLED || '1';
 process.env.DAVIS_TENANTS_ENABLED = process.env.DAVIS_TENANTS_ENABLED || '1';
+process.env.RUN_WHATSAPP_BOT = 'true';
 
 console.log('Modo persistencia:', process.env.DAVIS_PERSISTENCE);
 console.log('MCPs habilitados:', process.env.DAVIS_MCP_ENABLED);
@@ -44,7 +45,12 @@ console.log('Ruta de credenciales:', authDir);
 console.log('\nIniciando cliente de WhatsApp... Escanea el codigo QR que aparecera a continuacion con tu telefono:\n');
 
 // Importar y arrancar whatsappBot
-import(path.join(ROOT_DIR, 'whatsappBot.js')).catch((err) => {
+const botUrl = pathToFileURL(path.join(ROOT_DIR, 'whatsappBot.js')).href;
+import(botUrl).then((bot) => {
+  if (typeof bot.iniciarWhatsApp === 'function') {
+    // Si no arranco automaticamente por RUN_WHATSAPP_BOT, invocar explicitamente
+  }
+}).catch((err) => {
   console.error('[Error Critico al iniciar Baileys]', err);
   process.exit(1);
 });
