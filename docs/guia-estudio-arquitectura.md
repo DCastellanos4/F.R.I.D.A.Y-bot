@@ -12,7 +12,9 @@ Politica de estilo: Cero emojis, castellano tecnico, respuestas estructuradas pa
 3. [Sesion 3: Resiliencia Empresarial, Patron Outbox y Persistencia SQLite](#sesion-3-resiliencia-empresarial-patron-outbox-y-persistencia-sqlite)
 4. [Sesion 4: RAG Hibrido, Grafos de Entidades y Privacidad PII Pre-LLM](#sesion-4-rag-hibrido-grafos-de-entidades-y-privacidad-pii-pre-llm)
 5. [Sesion 5: Seguridad Operativa, Watchdogs de Infraestructura y Testing Nativo](#sesion-5-seguridad-operativa-watchdogs-de-infraestructura-y-testing-nativo)
-6. [Bateria de Preguntas y Respuestas para Entrevistas Tecnicas](#bateria-de-preguntas-y-respuestas-para-entrevistas-tecnicas)
+6. [Sesion 6: Arquitectura Multi-Tenant SaaS y Autoservicio Seguro](#sesion-6-arquitectura-multi-tenant-saas-y-autoservicio-seguro)
+7. [Sesion 7: Microservidores Modulares MCP y Guardas de Terceros](#sesion-7-microservidores-modulares-mcp-y-guardas-de-terceros)
+8. [Bateria de Preguntas y Respuestas para Entrevistas Tecnicas](#bateria-de-preguntas-y-respuestas-para-entrevistas-tecnicas)
 
 ---
 
@@ -98,7 +100,7 @@ Si un bot ejecuta una tarea y envia el mensaje directamente por red:
 - **Ruta Dispersa (Sparse)**: SQLite FTS5 con algoritmo BM25 para coincidencia lexico-exacta.
 - **Ruta Densa (Dense)**: Embeddings generados con Ollama (`nomic-embed-text`) indexados en memoria o Qdrant.
 - **Fusion**: `src/core/rag/reciprocalRankFusion.js`. Aplica el algoritmo matematico RRF con constante `k = 60`:
-  $$RRF\_Score(d) = \sum_{m \in M} \frac{1}{k + r_m(d)}$$
+  `RRF_Score(d) = Σ [ 1 / (k + r_m(d)) ]`
 - **Re-ranking**: Cross-encoder ligero via HTTP (`httpCrossEncoderRerankerAdapter.js`) para ordenar los 5 mejores fragmentos antes de inyectarlos en el prompt.
 
 ### 4.3 Privacidad PII Pre-LLM (RNF-04)
@@ -136,6 +138,48 @@ Si un bot ejecuta una tarea y envia el mensaje directamente por red:
 
 ---
 
+## Sesion 6: Arquitectura Multi-Tenant SaaS y Autoservicio Seguro
+
+### 6.1 Particionamiento Fisico y Logico Estricto
+- **Filesystem**: `data/tenants/<tenantId>/`. Cada organizacion o cliente posee su subdirectorio aislado (`notes/`, `diario/`, `episodios/`, `indices/`, `trazas/`, `brain_memory.json`).
+- **Guarda Anti-Path-Traversal**: `tenantFileSystem.js` intercepta llamadas I/O y verifica con `fs.realpathSync` que ninguna ruta resuelva fuera de la raiz asignada. Si un usuario intenta `../../`, la llamada aborta de inmediato.
+- **Base Vectorial Particionada**: Colecciones Qdrant dedicadas (`davis_memorias_<tenantId>`). Las busquedas semanticas de un cliente jamas pueden acceder a vectores o metadatos de otro.
+- **Bases Relacionales Multi-Tenant**: Tablas SQLite con columna `tenant_id` e indice compuesto (ej. `idx_citas_tenant`, `idx_gastos_tenant`).
+
+### 6.2 Aprovisionamiento y Autoservicio Atomico
+- Fichero: `src/services/tenantProvisioningService.js`.
+- **Canales de Alta**:
+  - WhatsApp: Intercepcion de comandos directos como `/registro <Nombre>`, `/alta <Nombre>`.
+  - API REST: Endpoints seguros `POST /api/v1/tenants/register`.
+- **Aprovisionamiento Atomico**: Crea la estructura de carpetas, inicializa el esquema en SQLite, registra la coleccion en Qdrant y asigna la cuota del plan (`demo`, `cliente`, `staff`).
+- **Persistencia de Cuotas**: `tenantQuotaService.js` hidrata planes desde la base de datos tras reinicios de procesos.
+
+### 6.3 Matriz RBAC Fail-Closed
+- Fichero: `src/services/rbacService.js`.
+- Clasificacion de herramientas segun impacto: `datos_tenant`, `sin_estado`, `host`, `credenciales`, `sistema`.
+- Los tenants no propietarios solo tienen acceso a `datos_tenant` y `sin_estado`. Si una peticion intenta invocar herramientas de host (`execute_bash_command`, `inspeccionar_docker`) o de administracion, RBAC deniega la llamada de forma estricta.
+
+---
+
+## Sesion 7: Microservidores Modulares MCP y Guardas de Terceros
+
+### 7.1 De Monolito a Model Context Protocol (MCP)
+- Fichero: `src/adapters/outbound/mcp/mcpRegistry.js` y directorio `mcp-servers/`.
+- Fragmentacion de capacidades del agente en procesos Node.js desacoplados comunicados via STDIO / JSON-RPC:
+  - `mcp-servers/booking`: Motor de citas y reservas multi-tenant (`consultar_disponibilidad`, `reservar_cita`, `cancelar_cita`, `listar_citas`).
+  - `mcp-servers/devops`: Metricas e infraestructura del host (`consultar_estado_servidor`, `inspeccionar_docker`, `verificar_almacenamiento`, `comprobar_certificados_ssl`).
+  - `mcp-servers/finance`: Contabilidad y finanzas multi-tenant (`registrar_gasto`, `listar_gastos`, `resumen_gastos_mes`, `extraer_ticket_vision`, `exportar_resumen_trimestral`).
+- **Resiliencia de Esquemas**: Soporte de tipos nullables (`type: ['string', 'null']`) para prevenir rechazos 400 por parte de proveedores cloud (Groq/OpenAI) cuando el modelo omite campos opcionales.
+
+### 7.2 Guardas de Seguridad en Envios a Terceros
+- Fichero: `src/core/jarvisAgent.js` (funcion `destinatarioVerificado`).
+- **Problema de Alucinacion PII**: Un LLM puede generar un numero telefonico plausible inventado y enviar un WhatsApp real a un desconocido.
+- **Mecanismo de Guarda**:
+  - Antes de ejecutar `programar_mensaje_whatsapp`, el numero debe estar verificado: o consta en un mensaje previo del usuario en la sesion actual, o coincide con una ficha de contacto en `data/contactos.json`.
+  - **Sincronizacion Automatica de Contactos**: `contactsService.js` sincroniza de forma perezosa los contactos del Segundo Cerebro (`brain_memory.json` con categoria `contacto`) hacia la agenda oficial, permitiendo envios rapidos y seguros.
+
+---
+
 ## Bateria de Preguntas y Respuestas para Entrevistas Tecnicas
 
 ### Pregunta 1: "¿Cual fue el reto arquitectonico mas complejo del proyecto?"
@@ -153,3 +197,11 @@ Si un bot ejecuta una tarea y envia el mensaje directamente por red:
 ### Pregunta 4: "¿Como abordas la privacidad cuando usas modelos LLM de terceros?"
 **Respuesta recomendada**:  
 "Implemente un adaptador envolvente con patron de fallo cerrado (RNF-04). Antes de emitir cualquier prompt hacia OpenAI o Groq, un servicio de anonimizacion local enmascara entidades PII (telefonos, correos, nombres) con marcadores temporales. La tabla de traduccion nunca sale del servidor local. Cuando el modelo devuelve el texto o la invocacion de la herramienta, se reconstituyen los valores reales. Si el enmascarador duda o encuentra ambiguedades, la llamada se bloquea."
+
+### Pregunta 5: "¿Como garantizas el aislamiento multi-tenant en un agente con LLM y busqueda semantica?"
+**Respuesta recomendada**:  
+"Mediante un aislamiento estricto en tres capas (almacenamiento, vectores y permisos). En disco, cada tenant dispone de un subdirectorio aislado (`data/tenants/<id>/`) protegido por un guard anti-path-traversal con `realpath`. En la capa vectorial, particiono Qdrant en colecciones independientes (`davis_memorias_<id>`), impidiendo cualquier cruce semantico. Y en la capa del agente, un motor RBAC de diseno cerrado (*fail-closed*) filtra el catalogo de herramientas antes de llamar al LLM: los clientes jamas ven ni pueden invocar herramientas de host o comandos de sistema."
+
+### Pregunta 6: "¿Que beneficios aporta la migracion a Model Context Protocol (MCP) y como resuelves la validacion de esquemas con Groq?"
+**Respuesta recomendada**:  
+"MCP desacopla las herramientas del bucle principal del agente en procesos autonomos via JSON-RPC, facilitando escalabilidad y aislamiento de dependencias. Al conectarlo con proveedores estrictos como Groq, me encontre con que el modelo emitia `null` en parametros opcionales, provocando errores 400 de validacion de esquema. Lo solucione implementando esquemas flexibles con tipos compuestos (`type: ['string', 'null']`), permitiendo que el validador acepte nulos sin degradar el tipado de la herramienta."
