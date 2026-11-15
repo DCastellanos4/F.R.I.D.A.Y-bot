@@ -222,7 +222,11 @@ export function crearManejadorRpc(lifestyleDb) {
         let datosResultado;
         switch (nombreHerramienta) {
           case 'gestionar_habitos': {
-            const accion = args.accion || (args.nombre ? 'registrar' : (args.criterio ? 'marcar' : 'listar'));
+            let accion = (args.accion || '').toLowerCase();
+            if (['crear', 'anadir', 'nuevo'].includes(accion) || (!accion && args.nombre)) accion = 'registrar';
+            else if (['completar', 'cumplir', 'hecho'].includes(accion) || (!accion && args.criterio)) accion = 'marcar';
+            else if (['ver', 'consultar'].includes(accion) || !accion) accion = 'listar';
+
             if (accion === 'registrar') {
               datosResultado = lifestyleDb.registrarHabito({ nombre: args.nombre });
             } else if (accion === 'marcar') {
@@ -240,7 +244,12 @@ export function crearManejadorRpc(lifestyleDb) {
           }
 
           case 'gestionar_lista_compra': {
-            const accion = args.accion || (args.item || args.items ? 'anadir' : (args.criterio ? 'tachar' : 'listar'));
+            let accion = (args.accion || '').toLowerCase();
+            if (['agregar', 'poner', 'anadir'].includes(accion) || (!accion && (args.item || args.items))) accion = 'anadir';
+            else if (['borrar', 'comprado', 'quitar', 'tachar'].includes(accion) || (!accion && args.criterio)) accion = 'tachar';
+            else if (['limpiar', 'vaciar'].includes(accion)) accion = 'vaciar';
+            else if (['ver', 'consultar'].includes(accion) || !accion) accion = 'listar';
+
             if (accion === 'anadir') {
               datosResultado = lifestyleDb.anadirCompra({ item: args.item, items: args.items });
             } else if (accion === 'listar') {
