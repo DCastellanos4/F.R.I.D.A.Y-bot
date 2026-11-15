@@ -8,6 +8,8 @@
  *
  * Zona horaria Europe/Madrid para horas fijas, convencion del repo.
  *
+ * Soporte dual: SQLite Store (ACID + multi-tenant) y fallback JSON.
+ *
  * Strict Policy: Zero Emojis.
  */
 import fs from 'node:fs';
@@ -18,6 +20,18 @@ import { enqueueAlert } from './alertQueueService.js';
 
 export const ARCHIVO_DEFECTO = path.join(DATA_DIR, 'snoozes.json');
 export const INTERVALO_DEFECTO_MS = Number(process.env.DAVIS_SNOOZE_INTERVALO_MS) || 60 * 1000;
+
+let storeSnoozesPorDefecto = null;
+
+export function registrarStoreSnoozesPorDefecto(store) {
+  storeSnoozesPorDefecto = store || null;
+}
+
+function storeDe(deps = {}) {
+  if (deps.store) return deps.store;
+  if (deps.rutaArchivo) return null;
+  return storeSnoozesPorDefecto;
+}
 
 function rutaArchivo(deps = {}) {
   return deps.rutaArchivo || ARCHIVO_DEFECTO;
@@ -58,7 +72,6 @@ function fechaDesdeHoraMadrid(hora, minuto, referencia = new Date()) {
   const hoy = fechaMadrid(referencia);
   const pad = (n) => String(n).padStart(2, '0');
   const textoLocal = `${hoy.anio}-${pad(hoy.mes)}-${pad(hoy.dia)}T${pad(hora)}:${pad(minuto)}:00`;
-  // Dos pasadas: estimar con offset aproximado y corregir con Intl.
   const estimado = new Date(`${textoLocal}+01:00`);
   const partes = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -89,6 +102,27 @@ export function programarSnooze({ chatId, minutos, hora, nota } = {}, deps = {})
   } else {
     return { ok: false, error: 'Dime cuando: "en 2 horas" o una hora concreta ("a las 18:00").' };
   }
+
+  const store = storeDe(deps);
+  if (store) {
+    const pend = store.listarPendientes(deps.tenantId);
+    const duplicado = pend.find((s) => s.chat_id === chatId);
+    if (duplicado) {
+      return { ok: false, error: `Ya tienes un recordatorio pendiente de ese chat para ${new Date(duplicado.fecha_aviso).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })}. Cancelalo primero si quieres cambiarlo.` };
+    }
+    const snooze = {
+      id: crypto.randomBytes(4).toString('hex'),
+      chatId: String(chatId),
+      nota: String(nota || '').slice(0, 200) || null,
+      activarEn: activarEn.toISOString(),
+      creadoEn: ref.toISOString(),
+      estado: 'pendiente'
+    };
+    store.guardar({ id: snooze.id, chatId: snooze.chatId, mensajeOriginalId: snooze.nota, fechaAviso: snooze.activarEn }, deps.tenantId);
+    iniciarMonitorSnoozes(deps);
+    return { ok: true, snooze };
+  }
+
   const estado = leerEstado(deps);
   const duplicado = estado.snoozes.find((s) => s.estado === 'pendiente' && s.chatId === chatId);
   if (duplicado) {
@@ -103,7 +137,6 @@ export function programarSnooze({ chatId, minutos, hora, nota } = {}, deps = {})
     estado: 'pendiente'
   };
   estado.snoozes.push(snooze);
-  // Limpieza: conservar solo pendientes y los completados del ultimo dia.
   const corte = ref.getTime() - 86400000;
   estado.snoozes = estado.snoozes.filter((s) => s.estado === 'pendiente' || new Date(s.activarEn).getTime() >= corte);
   guardarEstado(estado, deps);
@@ -112,10 +145,29 @@ export function programarSnooze({ chatId, minutos, hora, nota } = {}, deps = {})
 }
 
 export function listarSnoozes(deps = {}) {
+  const store = storeDe(deps);
+  if (store) {
+    return store.listarPendientes(deps.tenantId).map((s) => ({
+      id: s.id,
+      chatId: s.chat_id,
+      nota: s.mensaje_original_id,
+      activarEn: s.fecha_aviso,
+      creadoEn: s.creado_en,
+      estado: s.estado
+    }));
+  }
+
   return leerEstado(deps).snoozes.filter((s) => s.estado === 'pendiente');
 }
 
 export function cancelarSnooze({ chatId, id } = {}, deps = {}) {
+  const store = storeDe(deps);
+  if (store) {
+    const res = store.desactivar(id || chatId, deps.tenantId);
+    if (!res.ok) return { ok: false, error: 'No encuentro ningun recordatorio pendiente de ese chat.' };
+    return { ok: true };
+  }
+
   const estado = leerEstado(deps);
   const idx = estado.snoozes.findIndex((s) => s.estado === 'pendiente' && (s.id === id || (chatId && s.chatId === chatId)));
   if (idx === -1) return { ok: false, error: 'No encuentro ningun recordatorio pendiente de ese chat.' };
@@ -125,11 +177,30 @@ export function cancelarSnooze({ chatId, id } = {}, deps = {}) {
 }
 
 export function lanzarRondaSnoozes(deps = {}) {
-  const estado = leerEstado(deps);
+  const store = storeDe(deps);
   const ref = ahora(deps);
   const encolar = typeof deps.enqueue === 'function'
     ? deps.enqueue
     : (alerta) => enqueueAlert(alerta, deps.alertQueueOptions || {});
+
+  if (store) {
+    const pendientes = store.listarPendientes(deps.tenantId);
+    let disparados = 0;
+    for (const s of pendientes) {
+      if (new Date(s.fecha_aviso) > ref) continue;
+      encolar({
+        title: 'Volver a un chat',
+        details: `Me pediste que te recordara volver al chat ${s.chat_id}.${s.mensaje_original_id ? ' Nota tuya: ' + s.mensaje_original_id : ''}`,
+        priority: 'normal',
+        source: 'snooze'
+      });
+      store.desactivar(s.id, deps.tenantId);
+      disparados++;
+    }
+    return { ok: true, disparados };
+  }
+
+  const estado = leerEstado(deps);
   let disparados = 0;
   for (const s of estado.snoozes) {
     if (s.estado !== 'pendiente') continue;

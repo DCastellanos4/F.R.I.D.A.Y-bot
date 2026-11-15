@@ -8,6 +8,18 @@ const CARPETA_DATA = DATA_DIR;
 const ARCHIVO_RECORDATORIOS = path.join(CARPETA_DATA, 'reminders.json');
 const ARCHIVO_LOG_ALERTAS = path.join(CARPETA_DATA, 'alerts.log');
 
+let storeRecordatoriosPorDefecto = null;
+
+export function registrarStoreRecordatoriosPorDefecto(store) {
+  storeRecordatoriosPorDefecto = store || null;
+}
+
+function storeDe(deps = {}) {
+  if (deps.store) return deps.store;
+  if (deps.rutaArchivo) return null;
+  return storeRecordatoriosPorDefecto;
+}
+
 if (!fs.existsSync(CARPETA_DATA)) {
   fs.mkdirSync(CARPETA_DATA, { recursive: true });
 }
@@ -68,7 +80,6 @@ function calcularTimestamp(minutosEnElFuturo, horaTexto) {
   }
 
   // Caso 2: Hora fija en horario español (Europe/Madrid)
-  // Soporta "21:30", "08:00", "9:00", pero también "9", "21", "a las 9", "a las 21"
   if (horaTexto && (typeof horaTexto === 'string' || typeof horaTexto === 'number')) {
     const texto = horaTexto.toString().trim();
     const match = texto.match(/(\d{1,2})(?::(\d{2}))?/);
@@ -97,7 +108,6 @@ function calcularTimestamp(minutosEnElFuturo, horaTexto) {
             objetivo = new Date(fechaStr + '+02:00');
           }
         }
-
         return objetivo;
       }
     }
@@ -108,7 +118,6 @@ function calcularTimestamp(minutosEnElFuturo, horaTexto) {
 }
 
 export function crearRecordatorio({ mensaje, minutosEnElFuturo = null, hora = null }, deps = {}) {
-  // Detección automática en el mensaje si no se pasaron argumentos explícitos
   let minCalc = minutosEnElFuturo;
   let horaCalc = hora;
 
@@ -143,6 +152,13 @@ export function crearRecordatorio({ mensaje, minutosEnElFuturo = null, hora = nu
     creadoEn: new Date().toISOString()
   };
 
+  const store = storeDe(deps);
+  if (store) {
+    store.crear({ id, chatId: deps.chatId || '', mensaje: nuevo.mensaje, fechaObjetivo: fechaObjetivo.toISOString() }, deps.tenantId);
+    console.log(`[Recordatorio Guardado SQLite] "${nuevo.mensaje}" programado para el ${nuevo.fechaHoraLocal}`);
+    return { ok: true, recordatorio: nuevo };
+  }
+
   const lista = leerRecordatorios(deps);
   lista.push(nuevo);
   guardarRecordatorios(lista, deps);
@@ -156,6 +172,30 @@ export function crearRecordatorio({ mensaje, minutosEnElFuturo = null, hora = nu
 }
 
 export function listarRecordatorios(soloPendientes = true, deps = {}) {
+  const store = storeDe(deps);
+  if (store) {
+    const filas = store.listar(deps.tenantId, soloPendientes ? 'pendiente' : null);
+    return filas.map((r) => {
+      const ts = new Date(r.fecha_objetivo).getTime();
+      const formatoLocal = new Date(ts).toLocaleString('es-ES', {
+        timeZone: 'Europe/Madrid',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      return {
+        id: r.id,
+        mensaje: r.mensaje,
+        timestamp: ts,
+        fechaHoraLocal: formatoLocal,
+        completado: r.estado === 'completado',
+        creadoEn: r.creado_en
+      };
+    });
+  }
+
   const lista = leerRecordatorios(deps);
   if (soloPendientes) {
     return lista.filter(r => !r.completado);
@@ -164,9 +204,22 @@ export function listarRecordatorios(soloPendientes = true, deps = {}) {
 }
 
 export function cancelarRecordatorio(criterio, deps = {}) {
-  const lista = leerRecordatorios(deps);
   const crit = (criterio || '').toString().toLowerCase().trim();
 
+  const store = storeDe(deps);
+  if (store) {
+    if (crit === '*' || crit === 'todos' || crit === 'todas' || crit.includes('todo') || crit.includes('toda')) {
+      const res = store.cancelarTodos(deps.tenantId);
+      return { ok: true, mensaje: `Se han cancelado todos los recordatorios del sistema (${res.cancelados} pendientes eliminados), señor.` };
+    }
+    const res = store.cancelar(crit, deps.tenantId);
+    if (!res.ok) {
+      return { ok: false, mensaje: 'No se encontró ningún recordatorio que coincida, señor.' };
+    }
+    return { ok: true, recordatorio: { id: crit, mensaje: crit }, mensaje: `Recordatorio cancelado con éxito: "${crit}", señor.` };
+  }
+
+  const lista = leerRecordatorios(deps);
   if (crit === '*' || crit === 'todos' || crit === 'todas' || crit.includes('todo') || crit.includes('toda')) {
     const pendientes = lista.filter(r => !r.completado).length;
     guardarRecordatorios([], deps);

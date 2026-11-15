@@ -89,10 +89,47 @@ export function normalizarNumeroTelefono(numeroRaw) {
   };
 }
 
+let storeMensajesProgramadosPorDefecto = null;
+
+export function registrarStoreMensajesProgramadosPorDefecto(store) {
+  storeMensajesProgramadosPorDefecto = store || null;
+}
+
+function storeDe(deps = {}) {
+  if (deps.store) return deps.store;
+  if (deps.rutaArchivo) return null;
+  return storeMensajesProgramadosPorDefecto;
+}
+
 /**
- * Lee los mensajes programados desde disco.
+ * Lee los mensajes programados desde disco o SQLite.
  */
 export function leerMensajesProgramados(deps = {}) {
+  const store = storeDe(deps);
+  if (store) {
+    const filas = store.listarPendientes ? store.listarPendientes(deps.tenantId) : [];
+    return filas.map((r) => {
+      const ts = new Date(r.fecha_envio).getTime();
+      const formatoLocal = new Date(ts).toLocaleString('es-ES', {
+        timeZone: 'Europe/Madrid',
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+      });
+      return {
+        id: r.id,
+        tenantId: r.tenant_id,
+        destinatario: {
+          jid: r.jid,
+          numero: r.jid ? r.jid.split('@')[0] : ''
+        },
+        mensaje: r.mensaje,
+        timestamp: ts,
+        fechaHoraLocal: formatoLocal,
+        estado: r.estado,
+        creadoEn: r.creado_en
+      };
+    });
+  }
+
   const ruta = deps.rutaArchivo || ARCHIVO_MENSAJES;
   try {
     if (!fs.existsSync(ruta)) {
@@ -107,9 +144,24 @@ export function leerMensajesProgramados(deps = {}) {
 }
 
 /**
- * Guarda la lista de mensajes programados en disco de forma duradera.
+ * Guarda la lista de mensajes programados en disco de forma duradera o en SQLite.
  */
 export function guardarMensajesProgramados(lista, deps = {}) {
+  const store = storeDe(deps);
+  if (store) {
+    if (Array.isArray(lista)) {
+      for (const m of lista) {
+        store.guardar({
+          id: m.id,
+          jid: m.destinatario?.jid || m.jid || '',
+          mensaje: m.mensaje,
+          fechaEnvio: new Date(m.timestamp || Date.now()).toISOString()
+        }, m.tenantId || deps.tenantId);
+      }
+    }
+    return;
+  }
+
   const ruta = deps.rutaArchivo || ARCHIVO_MENSAJES;
   try {
     fs.writeFileSync(ruta, JSON.stringify(lista, null, 2), 'utf-8');

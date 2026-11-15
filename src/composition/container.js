@@ -25,6 +25,15 @@ import { registrarStoreMemoriasPorDefecto } from '../services/memoryService.js';
 import { registrarStoreUsoPorDefecto } from '../services/usageLedgerService.js';
 import { registrarStoreFinanzasPorDefecto } from '../services/financeService.js';
 import { registrarFuenteMemoriasPorDefecto } from '../services/semanticMemoryService.js';
+import { registrarStoreCompraPorDefecto } from '../services/shoppingService.js';
+import { registrarStoreHabitosPorDefecto } from '../services/habitsService.js';
+import { registrarStoreRecordatoriosPorDefecto } from '../services/reminderService.js';
+import { registrarStoreContactosPorDefecto } from '../services/contactsService.js';
+import { registrarStoreQuedadasPorDefecto } from '../services/quedadasService.js';
+import { registrarStoreSnoozesPorDefecto } from '../services/snoozeService.js';
+import { registrarStoreFlashcardsPorDefecto } from '../services/flashcardService.js';
+import { registrarStoreMensajesProgramadosPorDefecto } from '../services/scheduledMessageService.js';
+import { registrarStoreHistorialPorDefecto } from '../services/conversationHistoryService.js';
 import { crearPersistenciaSqlite } from '../adapters/outbound/persistence/sqlite/persistenciaSqlite.js';
 import { crearSqliteMemoryRepository } from '../adapters/outbound/persistence/sqlite/sqliteMemoryRepository.js';
 import { crearSqliteMemoryStore } from '../adapters/outbound/persistence/sqlite/sqliteMemoryStore.js';
@@ -56,7 +65,7 @@ import { crearAnonimizadorPreLlm } from '../adapters/outbound/llm/piiPreLlmAdapt
  */
 function crearPersistenciaActiva(overrides) {
   if (overrides.memoryRepository) return { modo: 'inyectado', memoryRepository: overrides.memoryRepository };
-  const modo = (process.env.DAVIS_PERSISTENCE || 'json').toLowerCase();
+  const modo = (process.env.DAVIS_PERSISTENCE || 'sqlite').toLowerCase();
   if (modo === 'json') return { modo, memoryRepository: crearJsonMemoryRepository() };
   if (modo !== 'sqlite') {
     throw new Error(`DAVIS_PERSISTENCE desconocido: "${modo}". Valores validos: json, sqlite.`);
@@ -75,6 +84,15 @@ function crearPersistenciaActiva(overrides) {
   registrarStoreUsoPorDefecto(persistencia.usageStore);
   registrarStoreFinanzasPorDefecto(persistencia.financeStore);
   registrarFuenteMemoriasPorDefecto(persistencia.fuenteSemantica);
+  registrarStoreCompraPorDefecto(persistencia.shoppingStore);
+  registrarStoreHabitosPorDefecto(persistencia.habitsStore);
+  registrarStoreRecordatoriosPorDefecto(persistencia.reminderStore);
+  registrarStoreContactosPorDefecto(persistencia.contactsStore);
+  registrarStoreQuedadasPorDefecto(persistencia.quedadasStore);
+  registrarStoreSnoozesPorDefecto(persistencia.snoozeStore);
+  registrarStoreFlashcardsPorDefecto(persistencia.flashcardsStore);
+  registrarStoreMensajesProgramadosPorDefecto(persistencia.scheduledMessageStore);
+  registrarStoreHistorialPorDefecto(persistencia.historyStore);
   const memoryRepository = crearSqliteMemoryRepository({
     memoryStore: persistencia.memoryStore,
     crearStoreParaRuta: (ruta) => {

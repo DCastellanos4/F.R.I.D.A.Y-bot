@@ -13,6 +13,13 @@ node_modules/
 data/auth_info_baileys/
 data/*.json
 data/*.log
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.db-journal
+data/episodios/
+data/tenants/
+data/metricas*.jsonl
 !data/.gitkeep
 
 # Archivos de briefing matutino generados

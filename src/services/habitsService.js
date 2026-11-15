@@ -5,6 +5,8 @@
  * calendario Europe/Madrid). Sin avisos proactivos: el seguimiento es bajo
  * demanda de David.
  *
+ * Soporte dual: SQLite Store (ACID + multi-tenant) y fallback JSON.
+ *
  * Strict Policy: Zero Emojis.
  */
 import fs from '../security/tenantFileSystem.js';
@@ -13,6 +15,18 @@ import crypto from 'node:crypto';
 import { DATA_DIR } from '../config/paths.js';
 
 export const ARCHIVO_DEFECTO = path.join(DATA_DIR, 'habitos.json');
+
+let storeHabitosPorDefecto = null;
+
+export function registrarStoreHabitosPorDefecto(store) {
+  storeHabitosPorDefecto = store || null;
+}
+
+function storeDe(deps = {}) {
+  if (deps.store) return deps.store;
+  if (deps.rutaArchivo) return null;
+  return storeHabitosPorDefecto;
+}
 
 function rutaArchivo(deps = {}) {
   return deps.rutaArchivo || ARCHIVO_DEFECTO;
@@ -57,6 +71,17 @@ export function registrarHabito({ nombre } = {}, deps = {}) {
   const n = String(nombre || '').trim();
   if (!n) return { ok: false, error: 'Dime que habito quieres seguir (por ejemplo: "leer 20 minutos").' };
   if (n.length > 80) return { ok: false, error: 'Nombre demasiado largo.' };
+
+  const store = storeDe(deps);
+  if (store) {
+    try {
+      const habito = store.crear({ nombre: n }, deps.tenantId);
+      return { ok: true, habito };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+
   const estado = leer(deps);
   if (estado.habitos.some((h) => h.nombre.toLowerCase() === n.toLowerCase())) {
     return { ok: false, error: `Ya sigues el habito "${n}".` };
@@ -68,6 +93,12 @@ export function registrarHabito({ nombre } = {}, deps = {}) {
 }
 
 export function marcarHabito({ criterio, fecha } = {}, deps = {}) {
+  const store = storeDe(deps);
+  if (store) {
+    const f = /^\d{4}-\d{2}-\d{2}$/.test(String(fecha || '')) ? fecha : hoy(deps);
+    return store.marcar(criterio, f, deps.tenantId);
+  }
+
   const c = String(criterio || '').trim().toLowerCase();
   const estado = leer(deps);
   const habito = estado.habitos.find((h) => h.id === criterio || (c && h.nombre.toLowerCase().includes(c)));
@@ -81,6 +112,11 @@ export function marcarHabito({ criterio, fecha } = {}, deps = {}) {
 }
 
 export function listarHabitos(deps = {}) {
+  const store = storeDe(deps);
+  if (store) {
+    return store.listar(deps.tenantId);
+  }
+
   const hoyStr = hoy(deps);
   return leer(deps).habitos.map((h) => ({
     nombre: h.nombre,

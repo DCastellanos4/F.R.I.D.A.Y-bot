@@ -5,6 +5,8 @@
  * invitacion como BORRADOR para que David la copie: el bot nunca la envia a
  * terceros.
  *
+ * Soporte dual: SQLite Store (ACID + multi-tenant) y fallback JSON.
+ *
  * Strict Policy: Zero Emojis.
  */
 import fs from '../security/tenantFileSystem.js';
@@ -13,6 +15,18 @@ import crypto from 'node:crypto';
 import { DATA_DIR } from '../config/paths.js';
 
 export const ARCHIVO_DEFECTO = path.join(DATA_DIR, 'quedadas.json');
+
+let storeQuedadasPorDefecto = null;
+
+export function registrarStoreQuedadasPorDefecto(store) {
+  storeQuedadasPorDefecto = store || null;
+}
+
+function storeDe(deps = {}) {
+  if (deps.store) return deps.store;
+  if (deps.rutaArchivo) return null;
+  return storeQuedadasPorDefecto;
+}
 
 function rutaArchivo(deps = {}) {
   return deps.rutaArchivo || ARCHIVO_DEFECTO;
@@ -38,7 +52,7 @@ function guardar(estado, deps = {}) {
 export function crearQuedada({ titulo, fecha, hora, lugar, participantes } = {}, deps = {}) {
   const t = String(titulo || '').trim().slice(0, 80);
   if (!t) return { ok: false, error: 'Dime que quedada es (por ejemplo: "cena con la uni").' };
-  const estado = leer(deps);
+
   const quedada = {
     id: crypto.randomBytes(4).toString('hex'),
     titulo: t,
@@ -48,18 +62,58 @@ export function crearQuedada({ titulo, fecha, hora, lugar, participantes } = {},
     participantes: (Array.isArray(participantes) ? participantes : []).map((p) => String(p).trim().slice(0, 40)).filter(Boolean).slice(0, 20),
     creadaEn: new Date().toISOString()
   };
+
+  const store = storeDe(deps);
+  if (store) {
+    store.crear({
+      id: quedada.id,
+      titulo: quedada.titulo,
+      fecha: quedada.fecha || '',
+      participantes: quedada.participantes,
+      descripcion: JSON.stringify({ hora: quedada.hora, lugar: quedada.lugar })
+    }, deps.tenantId);
+    return { ok: true, quedada };
+  }
+
+  const estado = leer(deps);
   estado.quedadas.push(quedada);
   guardar(estado, deps);
   return { ok: true, quedada };
 }
 
 export function listarQuedadas(deps = {}) {
+  const store = storeDe(deps);
+  if (store) {
+    const filas = store.listar(deps.tenantId);
+    return filas.map((q) => {
+      let hora = null;
+      let lugar = null;
+      if (q.descripcion && q.descripcion.startsWith('{')) {
+        try {
+          const d = JSON.parse(q.descripcion);
+          hora = d.hora || null;
+          lugar = d.lugar || null;
+        } catch {}
+      }
+      return {
+        id: q.id,
+        titulo: q.titulo,
+        fecha: q.fecha,
+        hora,
+        lugar,
+        participantes: q.participantes,
+        creadaEn: q.creado_en
+      };
+    }).reverse().slice(0, 10);
+  }
+
   return leer(deps).quedadas.slice().reverse().slice(0, 10);
 }
 
 export async function redactarInvitacion({ criterio } = {}, deps = {}) {
   const c = String(criterio || '').trim().toLowerCase();
-  const q = leer(deps).quedadas.find((x) => x.id === criterio || (c && x.titulo.toLowerCase().includes(c)));
+  const lista = listarQuedadas(deps);
+  const q = lista.find((x) => x.id === criterio || (c && x.titulo.toLowerCase().includes(c)));
   if (!q) return { ok: false, error: 'No encuentro esa quedada.' };
   const datos = `${q.titulo}${q.fecha ? `, ${q.fecha}` : ''}${q.hora ? ` a las ${q.hora}` : ''}${q.lugar ? `, en ${q.lugar}` : ''}`;
   if (typeof deps.chatCompletion !== 'function') {

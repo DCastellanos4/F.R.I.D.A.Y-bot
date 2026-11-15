@@ -4,6 +4,8 @@
  * Una lista viva: anadir (uno o varios items), listar, tachar y vaciar.
  * La voz llega transcrita por el flujo de audio existente.
  *
+ * Soporte dual: SQLite Store (ACID + multi-tenant) y fallback JSON.
+ *
  * Strict Policy: Zero Emojis.
  */
 import fs from '../security/tenantFileSystem.js';
@@ -11,6 +13,18 @@ import path from 'node:path';
 import { DATA_DIR } from '../config/paths.js';
 
 export const ARCHIVO_DEFECTO = path.join(DATA_DIR, 'compra.json');
+
+let storeCompraPorDefecto = null;
+
+export function registrarStoreCompraPorDefecto(store) {
+  storeCompraPorDefecto = store || null;
+}
+
+function storeDe(deps = {}) {
+  if (deps.store) return deps.store;
+  if (deps.rutaArchivo) return null;
+  return storeCompraPorDefecto;
+}
 
 function rutaArchivo(deps = {}) {
   return deps.rutaArchivo || ARCHIVO_DEFECTO;
@@ -34,6 +48,9 @@ function guardar(estado, deps = {}) {
 }
 
 export function anadirCompra({ items } = {}, deps = {}) {
+  const store = storeDe(deps);
+  if (store) return store.anadir(items, deps.tenantId);
+
   const lista = (Array.isArray(items) ? items : [items])
     .map((i) => String(i || '').trim().slice(0, 80))
     .filter(Boolean);
@@ -50,10 +67,15 @@ export function anadirCompra({ items } = {}, deps = {}) {
 }
 
 export function listarCompra(deps = {}) {
+  const store = storeDe(deps);
+  if (store) return store.listar(deps.tenantId);
   return leer(deps).items;
 }
 
 export function tacharCompra(criterio, deps = {}) {
+  const store = storeDe(deps);
+  if (store) return store.tachar(criterio, deps.tenantId);
+
   const c = String(criterio || '').trim().toLowerCase();
   const estado = leer(deps);
   const idx = estado.items.findIndex((x) => x.toLowerCase().includes(c));
@@ -64,6 +86,9 @@ export function tacharCompra(criterio, deps = {}) {
 }
 
 export function vaciarCompra(deps = {}) {
+  const store = storeDe(deps);
+  if (store) return store.vaciar(deps.tenantId);
+
   guardar({ items: [] }, deps);
   return { ok: true };
 }

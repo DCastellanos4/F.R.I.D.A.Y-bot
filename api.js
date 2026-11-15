@@ -3,8 +3,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { config } from './src/config/config.js';
 // Canal HTTP sobre el hexagono: mismo puerto de entrada que WhatsApp y CLI.
-import { procesarMensajeEntrante } from './src/composition/container.js';
+import { procesarMensajeEntrante, contenedorCompartido } from './src/composition/container.js';
 import { crearInboundMessage } from './src/ports/inbound/InboundMessage.js';
+import { esTenantIdValido } from './src/core/tenancy.js';
+import { esNombrePlanValido, PLANES } from './src/services/tenantQuotaService.js';
 import {
   listarRecordatorios,
   crearRecordatorio,
@@ -317,6 +319,100 @@ export async function handleApiRequest(req, res) {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, briefing: texto }));
     return;
+  }
+
+  // Endpoint de gestion y alta de Tenants
+  if (url.pathname === '/api/tenants') {
+    const tenantRepo = contenedorCompartido.persistencia?.tenantRepository;
+    const quotaService = contenedorCompartido.quotaService;
+
+    if (!tenantRepo) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Persistencia de tenants no disponible (SQLite requerido).' }));
+      return;
+    }
+
+    if (req.method === 'GET') {
+      const id = url.searchParams.get('id');
+      if (id) {
+        const t = tenantRepo.obtener(id);
+        if (!t) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Tenant no encontrado.' }));
+          return;
+        }
+        const plan = quotaService ? quotaService.obtenerPlan(id) : null;
+        const herramientas = tenantRepo.leerPermisos(id);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, tenant: t, plan, herramientas }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, tenantsHabilitados: true }));
+      return;
+    }
+
+    if (req.method === 'POST') {
+      try {
+        const data = await parsearBody(req);
+        const { id, nombre, plan = 'demo', canal = 'whatsapp', identificador = null, herramientas = [] } = data;
+
+        if (!id || !esTenantIdValido(id)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'id de tenant invalido o ausente.' }));
+          return;
+        }
+
+        if (!esNombrePlanValido(plan) || plan === 'propietario') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'plan invalido (demo, cliente, staff).' }));
+          return;
+        }
+
+        let t = tenantRepo.obtener(id);
+        if (!t) {
+          t = tenantRepo.registrarTenant({ id, nombre: nombre || id, rol: 'usuario' });
+        }
+
+        if (quotaService) {
+          quotaService.asignarPlan(id, plan);
+        }
+
+        if (Array.isArray(herramientas) && herramientas.length > 0) {
+          tenantRepo.configurarPermisos(id, herramientas);
+        }
+
+        if (identificador) {
+          let idFinal = identificador;
+          if (canal === 'whatsapp' && !idFinal.includes('@')) {
+            const digitos = idFinal.replace(/\D/g, '');
+            idFinal = `${digitos}@s.whatsapp.net`;
+          }
+          try {
+            tenantRepo.vincularIdentidad(id, canal, idFinal);
+          } catch (errIdent) {
+            console.warn('[API Tenants] Aviso vinculando identidad:', errIdent.message);
+          }
+        }
+
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: true,
+          tenant: {
+            id: t.id,
+            nombre: t.nombre,
+            plan,
+            cuotaDiaria: PLANES[plan]?.tokensDia,
+            peticionesMinuto: PLANES[plan]?.peticionesMinuto,
+            identificadorVinculado: identificador || null
+          }
+        }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
   }
 
   res.writeHead(404, { 'Content-Type': 'application/json' });

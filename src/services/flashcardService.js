@@ -6,6 +6,8 @@
  * espacia. Un monitor periodico encola las tarjetas que tocan en la cola de
  * alertas proactiva para que lleguen por WhatsApp.
  *
+ * Soporte dual: SQLite Store (ACID + multi-tenant) y fallback JSON.
+ *
  * Strict Policy: Zero Emojis.
  */
 import fs from 'node:fs';
@@ -20,8 +22,19 @@ export const INTERVALO_DEFECTO_MS = Number(process.env.DAVIS_FLASHCARDS_INTERVAL
 export const MAX_POR_RONDA = 3;
 export const ZONA_DEFECTO = 'Europe/Madrid';
 
+let storeFlashcardsPorDefecto = null;
+
+export function registrarStoreFlashcardsPorDefecto(store) {
+  storeFlashcardsPorDefecto = store || null;
+}
+
+function storeDe(deps = {}) {
+  if (deps.store) return deps.store;
+  if (deps.rutaArchivo) return null;
+  return storeFlashcardsPorDefecto;
+}
+
 function configDefecto() {
-  // Repaso proactivo DESACTIVADO hasta opt-in explicito del propietario
   return { activo: false, cadenciaHoras: 4, silencioDesde: 22, silencioHasta: 8, ultimaRondaEn: null };
 }
 
@@ -43,10 +56,6 @@ function guardarConfig(config, deps = {}) {
   fs.writeFileSync(destino, JSON.stringify(config, null, 2), 'utf-8');
 }
 
-/**
- * Configura el repaso proactivo. activo=true solo debe llegar con opt-in
- * explicito del propietario (el ejecutor lo verifica en su mensaje).
- */
 export function configurarRepaso({ activo = null, cadenciaHoras = null, silencioDesde = null, silencioHasta = null } = {}, deps = {}) {
   const config = leerConfigFlashcards(deps);
   if (cadenciaHoras !== null) {
@@ -70,7 +79,6 @@ export function configurarRepaso({ activo = null, cadenciaHoras = null, silencio
   return { ok: true, config };
 }
 
-/** Hora local actual (0-23) en la zona configurada. */
 function horaEnZona(deps) {
   const zona = deps.zonaHoraria || ZONA_DEFECTO;
   return Number(new Intl.DateTimeFormat('en-US', { timeZone: zona, hour: '2-digit', hourCycle: 'h23' }).format(ahora(deps)));
@@ -115,9 +123,38 @@ export function agregarFlashcard({ asignatura, pregunta, respuesta }, deps = {})
   if (typeof pregunta !== 'string' || !pregunta.trim() || typeof respuesta !== 'string' || !respuesta.trim()) {
     return { ok: false, error: 'Pregunta y respuesta son obligatorias.' };
   }
-  const tarjetas = leerTarjetas(deps);
   const q = pregunta.trim().toLowerCase();
   const asig = (asignatura || 'general').trim();
+
+  const store = storeDe(deps);
+  if (store) {
+    const existentes = store.listar(deps.tenantId);
+    const duplicada = existentes.find((t) => t.pregunta.toLowerCase() === q && t.asignatura.toLowerCase() === asig.toLowerCase());
+    if (duplicada) {
+      return { ok: false, error: 'Ya existe esa tarjeta en esa asignatura.', existente: duplicada };
+    }
+    const id = crypto.randomUUID().slice(0, 8);
+    const ahoraIso = ahora(deps).toISOString();
+    store.crear({ id, asignatura: asig, pregunta: pregunta.trim(), respuesta: respuesta.trim() }, deps.tenantId);
+    const tarjeta = {
+      id,
+      asignatura: asig,
+      pregunta: pregunta.trim(),
+      respuesta: respuesta.trim(),
+      repaso: {
+        intervaloDias: 0,
+        facilidad: FACILIDAD_INICIAL,
+        proximaRevision: ahoraIso,
+        aciertos: 0,
+        fallos: 0,
+        ultimaAlertaEn: null
+      },
+      creadaEn: ahoraIso
+    };
+    return { ok: true, tarjeta };
+  }
+
+  const tarjetas = leerTarjetas(deps);
   const duplicada = tarjetas.find((t) => t.pregunta.toLowerCase() === q && t.asignatura.toLowerCase() === asig.toLowerCase());
   if (duplicada) {
     return { ok: false, error: 'Ya existe esa tarjeta en esa asignatura.', existente: duplicada };
@@ -143,7 +180,32 @@ export function agregarFlashcard({ asignatura, pregunta, respuesta }, deps = {})
   return { ok: true, tarjeta };
 }
 
+function mapearDesdeSqlite(row) {
+  return {
+    id: row.id,
+    asignatura: row.asignatura,
+    pregunta: row.pregunta,
+    respuesta: row.respuesta,
+    repaso: {
+      intervaloDias: row.intervalo_dias,
+      facilidad: row.facilidad,
+      proximaRevision: row.proximo_repaso,
+      aciertos: row.repeticiones || 0,
+      fallos: 0,
+      ultimaAlertaEn: null
+    },
+    creadaEn: row.creada_en
+  };
+}
+
 export function pendientesDeRepaso({ limite = MAX_POR_RONDA } = {}, deps = {}) {
+  const store = storeDe(deps);
+  if (store) {
+    const ahoraIso = ahora(deps).toISOString();
+    const rows = store.pendientesRepaso(deps.tenantId, ahoraIso);
+    return rows.slice(0, Math.max(limite, 1)).map(mapearDesdeSqlite);
+  }
+
   const ahoraMs = ahora(deps).getTime();
   return leerTarjetas(deps)
     .filter((t) => new Date(t.repaso.proximaRevision).getTime() <= ahoraMs)
@@ -151,19 +213,60 @@ export function pendientesDeRepaso({ limite = MAX_POR_RONDA } = {}, deps = {}) {
     .slice(0, Math.max(limite, 1));
 }
 
-/**
- * Registra una respuesta. calidad: 0-5 (>=3 acierto). Acierto: el intervalo
- * crece con la facilidad. Fallo: vuelve a media jornada y baja la facilidad.
- */
 export function registrarRespuesta(id, calidad, deps = {}) {
+  const q = Number(calidad);
+  if (!Number.isFinite(q) || q < 0 || q > 5) {
+    return { ok: false, error: 'La calidad debe ser un numero entre 0 y 5.' };
+  }
+
+  const store = storeDe(deps);
+  if (store) {
+    const filas = store.listar(deps.tenantId);
+    const row = filas.find((t) => t.id === id);
+    if (!row) return { ok: false, error: `No existe ninguna tarjeta con ID ${id}.` };
+
+    const ahoraDate = ahora(deps);
+    if (new Date(row.proximo_repaso).getTime() > ahoraDate.getTime()) {
+      return { ok: false, error: `Esa tarjeta no toca ahora; su proxima revision es ${row.proximo_repaso.slice(0, 16).replace('T', ' ')}. No se califica dos veces la misma revision.` };
+    }
+
+    let intervaloDias = row.intervalo_dias;
+    let facilidad = row.facilidad;
+    let repeticiones = row.repeticiones || 0;
+
+    if (q >= 3) {
+      repeticiones++;
+      intervaloDias = intervaloDias < 1 ? 1 : Math.round(intervaloDias * facilidad);
+      facilidad = Math.min(facilidad + 0.1, 3.0);
+    } else {
+      intervaloDias = 0.5;
+      facilidad = Math.max(facilidad - 0.2, FACILIDAD_MINIMA);
+    }
+    const proximoRepaso = new Date(ahoraDate.getTime() + intervaloDias * 86400000).toISOString();
+    store.responder(id, { intervaloDias, facilidad, repeticiones, proximoRepaso }, deps.tenantId);
+
+    const tarjeta = {
+      id: row.id,
+      asignatura: row.asignatura,
+      pregunta: row.pregunta,
+      respuesta: row.respuesta,
+      repaso: {
+        intervaloDias,
+        facilidad,
+        proximaRevision: proximoRepaso,
+        aciertos: repeticiones,
+        fallos: 0,
+        ultimaRespuestaEn: ahoraDate.toISOString()
+      },
+      creadaEn: row.creada_en
+    };
+    return { ok: true, tarjeta, acierto: q >= 3 };
+  }
+
   const tarjetas = leerTarjetas(deps);
   const tarjeta = tarjetas.find((t) => t.id === id);
   if (!tarjeta) {
     return { ok: false, error: `No existe ninguna tarjeta con ID ${id}.` };
-  }
-  const q = Number(calidad);
-  if (!Number.isFinite(q) || q < 0 || q > 5) {
-    return { ok: false, error: 'La calidad debe ser un numero entre 0 y 5.' };
   }
   const ahoraDate = ahora(deps);
   const r = tarjeta.repaso;
@@ -186,6 +289,16 @@ export function registrarRespuesta(id, calidad, deps = {}) {
 }
 
 export function listarFlashcards({ asignatura } = {}, deps = {}) {
+  const store = storeDe(deps);
+  if (store) {
+    let rows = store.listar(deps.tenantId);
+    if (asignatura) {
+      const q = asignatura.trim().toLowerCase();
+      rows = rows.filter((t) => t.asignatura.toLowerCase().includes(q));
+    }
+    return rows.map(mapearDesdeSqlite).sort((a, b) => new Date(a.repaso.proximaRevision) - new Date(b.repaso.proximaRevision));
+  }
+
   let tarjetas = leerTarjetas(deps);
   if (asignatura) {
     const q = asignatura.trim().toLowerCase();
@@ -195,6 +308,21 @@ export function listarFlashcards({ asignatura } = {}, deps = {}) {
 }
 
 export function resumenFlashcards(deps = {}) {
+  const store = storeDe(deps);
+  if (store) {
+    const tarjetas = listarFlashcards({}, deps);
+    const ahoraMs = ahora(deps).getTime();
+    const porAsignatura = {};
+    for (const t of tarjetas) {
+      porAsignatura[t.asignatura] = (porAsignatura[t.asignatura] || 0) + 1;
+    }
+    return {
+      total: tarjetas.length,
+      pendientes: tarjetas.filter((t) => new Date(t.repaso.proximaRevision).getTime() <= ahoraMs).length,
+      porAsignatura
+    };
+  }
+
   const tarjetas = leerTarjetas(deps);
   const ahoraMs = ahora(deps).getTime();
   const porAsignatura = {};
@@ -208,10 +336,6 @@ export function resumenFlashcards(deps = {}) {
   };
 }
 
-/**
- * Encola en la cola de alertas las tarjetas que tocan (sin repetir la misma
- * revision ya alertada). Devuelve cuantas se encolaron.
- */
 export function lanzarRondaRepaso(deps = {}) {
   const config = leerConfigFlashcards(deps);
   if (!config.activo) {
@@ -224,7 +348,8 @@ export function lanzarRondaRepaso(deps = {}) {
   if (config.ultimaRondaEn && (ahoraMs - new Date(config.ultimaRondaEn).getTime()) < config.cadenciaHoras * 3600000) {
     return { ok: true, encoladas: 0, motivo: `Cadencia: ultima ronda hace menos de ${config.cadenciaHoras} h.` };
   }
-  const tarjetas = leerTarjetas(deps);
+  const store = storeDe(deps);
+  const tarjetas = store ? listarFlashcards({}, deps) : leerTarjetas(deps);
   const candidatas = tarjetas
     .filter((t) => new Date(t.repaso.proximaRevision).getTime() <= ahoraMs)
     .filter((t) => !t.repaso.ultimaAlertaEn || new Date(t.repaso.ultimaAlertaEn) < new Date(t.repaso.proximaRevision))
@@ -244,7 +369,9 @@ export function lanzarRondaRepaso(deps = {}) {
     });
     t.repaso.ultimaAlertaEn = new Date(ahoraMs).toISOString();
   }
-  guardarTarjetas(tarjetas, deps);
+  if (!store) {
+    guardarTarjetas(tarjetas, deps);
+  }
   if (candidatas.length > 0) {
     config.ultimaRondaEn = new Date(ahoraMs).toISOString();
     guardarConfig(config, deps);

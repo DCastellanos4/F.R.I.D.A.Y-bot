@@ -19,6 +19,17 @@ import { crearSqliteUserRepository } from './sqliteUserRepository.js';
 import { crearSqliteTenantRepository } from './sqliteTenantRepository.js';
 import { crearSqliteUsageStore } from './sqliteUsageStore.js';
 import { crearSqliteLimitesStore } from './sqliteLimitesStore.js';
+import {
+  crearSqliteShoppingStore,
+  crearSqliteHabitsStore,
+  crearSqliteReminderStore,
+  crearSqliteContactsStore,
+  crearSqliteQuedadasStore,
+  crearSqliteSnoozeStore,
+  crearSqliteFlashcardsStore,
+  crearSqliteScheduledMessageStore,
+  crearSqliteHistoryStore
+} from './sqliteDomainStores.js';
 import { importarJsonASqlite, comprobarEstadoConsistente } from './importExport.js';
 
 export function crearPersistenciaSqlite({ rutaDb, rutaMemoriasJson = null, rutaFinanzasJson = null, rutaUsuariosJson = null } = {}) {
@@ -32,6 +43,15 @@ export function crearPersistenciaSqlite({ rutaDb, rutaMemoriasJson = null, rutaF
   const tenantRepository = crearSqliteTenantRepository(db);
   const usageStore = crearSqliteUsageStore(db);
   const limitesStore = crearSqliteLimitesStore(db);
+  const shoppingStore = crearSqliteShoppingStore(db);
+  const habitsStore = crearSqliteHabitsStore(db);
+  const reminderStore = crearSqliteReminderStore(db);
+  const contactsStore = crearSqliteContactsStore(db);
+  const quedadasStore = crearSqliteQuedadasStore(db);
+  const snoozeStore = crearSqliteSnoozeStore(db);
+  const flashcardsStore = crearSqliteFlashcardsStore(db);
+  const scheduledMessageStore = crearSqliteScheduledMessageStore(db);
+  const historyStore = crearSqliteHistoryStore(db);
 
   const problema = comprobarEstadoConsistente(db);
   if (problema) {
@@ -77,6 +97,15 @@ export function crearPersistenciaSqlite({ rutaDb, rutaMemoriasJson = null, rutaF
     tenantRepository,
     usageStore,
     limitesStore,
+    shoppingStore,
+    habitsStore,
+    reminderStore,
+    contactsStore,
+    quedadasStore,
+    snoozeStore,
+    flashcardsStore,
+    scheduledMessageStore,
+    historyStore,
     fuenteSemantica,
     importacion,
     cerrar: () => db.close()

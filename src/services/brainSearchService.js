@@ -63,7 +63,7 @@ export async function buscarSemantico(consulta, deps = {}) {
   const denseResults = [];
   if (qdrant && typeof qdrant.buscar === 'function') {
     try {
-      const respQdrant = await qdrant.buscar(q, { topK: 10 });
+      const respQdrant = await qdrant.buscar(q, { topK: 10, tenantId: deps.tenantId });
       if (respQdrant && respQdrant.ok && Array.isArray(respQdrant.resultados)) {
         for (const item of respQdrant.resultados) {
           denseResults.push({

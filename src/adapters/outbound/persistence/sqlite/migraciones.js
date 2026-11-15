@@ -449,6 +449,22 @@ export const MIGRACIONES = [
       );
       CREATE INDEX IF NOT EXISTS idx_mensajes_prog_tenant ON mensajes_programados(tenant_id, estado);
     `
+  },
+  {
+    version: 12,
+    nombre: '012_historial_conversaciones_sqlite',
+    sql: `
+      CREATE TABLE IF NOT EXISTS conversaciones_historial (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        chat_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        resumen TEXT,
+        creado_en TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_historial_chat_tenant ON conversaciones_historial(tenant_id, chat_id, creado_en);
+    `
   }
 ];
 

@@ -4,6 +4,8 @@
  * Ficha por persona: nombre, telefono, relacion, email y notas. Datos
  * introducidos por David; busqueda por nombre, relacion o notas.
  *
+ * Soporte dual: SQLite Store (ACID + multi-tenant) y fallback JSON.
+ *
  * Strict Policy: Zero Emojis.
  */
 import fs from '../security/tenantFileSystem.js';
@@ -12,6 +14,18 @@ import crypto from 'node:crypto';
 import { DATA_DIR } from '../config/paths.js';
 
 export const ARCHIVO_DEFECTO = path.join(DATA_DIR, 'contactos.json');
+
+let storeContactosPorDefecto = null;
+
+export function registrarStoreContactosPorDefecto(store) {
+  storeContactosPorDefecto = store || null;
+}
+
+function storeDe(deps = {}) {
+  if (deps.store) return deps.store;
+  if (deps.rutaArchivo) return null;
+  return storeContactosPorDefecto;
+}
 
 function rutaArchivo(deps = {}) {
   return deps.rutaArchivo || ARCHIVO_DEFECTO;
@@ -43,6 +57,16 @@ export function registrarContacto({ nombre, telefono, relacion, email, notas } =
   if (!n) return { ok: false, error: 'Dime el nombre del contacto.' };
   const tel = campo(telefono, 30);
   if (tel && !/^[+\d][\d\s-]{4,}$/.test(tel)) return { ok: false, error: 'Telefono invalido.' };
+
+  const store = storeDe(deps);
+  if (store) {
+    const rel = campo(relacion, 60);
+    const em = campo(email, 80);
+    const nota = campo(notas, 300);
+    const contacto = store.guardar({ nombre: n, telefono: tel, relacion: rel, email: em, notas: nota }, deps.tenantId);
+    return { ok: true, contacto };
+  }
+
   const estado = leer(deps);
   let contacto = estado.contactos.find((c) => c.nombre.toLowerCase() === n.toLowerCase());
   if (!contacto) {
@@ -64,6 +88,13 @@ export function registrarContacto({ nombre, telefono, relacion, email, notas } =
 export function buscarContacto(criterio, deps = {}) {
   const c = String(criterio || '').trim().toLowerCase();
   if (!c) return { ok: false, error: 'Dime a quien busco.' };
+
+  const store = storeDe(deps);
+  if (store) {
+    const encontrados = store.buscar(c, deps.tenantId);
+    return { ok: true, contactos: encontrados };
+  }
+
   const encontrados = leer(deps).contactos.filter((ct) =>
     ct.nombre.toLowerCase().includes(c) ||
     (ct.relacion || '').toLowerCase().includes(c) ||
@@ -72,10 +103,22 @@ export function buscarContacto(criterio, deps = {}) {
 }
 
 export function listarContactos(deps = {}) {
+  const store = storeDe(deps);
+  if (store) {
+    return store.listar(deps.tenantId);
+  }
+
   return leer(deps).contactos.slice().sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
 }
 
 export function eliminarContacto(criterio, deps = {}) {
+  const store = storeDe(deps);
+  if (store) {
+    const ok = store.borrar(criterio, deps.tenantId);
+    if (!ok.ok) return { ok: false, error: 'No encuentro ese contacto.' };
+    return { ok: true, contacto: { criterio } };
+  }
+
   const estado = leer(deps);
   const c = String(criterio || '').trim().toLowerCase();
   const idx = estado.contactos.findIndex((ct) => ct.id === criterio || (c && ct.nombre.toLowerCase().includes(c)));

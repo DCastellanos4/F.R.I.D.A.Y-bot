@@ -13,18 +13,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * Memoria de conversacion a corto plazo por chat.
  *
  * Cada conversacion (JID de WhatsApp o canal interactivo) tiene su propio
- * archivo aislado: ningun chat puede leer el historial de otro. Se conserva
+ * archivo aislado o particion SQLite (conversaciones_historial con tenant_id):
+ * ningun chat puede leer el historial de otro. Se conserva
  * una ventana deslizante de mensajes recientes (usuario y asistente) y, cuando
- * el archivo crece, los tramos antiguos se condensan en un resumen para no
- * disparar el coste en tokens.
+ * crece, los tramos antiguos se condensan en un resumen.
  *
- * Limites conocidos (honestidad de diseno): la escritura atomica evita
- * archivos corruptos, pero la lectura-modificacion-escritura NO esta
- * serializada entre procesos: con una sola instancia (PM2 modo fork, un
- * proceso) no hay interleaving porque las escrituras son sincronas; con
- * varios procesos (cluster) podrian perderse actualizaciones. La redaccion
- * por regex cubre OTP y credenciales con formato conocido; NO es un filtro
- * completo de secretos: no debe escribirse informacion critica en el chat.
+ * Soporte dual: SQLite Store (ACID + multi-tenant) y fallback JSON.
  *
  * Strict Policy: Zero Emojis.
  */
@@ -40,16 +34,35 @@ import { redactarSensibles } from './redaccionService.js';
 export const MAX_MENSAJES_VENTANA = 12;   // mensajes que se entregan al modelo
 export const MAX_MENSAJES_ARCHIVO = 40;   // tope persistido antes de condensar
 
+let storeHistorialPorDefecto = null;
+
+export function registrarStoreHistorialPorDefecto(store) {
+  storeHistorialPorDefecto = store || null;
+}
+
+function storeDe(deps = {}) {
+  if (deps.store) return deps.store;
+  if (deps.rutaArchivo || deps.rutaHistorial || process.env.DAVIS_HISTORY_DIR) return null;
+  return storeHistorialPorDefecto;
+}
+
 if (!fs.existsSync(CARPETA_HISTORIAL)) {
   fs.mkdirSync(CARPETA_HISTORIAL, { recursive: true });
 }
 
 function rutaChat(chatId) {
   const hash = crypto.createHash('sha256').update(String(chatId)).digest('hex').slice(0, 24);
-  return path.join(CARPETA_HISTORIAL, `${hash}.json`);
+  const dir = process.env.DAVIS_HISTORY_DIR
+    ? path.resolve(process.env.DAVIS_HISTORY_DIR)
+    : CARPETA_HISTORIAL;
+  return path.join(dir, `${hash}.json`);
 }
 
-function leerRegistro(chatId) {
+function leerRegistro(chatId, deps = {}) {
+  const store = storeDe(deps);
+  if (store) {
+    return store.obtener(chatId, MAX_MENSAJES_ARCHIVO, deps.tenantId);
+  }
   try {
     const ruta = rutaChat(chatId);
     if (!fs.existsSync(ruta)) return { resumen: null, mensajes: [] };
@@ -65,13 +78,12 @@ function leerRegistro(chatId) {
   }
 }
 
-function guardarRegistro(chatId, registro) {
+function guardarRegistro(chatId, registro, deps = {}) {
+  const store = storeDe(deps);
+  if (store) return;
   try {
     const ruta = rutaChat(chatId);
     const tmp = `${ruta}.tmp`;
-    // Escritura atomica (tmp + rename) para no dejar archivos a medias si el
-    // proceso muere durante el guardado, y permisos 600: el historial de un
-    // chat es privado y no debe ser legible por otros usuarios del sistema.
     fs.writeFileSync(tmp, JSON.stringify(registro, null, 2), { encoding: 'utf-8', mode: 0o600 });
     fs.renameSync(tmp, ruta);
     try { fs.chmodSync(ruta, 0o600); } catch { /* el modo ya se aplico al crear */ }
@@ -85,9 +97,9 @@ function guardarRegistro(chatId, registro) {
  * un posible resumen del pasado lejano seguido de la ventana de mensajes
  * recientes. Nunca incluye contenido de otros chats.
  */
-export function obtenerHistorial(chatId, limite = MAX_MENSAJES_VENTANA) {
+export function obtenerHistorial(chatId, limite = MAX_MENSAJES_VENTANA, deps = {}) {
   if (!chatId) return [];
-  const { resumen, mensajes } = leerRegistro(chatId);
+  const { resumen, mensajes } = leerRegistro(chatId, deps);
   const ventana = mensajes.slice(-limite).map(m => ({ role: m.role, content: m.content }));
   if (resumen) {
     return [
@@ -105,46 +117,49 @@ export function obtenerHistorial(chatId, limite = MAX_MENSAJES_VENTANA) {
  * Anade un mensaje (role user|assistant) al historial del chat.
  * Si el archivo supera el tope, recorta los mas antiguos conservando el resumen.
  */
-/* La redaccion de datos sensibles vive en redaccionService.js (fuente unica). */
-
-export function registrarMensaje(chatId, role, content) {
+export function registrarMensaje(chatId, role, content, deps = {}) {
   if (!chatId || !content || typeof content !== 'string') return;
   if (role !== 'user' && role !== 'assistant') return;
 
-  const registro = leerRegistro(chatId);
-  registro.mensajes.push({ role, content: redactarSensibles(content), ts: new Date().toISOString() });
+  const redactado = redactarSensibles(content);
+  const store = storeDe(deps);
+  if (store) {
+    store.registrar(chatId, role, redactado, null, deps.tenantId);
+    return;
+  }
+
+  const registro = leerRegistro(chatId, deps);
+  registro.mensajes.push({ role, content: redactado, ts: new Date().toISOString() });
 
   if (registro.mensajes.length > MAX_MENSAJES_ARCHIVO) {
-    // Red de seguridad: el recorte duro solo aplica si la condensacion
-    // programada (programarCondensacionSiNecesario) aun no ha corrido; el
-    // flujo normal condensa lo antiguo en el resumen antes de llegar aqui.
-    // Lo recortado se archiva como episodios (memoria episodica).
     const descartados = registro.mensajes.slice(0, registro.mensajes.length - MAX_MENSAJES_ARCHIVO);
     archivarEpisodios(chatId, descartados);
     registro.mensajes = registro.mensajes.slice(-MAX_MENSAJES_ARCHIVO);
   }
 
-  guardarRegistro(chatId, registro);
+  guardarRegistro(chatId, registro, deps);
 }
 
 /**
  * Registra un intercambio completo usuario -> asistente.
  */
-export function registrarIntercambio(chatId, textoUsuario, textoAsistente) {
-  registrarMensaje(chatId, 'user', textoUsuario);
-  registrarMensaje(chatId, 'assistant', textoAsistente);
+export function registrarIntercambio(chatId, textoUsuario, textoAsistente, deps = {}) {
+  registrarMensaje(chatId, 'user', textoUsuario, deps);
+  registrarMensaje(chatId, 'assistant', textoAsistente, deps);
 }
 
 /**
  * Elimina por completo el historial de un chat (peticion explicita de David).
  */
 export function limpiarHistorial(chatId, deps = {}) {
+  const store = storeDe(deps);
+  if (store) {
+    store.limpiar(chatId, deps.tenantId);
+  }
   try {
     const ruta = rutaChat(chatId);
     if (fs.existsSync(ruta)) fs.unlinkSync(ruta);
     limpiarEpisodios(chatId, deps);
-    // Las trazas del recorrido tambien son historial del chat: se borran
-    // siempre, haya o no mensajes guardados.
     borrarTrazas(chatId, deps);
     return true;
   } catch (err) {
@@ -156,8 +171,8 @@ export function limpiarHistorial(chatId, deps = {}) {
 /**
  * Devuelve el numero de mensajes persistidos del chat (diagnostico y tests).
  */
-export function contarMensajes(chatId) {
-  return leerRegistro(chatId).mensajes.length;
+export function contarMensajes(chatId, deps = {}) {
+  return leerRegistro(chatId, deps).mensajes.length;
 }
 
 /**
@@ -166,7 +181,7 @@ export function contarMensajes(chatId) {
  * se inyecta un chatCompletion simulado.
  */
 export async function condensarHistorial(chatId, deps = {}) {
-  const registro = leerRegistro(chatId);
+  const registro = leerRegistro(chatId, deps);
   if (registro.mensajes.length <= MAX_MENSAJES_VENTANA) {
     return { ok: true, condensado: false };
   }
@@ -174,8 +189,6 @@ export async function condensarHistorial(chatId, deps = {}) {
   const antiguos = registro.mensajes.slice(0, -MAX_MENSAJES_VENTANA);
   const recientes = registro.mensajes.slice(-MAX_MENSAJES_VENTANA);
 
-  // Memoria episodica: el resumen conserva la idea, pero el detalle verbatim
-  // se archiva para poder recuperarlo despues por busqueda.
   archivarEpisodios(chatId, antiguos);
 
   let nuevoResumen = registro.resumen;
@@ -206,46 +219,35 @@ export async function condensarHistorial(chatId, deps = {}) {
     }
   }
 
-  // Releer antes de escribir: los mensajes registrados mientras el LLM
-  // condensaba no deben perderse, y si el historial se borro (peticion
-  // explicita) la condensacion no debe resucitarlo.
+  const store = storeDe(deps);
+  if (store) {
+    store.registrar(chatId, 'system', `Resumen: ${nuevoResumen}`, nuevoResumen, deps.tenantId);
+    return { ok: true, condensado: true, resumen: nuevoResumen };
+  }
+
   const ruta = rutaChat(chatId);
   if (!fs.existsSync(ruta)) {
     return { ok: false, condensado: false, motivo: 'historial eliminado durante la condensacion' };
   }
-  const actual = leerRegistro(chatId);
+  const actual = leerRegistro(chatId, deps);
   const ultimaTsSnapshot = registro.mensajes[registro.mensajes.length - 1]?.ts || '';
   const nuevos = actual.mensajes.filter(m => (m.ts || '') > ultimaTsSnapshot);
-  guardarRegistro(chatId, { resumen: nuevoResumen, mensajes: [...recientes, ...nuevos] });
+  guardarRegistro(chatId, { resumen: nuevoResumen, mensajes: [...recientes, ...nuevos] }, deps);
   return { ok: true, condensado: true, resumen: nuevoResumen };
 }
 
-/**
- * Condensaciones en curso por chat: evita lanzar dos condensaciones del
- * mismo chat en paralelo y permite a las pruebas esperar a que terminen.
- */
 const condensacionesEnCurso = new Map();
 
-/**
- * Cablea la condensacion al flujo real: si el chat supera el tope persistido,
- * lanza la condensacion en segundo plano (fire-and-forget con errores
- * capturados). Devuelve la promesa de la condensacion (o null si no toca)
- * para que las pruebas puedan esperarla; los llamadores de produccion pueden
- * ignorarla. Sin chatCompletion inyectado usa el LLM configurado del bot.
- */
 export function programarCondensacionSiNecesario(chatId, deps = {}) {
   if (!chatId) return null;
   if (condensacionesEnCurso.has(chatId)) return condensacionesEnCurso.get(chatId);
-  // Umbral alcanzable: registrarMensaje recorta a MAX_MENSAJES_ARCHIVO como
-  // red de seguridad, asi que la condensacion se dispara AL LLEGAR al tope,
-  // no al superarlo (contarMensajes nunca lo supera).
-  if (contarMensajes(chatId) < MAX_MENSAJES_ARCHIVO) return null;
+  if (contarMensajes(chatId, deps) < MAX_MENSAJES_ARCHIVO) return null;
   const chatCompletion = typeof deps.chatCompletion === 'function'
     ? deps.chatCompletion
     : chatCompletionPorDefecto;
   const tarea = (async () => {
     try {
-      return await condensarHistorial(chatId, { chatCompletion });
+      return await condensarHistorial(chatId, { ...deps, chatCompletion });
     } catch (err) {
       console.error('[Historial] Condensacion programada fallo:', err.message);
       return { ok: false, error: err.message };

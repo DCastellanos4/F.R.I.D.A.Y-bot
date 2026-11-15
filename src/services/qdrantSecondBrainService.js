@@ -272,7 +272,8 @@ export function crearQdrantSecondBrainService(deps = {}) {
    * @returns {Promise<{ ok: boolean, totalNotas: number, totalChunks: number, omitidos: number }>}
    */
   async function indexarTodasLasNotas(opciones = {}) {
-    const carpeta = opciones.carpetaNotas || carpetaNotasBase;
+    const targetTenant = opciones.tenantId || deps.tenantId || tenantId;
+    const carpeta = opciones.carpetaNotas || (targetTenant === TENANT_PROPIETARIO ? carpetaNotasBase : path.join(DATA_DIR, 'tenants', targetTenant, 'notes'));
     const archivos = recolectarArchivosMarkdown(carpeta);
     if (archivos.length === 0) {
       return { ok: true, totalNotas: 0, totalChunks: 0, omitidos: 0 };
@@ -281,7 +282,7 @@ export function crearQdrantSecondBrainService(deps = {}) {
     const todosLosChunks = [];
     for (const arch of archivos) {
       const nota = parsearNotaMarkdown(arch.contenido, arch.rutaRelativa);
-      const chunks = trocearNota(nota, { tenantId });
+      const chunks = trocearNota(nota, { tenantId: targetTenant });
       todosLosChunks.push(...chunks);
     }
 
@@ -303,7 +304,7 @@ export function crearQdrantSecondBrainService(deps = {}) {
       payload: chunk.payload
     }));
 
-    await vectorStore.indexar(tenantId, puntosParaIndexar);
+    await vectorStore.indexar(targetTenant, puntosParaIndexar);
 
     return {
       ok: true,
@@ -321,6 +322,7 @@ export function crearQdrantSecondBrainService(deps = {}) {
    * @param {object} [opciones]
    * @param {number} [opciones.topK=5]
    * @param {number} [opciones.minScore=0.0]
+   * @param {string} [opciones.tenantId]
    * @returns {Promise<{ ok: boolean, resultados: Array<object>, semantica: boolean, fallback?: boolean, error?: string }>}
    */
   async function buscar(consulta, opciones = {}) {
@@ -329,6 +331,7 @@ export function crearQdrantSecondBrainService(deps = {}) {
       return { ok: true, resultados: [], semantica: true };
     }
 
+    const targetTenant = opciones.tenantId || deps.tenantId || tenantId;
     const topK = Number.isInteger(opciones.topK) && opciones.topK > 0 ? opciones.topK : 5;
     const minScore = typeof opciones.minScore === 'number' ? opciones.minScore : 0.0;
 
@@ -338,7 +341,7 @@ export function crearQdrantSecondBrainService(deps = {}) {
         throw new Error('No se genero el vector para la consulta.');
       }
 
-      const coincidencias = await vectorStore.buscarDenso(tenantId, vectorConsulta, topK * 2);
+      const coincidencias = await vectorStore.buscarDenso(targetTenant, vectorConsulta, topK * 2);
       const filtradas = [];
 
       for (const m of (Array.isArray(coincidencias) ? coincidencias : [])) {
