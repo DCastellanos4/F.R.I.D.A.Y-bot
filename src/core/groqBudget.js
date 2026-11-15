@@ -72,7 +72,7 @@ export function crearPresupuestoGroq({ limite = (typeof process !== 'undefined' 
           if (saldo && saldo.hasta <= t) saldo = null;
           const consumido = reservas.reduce((n, r) => n + r.tokens, 0);
           let hasta = bloqueoHasta;
-          if (consumido + estimacion.total > limiteEfectivo) hasta = Math.max(hasta, reservas[0]?.hasta || t);
+          if (!saldo && consumido + estimacion.total > limiteEfectivo) hasta = Math.max(hasta, reservas[0]?.hasta || t);
           if (saldo && saldo.tokens < estimacion.total) hasta = Math.max(hasta, saldo.hasta);
           if (hasta <= t) break;
           if (hasta - inicio > esperaMaxima) {
