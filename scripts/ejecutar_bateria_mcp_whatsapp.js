@@ -10,7 +10,13 @@
  */
 
 const TESTER_URL = process.env.TESTER_URL || 'http://127.0.0.1:3005';
-const PAUSA_ENTRE_CASOS_MS = 2500;
+const PAUSA_ENTRE_CASOS_MS = 3500;
+
+async function drenarTester() {
+  try {
+    await fetch(`${TESTER_URL}/drain`, { method: 'POST' });
+  } catch {}
+}
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -137,6 +143,7 @@ async function main() {
     console.log('----------------------------------------------------------------');
     console.log(`[Caso ${i + 1}/${BATERIA_CASOS.length}] [${caso.dominio}] ${caso.id}`);
     console.log(`Herramienta objetivo: ${caso.herramienta}`);
+    await drenarTester();
     console.log(`David -> DAVIS: "${caso.mensaje}"`);
 
     const t0 = Date.now();

@@ -850,7 +850,7 @@ async function chatConRecuperacion400(chatImpl, peticion, etiqueta) {
     return await chatImpl(peticion);
   } catch (err) {
     if (!esError400ValidacionHerramientas(err)) throw err;
-    console.warn(`[J.A.R.V.I.S.] 400 de validacion de tool-call en ${etiqueta}; el provider no ejecuto nada, 1 reintento con pista de esquema.`);
+    console.warn(`[J.A.R.V.I.S.] 400 de validacion de tool-call en ${etiqueta}: ${err?.message || err}; el provider no ejecuto nada, 1 reintento con pista de esquema.`);
     const pista = {
       role: 'system',
       content: `Tu llamada a herramienta anterior fue rechazada por argumentos invalidos (${String((err && err.message) || err).slice(0, 300)}). Si necesitas una herramienta, genera argumentos que cumplan exactamente su esquema (tipos correctos y campos requeridos sin null). Si no tienes datos para argumentos validos, responde en texto pidiendo a David lo que falte, sin llamar a la herramienta.`

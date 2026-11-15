@@ -75,9 +75,10 @@ export function crearPresupuestoGroq({ limite = (typeof process !== 'undefined' 
             err.name = 'PresupuestoTemporalError';
             throw err;
           }
-          await esperar(hasta - t);
+          const paso = Math.min(Math.max(50, hasta - t), 500);
+          await esperar(paso);
         }
-        const reserva = { tokens: estimacion.total, hasta: ahora() + 60000 };
+        const reserva = { tokens: estimacion.total, hasta: ahora() + 15000 };
         reservas.push(reserva);
         if (saldo) saldo.tokens = Math.max(0, saldo.tokens - estimacion.total);
         const esperaMs = ahora() - inicio;

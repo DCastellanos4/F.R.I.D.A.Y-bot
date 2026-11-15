@@ -147,6 +147,7 @@ async function iniciarClienteDavid() {
         // Notificar a escuchadores pendientes de respuesta
         for (let i = escuchadoresRespuesta.length - 1; i >= 0; i--) {
           const l = escuchadoresRespuesta[i];
+          if (l.minTimestamp && item.timestamp < l.minTimestamp) continue;
           l.resolver({
             texto,
             raw: msg,
@@ -175,6 +176,15 @@ const server = http.createServer(async (req, res) => {
       botJid: BOT_JID,
       botPhone: BOT_PHONE
     });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/drain') {
+    historialMensajes.length = 0;
+    while (escuchadoresRespuesta.length > 0) {
+      const l = escuchadoresRespuesta.pop();
+      try { if (l.reject) l.reject(new Error('Drenado')); } catch {}
+    }
+    return responderJson(200, { ok: true, drenado: true });
   }
 
   if (req.method === 'GET' && url.pathname === '/history') {
@@ -232,6 +242,8 @@ const server = http.createServer(async (req, res) => {
           const listenerId = Math.random().toString(36).substring(7);
           escuchadoresRespuesta.push({
             id: listenerId,
+            minTimestamp: tInicio,
+            reject: (err) => { clearTimeout(timeout); reject(err); },
             resolver: (resp) => {
               clearTimeout(timeout);
               resolve(resp);
