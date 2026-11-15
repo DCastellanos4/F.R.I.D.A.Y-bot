@@ -194,6 +194,21 @@ configuracion extra. Las marcas:
 - `configurar_modo_nocturno`: pospone alertas no urgentes en la franja
   (23:00-08:00 por defecto); los recordatorios puntuales no se tocan.
 
+## Reservas y citas (MCP Booking)
+
+- `consultar_disponibilidad`: Calcula huecos libres segun horario comercial, duracion de servicio y citas confirmadas. Compactado para ahorro de tokens.
+- `reservar_cita`: Agenda y confirma citas asegurando transaccionalidad sin overbooking.
+- `cancelar_cita`: Cancela reservas por identificador o telefono de cliente.
+- `listar_citas`: Lista citas activas con filtros opcionales (fecha, cliente, telefono).
+- Multi-tenant nativo: Aislado por `tenant_id`; diferentes clientes o comercios gestionan agendas independientes sin colision.
+
+## Multi-tenancy y Autoservicio SaaS
+
+- Second Brain aislado: Cada tenant dispone de notas (`data/tenants/<tenantId>/notes/`), memorias semanticas y coleccion vectorial Qdrant (`davis_memorias_<tenantId>`) privadas.
+- Autoservicio WhatsApp: Onboarding instantaneo enviando `/registro <Nombre>`, `/alta <Nombre>` o `/crearcuenta <Nombre>` desde numeros no registrados.
+- Planes de cuotas: Planes `demo` (15k tokens/dia, 5 RPM), `cliente` (100k tokens/dia, 15 RPM), `staff` (500k tokens/dia, 60 RPM) y `propietario` (sin limites).
+- RBAC estricto: Acceso a herramientas filtrado por clase (`datos_tenant` y `sin_estado`); herramientas `host` y devops restringidas estrictamente al propietario.
+
 ## Voz
 
 - Notas de voz: transcripcion local con whisper.cpp (binario y modelo en el

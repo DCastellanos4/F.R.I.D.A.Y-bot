@@ -199,15 +199,21 @@ Con fecha 2026-11-12, la infraestructura central MCP y los dos primeros micro-se
 2. **Micro-servidor 1: `mcp-server-booking` (`mcp-servers/booking/`)**:
    - Servidor ejecutable autonomo sobre `stdio` (`mcp-servers/booking/index.js`).
    - Persistencia SQLite transaccional (`mcp-servers/booking/db.js`) con soporte dual de drivers (`better-sqlite3` y fallback a `node:sqlite`).
-   - Calculo matematico de huecos libres sin colision en horario comercial (09:00 - 20:00).
+   - Aislamiento Multi-Tenant: Columna `tenant_id TEXT NOT NULL DEFAULT 'propietario'` con indice `idx_citas_tenant`. Permite reservas y huecos simultaneos entre comercios independientes sin colisiones.
    - Herramientas: `consultar_disponibilidad`, `reservar_cita`, `cancelar_cita`, `listar_citas`.
+   - Esquemas flexibles con tipos opcionales/nulos (`type: ['string', 'null']`) para evitar errores 400 de validacion en proveedores LLM (Groq/OpenAI).
+   - Optimizacion de eficiencia de tokens:
+     * **Tool Pruning por Intencion**: Si la consulta involucra citas, el orquestador poda el catalogo e inyecta unicamente las 4 herramientas de reservas, reduciendo schemas de ~3.800 tokens a ~450 tokens.
+     * **Compactacion de Respuesta**: Supresion de campos redundantes en disponibilidad (ISO 8601 repetidos), logrando un 72% de reduccion de bytes en payloads de huecos libres.
 
 3. **Micro-servidor 2: `mcp-server-devops` (`mcp-servers/devops/`)**:
    - Servidor ejecutable autonomo sobre `stdio` (`mcp-servers/devops/index.js`).
    - Herramientas: `ejecutar_comando_bash`, `consultar_estado_servidor`, `inspeccionar_docker`, `verificar_almacenamiento`, `comprobar_certificados_ssl`.
+   - Clasificacion RBAC estricta: Herramientas catalogadas como `host` y restringidas al propietario. Fail-closed ante cualquier tenant no propietario.
 
-4. **Bateria de Pruebas Automatizadas (36 tests passing en Node.js Windows y Linux VPS)**:
+4. **Bateria de Pruebas Automatizadas (37 tests passing en Node.js Windows y Linux VPS)**:
    - `tests/sector3/mcp_client_adapter.test.js`: 11 tests de protocolo, timeouts, errores y ciclo de vida de procesos.
    - `tests/sector3/mcp_server_booking.test.js`: 2 tests directos de motor SQLite y protocolo stdio con subprocesos.
+   - `tests/sector3/mcp_server_booking_multitenant.test.js`: Verificacion de aislamiento multi-tenant sin colision en SQLite.
    - `tests/sector3/mcp_server_devops.test.js`: 22 tests unitarios e integracion con telemetria del sistema operativo.
    - `tests/sector3/mcp_e2e_integration.test.js`: Prueba E2E que orquesta en vivo ambos micro-servidores hijos simultaneamente a traves de `McpRegistry`.
