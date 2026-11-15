@@ -327,12 +327,13 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
   }
 
   /**
-   * Cancela una cita por cita_id o por combinacion de telefono y fecha.
+   * Cancela una cita por cita_id, telefono y fecha, o nombre de cliente.
    */
-  function cancelarCita({ cita_id, id, cliente_telefono, telefono, fecha, fecha_inicio } = {}) {
+  function cancelarCita({ cita_id, id, cliente_telefono, telefono, fecha, fecha_inicio, cliente_nombre, nombre } = {}) {
     const targetId = cita_id || id;
     const targetPhone = cliente_telefono || telefono;
     const targetFecha = fecha || fecha_inicio;
+    const targetName = cliente_nombre || nombre;
 
     if (targetId) {
       const transaccionId = db.transaction(() => {
@@ -348,6 +349,44 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
         return { ok: true, mensaje: 'Cita cancelada exitosamente', cita: citaActualizada };
       });
       return transaccionId();
+    }
+
+    if (targetName) {
+      const name = String(targetName).trim();
+      const fechaPrefijo = targetFecha ? String(targetFecha).trim().slice(0, 10) : null;
+
+      const transaccionNombre = db.transaction(() => {
+        let sql = "SELECT * FROM citas WHERE LOWER(cliente_nombre) LIKE LOWER(?) AND estado = 'confirmada'";
+        const params = [`%${name}%`];
+        if (fechaPrefijo) {
+          sql += ' AND fecha_inicio LIKE ?';
+          params.push(`${fechaPrefijo}%`);
+        }
+        const citas = db.prepare(sql).all(...params);
+
+        if (citas.length === 0) {
+          return {
+            ok: false,
+            error: `No se encontraron citas confirmadas para ${targetName}${targetFecha ? ` en fecha ${targetFecha}` : ''}`
+          };
+        }
+
+        for (const c of citas) {
+          db.prepare("UPDATE citas SET estado = 'cancelada' WHERE id = ?").run(c.id);
+        }
+
+        const ids = citas.map((c) => c.id);
+        const citasActualizadas = db.prepare(`
+          SELECT * FROM citas WHERE id IN (${ids.map(() => '?').join(',')})
+        `).all(...ids);
+
+        return {
+          ok: true,
+          mensaje: `Se liberaron/cancelaron ${citas.length} cita(s) exitosamente`,
+          citas_canceladas: citasActualizadas
+        };
+      });
+      return transaccionNombre();
     }
 
     if (targetPhone && targetFecha) {
@@ -388,7 +427,7 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
       return transaccionTelefono();
     }
 
-    throw new Error('cancelar_cita requiere cita_id o (cliente_telefono y fecha)');
+    throw new Error('cancelar_cita requiere cita_id, cliente_nombre o (cliente_telefono y fecha)');
   }
 
   /**

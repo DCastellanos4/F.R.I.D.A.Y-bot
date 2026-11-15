@@ -70,13 +70,17 @@ export const TOOLS_SCHEMA = [
   },
   {
     name: 'cancelar_cita',
-    description: 'Cancela una cita activa por ID o por combinacion de telefono y fecha.',
+    description: 'Cancela o libera una cita/reserva activa por ID, por nombre del cliente, o por combinacion de telefono y fecha.',
     inputSchema: {
       type: 'object',
       properties: {
         cita_id: {
           type: 'string',
           description: 'Identificador unico de la cita'
+        },
+        cliente_nombre: {
+          type: 'string',
+          description: 'Nombre del cliente para localizar y cancelar/liberar la cita'
         },
         cliente_telefono: {
           type: 'string',
@@ -88,7 +92,7 @@ export const TOOLS_SCHEMA = [
         },
         fecha: {
           type: 'string',
-          description: 'Fecha de la cita (YYYY-MM-DD o ISO) para localizarla con el telefono'
+          description: 'Fecha de la cita (YYYY-MM-DD o ISO) para localizarla con el telefono o nombre'
         }
       }
     }
