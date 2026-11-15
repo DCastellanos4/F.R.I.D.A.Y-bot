@@ -290,7 +290,7 @@ export function analizarIntencion(mensaje) {
     esRecordatorio: /(recuerda|record|acuerda|acord|avis|alarm|despiert|agend|cita|evento|tareas? pendientes?|que (tengo|hay) (pendiente|que hacer)|a las \d+|en \d+\s*(min|hora|dia|seg)|manana a las|pon (un )?(recordatorio|aviso|alarma)|cancela.*recordatorio|elimina.*recordatorio|borra.*recordatorio)/i,
 
     // Sniper de precios (Item Tracker)
-    sniper: /(vigila|vigilar|precio|precios|oferta|ofertas|baja de|baje de|chollos?|gangas?|stock|disponibilidad|cuesta.*menos|cuanto vale|cuanto cuesta|amazon\.|wallapop|pccomponentes|aliexpress|productos? (vigilados?|en seguimiento)|que (vigilas|sigues|rastreas)|tracker|item tracker|tracking|seguimiento|deja de vigilar|cancela.*vigilancia)/i,
+    sniper: /(vigila|vigilar|precio|precios|oferta|ofertas|baja de|baje de|chollos?|gangas?|stock|disponibilidad de (stock|producto)|cuesta.*menos|cuanto vale|cuanto cuesta|amazon\.|wallapop|pccomponentes|aliexpress|productos? (vigilados?|en seguimiento)|que (vigilas|sigues|rastreas)|tracker|item tracker|tracking|seguimiento|deja de vigilar|cancela.*vigilancia)/i,
     
     // Noticias reales
     noticias: /(noticia|noticias|titular|titulares|actualidad|periodico|diario|prensa|ultima hora|briefing|que pasa en el mundo|que se cuenta en el mundo)/i,

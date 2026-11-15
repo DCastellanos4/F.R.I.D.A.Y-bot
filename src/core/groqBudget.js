@@ -4,8 +4,11 @@ import { createHash } from 'node:crypto';
 
 export function estimarTokensPeticion(payload) {
   // Aproximacion conservadora por bytes, no un tokenizer ni una medicion.
-  const entrada = Math.ceil(Buffer.byteLength(JSON.stringify({ messages: payload.messages, tools: payload.tools }), 'utf8') / 3);
-  return { entrada, salida: payload.max_tokens || 1024, total: entrada + (payload.max_tokens || 1024) };
+  const bytesMessages = payload.messages ? Buffer.byteLength(JSON.stringify(payload.messages), 'utf8') : 0;
+  const bytesTools = payload.tools ? Buffer.byteLength(JSON.stringify(payload.tools), 'utf8') : 0;
+  const entrada = Math.ceil((bytesMessages / 3) + (bytesTools / 8));
+  const salida = payload.max_tokens ? Math.min(payload.max_tokens, 512) : 256;
+  return { entrada, salida, total: entrada + salida };
 }
 
 function cabecera(headers, name) {
@@ -100,7 +103,7 @@ export function crearPresupuestoGroq({ limite = (typeof process !== 'undefined' 
         } catch (err) {
           const errHeaders = err?.headers || err?.response?.headers;
           const retryMs = duracionCabecera(cabecera(errHeaders, 'retry-after'));
-          reserva.hasta = ahora() + (retryMs > 0 ? retryMs : 2000);
+          reserva.hasta = ahora() + (retryMs > 0 ? retryMs : 60000);
           observar(errHeaders);
           // Un error puede haber consumido tokens: reserva conservadora.
           throw err;
