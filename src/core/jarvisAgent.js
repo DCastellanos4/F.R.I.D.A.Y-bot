@@ -2452,6 +2452,11 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
           if (toolsDev.length > 0) {
             herramientasActivas = toolsDev;
           }
+        } else if (esFinanzas && !esCita && !esDevops) {
+          const toolsFin = mcpTools.filter(t => /^(registrar_gasto|listar_gastos|resumen_gastos_mes|extraer_ticket_vision|exportar_resumen_trimestral)$/.test(t.function?.name || t.name));
+          if (toolsFin.length > 0) {
+            herramientasActivas = toolsFin;
+          }
         } else {
           for (const tool of mcpTools) {
             const tName = tool.function?.name || tool.name;

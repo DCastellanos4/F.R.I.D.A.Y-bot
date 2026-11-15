@@ -38,7 +38,8 @@ export class McpRegistry {
 
     const herramientasConocidas = {
       booking: ['consultar_disponibilidad', 'reservar_cita', 'cancelar_cita', 'listar_citas'],
-      devops: ['ejecutar_comando_bash', 'consultar_estado_servidor', 'inspeccionar_docker', 'verificar_almacenamiento', 'comprobar_certificados_ssl']
+      devops: ['ejecutar_comando_bash', 'consultar_estado_servidor', 'inspeccionar_docker', 'verificar_almacenamiento', 'comprobar_certificados_ssl'],
+      finance: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'extraer_ticket_vision', 'exportar_resumen_trimestral']
     };
     if (herramientasConocidas[domain]) {
       for (const toolName of herramientasConocidas[domain]) {
@@ -61,7 +62,8 @@ export class McpRegistry {
 
     const herramientasConocidas = {
       booking: ['consultar_disponibilidad', 'reservar_cita', 'cancelar_cita', 'listar_citas'],
-      devops: ['ejecutar_comando_bash', 'consultar_estado_servidor', 'inspeccionar_docker', 'verificar_almacenamiento', 'comprobar_certificados_ssl']
+      devops: ['ejecutar_comando_bash', 'consultar_estado_servidor', 'inspeccionar_docker', 'verificar_almacenamiento', 'comprobar_certificados_ssl'],
+      finance: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'extraer_ticket_vision', 'exportar_resumen_trimestral']
     };
     for (const domain of this.domainServers.keys()) {
       if (herramientasConocidas[domain]?.includes(name)) {

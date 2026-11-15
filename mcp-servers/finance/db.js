@@ -109,6 +109,7 @@ export function crearFinanceDb(rutaDb = process.env.FINANCE_DB_PATH || RUTA_DB_P
   db.exec(`
     CREATE TABLE IF NOT EXISTS gastos (
       id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'propietario',
       monto REAL NOT NULL,
       categoria TEXT NOT NULL,
       concepto TEXT NOT NULL,
@@ -121,6 +122,11 @@ export function crearFinanceDb(rutaDb = process.env.FINANCE_DB_PATH || RUTA_DB_P
     CREATE INDEX IF NOT EXISTS idx_gastos_categoria ON gastos(categoria);
   `);
 
+  try {
+    db.exec("ALTER TABLE gastos ADD COLUMN tenant_id TEXT DEFAULT 'propietario'");
+  } catch (_) {}
+  db.exec("CREATE INDEX IF NOT EXISTS idx_gastos_tenant ON gastos(tenant_id);");
+
   /**
    * Registra un gasto contable en la base de datos SQLite.
    */
@@ -132,7 +138,8 @@ export function crearFinanceDb(rutaDb = process.env.FINANCE_DB_PATH || RUTA_DB_P
     comercio,
     fecha,
     base,
-    iva
+    iva,
+    tenant_id = 'propietario'
   } = {}) {
     const montoFinal = normalizarMonto(monto ?? importe);
 
@@ -172,10 +179,11 @@ export function crearFinanceDb(rutaDb = process.env.FINANCE_DB_PATH || RUTA_DB_P
 
     const transaccion = db.transaction(() => {
       db.prepare(`
-        INSERT INTO gastos (id, monto, categoria, concepto, fecha, base, iva, creado_en)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO gastos (id, tenant_id, monto, categoria, concepto, fecha, base, iva, creado_en)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id,
+        tenant_id,
         montoFinal,
         categoriaNormalizada,
         conceptoLimpio,
@@ -187,6 +195,7 @@ export function crearFinanceDb(rutaDb = process.env.FINANCE_DB_PATH || RUTA_DB_P
 
       return {
         id,
+        tenant_id,
         monto: montoFinal,
         categoria: categoriaNormalizada,
         concepto: conceptoLimpio,
@@ -207,7 +216,7 @@ export function crearFinanceDb(rutaDb = process.env.FINANCE_DB_PATH || RUTA_DB_P
   /**
    * Exporta el resumen contable agrupado por trimestre para un ano fiscal.
    */
-  function exportarResumenTrimestral({ anio, trimestre } = {}) {
+  function exportarResumenTrimestral({ anio, trimestre, tenant_id = 'propietario' } = {}) {
     const anioNum = Number(anio || new Date().getFullYear());
     if (!Number.isInteger(anioNum) || anioNum < 2000 || anioNum > 2100) {
       throw new Error(`anio invalido: ${anio}. Debe ser un entero entre 2000 y 2100`);
@@ -221,9 +230,9 @@ export function crearFinanceDb(rutaDb = process.env.FINANCE_DB_PATH || RUTA_DB_P
     const filas = db.prepare(`
       SELECT id, monto, categoria, concepto, fecha, base, iva, creado_en
       FROM gastos
-      WHERE fecha >= ? AND fecha <= ?
+      WHERE tenant_id = ? AND fecha >= ? AND fecha <= ?
       ORDER BY fecha ASC
-    `).all(inicioAnio, finAnio);
+    `).all(tenant_id, inicioAnio, finAnio);
 
     const trimestres = {
       T1: { total: 0, base: 0, iva: 0, num_gastos: 0, por_categoria: {} },
@@ -278,10 +287,14 @@ export function crearFinanceDb(rutaDb = process.env.FINANCE_DB_PATH || RUTA_DB_P
   /**
    * Lista gastos registrados con filtros opcionales.
    */
-  function listarGastos({ anio, mes, categoria } = {}) {
-    let sql = 'SELECT * FROM gastos WHERE 1=1';
+  function listarGastos({ anio, mes, categoria, limite = 50, tenant_id = 'propietario' } = {}) {
+    let sql = 'SELECT id, tenant_id, monto, categoria, concepto, fecha, base, iva, creado_en FROM gastos WHERE 1=1';
     const params = [];
 
+    if (tenant_id) {
+      sql += ' AND tenant_id = ?';
+      params.push(tenant_id);
+    }
     if (anio) {
       sql += ' AND fecha >= ? AND fecha <= ?';
       params.push(`${anio}-01-01`, `${anio}-12-31`);
@@ -295,8 +308,51 @@ export function crearFinanceDb(rutaDb = process.env.FINANCE_DB_PATH || RUTA_DB_P
       params.push(String(categoria).toLowerCase());
     }
 
-    sql += ' ORDER BY fecha DESC';
+    sql += ' ORDER BY fecha DESC LIMIT ?';
+    params.push(Number(limite) || 50);
     return db.prepare(sql).all(...params);
+  }
+
+  /**
+   * Resumen contable de gastos para un mes y ano especifico de un tenant.
+   */
+  function resumenGastosMes({ anio, mes, tenant_id = 'propietario' } = {}) {
+    const ahora = new Date();
+    const anioNum = Number(anio || ahora.getFullYear());
+    let mesNum = mes !== undefined && mes !== null ? Number(mes) : (ahora.getMonth() + 1);
+    const mesStr = String(mesNum).padStart(2, '0');
+    const prefijo = `${anioNum}-${mesStr}`;
+
+    const filas = db.prepare(`
+      SELECT monto, categoria, base, iva
+      FROM gastos
+      WHERE tenant_id = ? AND substr(fecha, 1, 7) = ?
+    `).all(tenant_id, prefijo);
+
+    let total = 0;
+    let baseTotal = 0;
+    let ivaTotal = 0;
+    const porCategoria = {};
+
+    for (const f of filas) {
+      total = Math.round((total + f.monto) * 100) / 100;
+      baseTotal = Math.round((baseTotal + f.base) * 100) / 100;
+      ivaTotal = Math.round((ivaTotal + f.iva) * 100) / 100;
+      const cat = f.categoria;
+      porCategoria[cat] = Math.round(((porCategoria[cat] || 0) + f.monto) * 100) / 100;
+    }
+
+    return {
+      ok: true,
+      periodo: prefijo,
+      anio: anioNum,
+      mes: mesNum,
+      total,
+      base: baseTotal,
+      iva: ivaTotal,
+      num_gastos: filas.length,
+      por_categoria: porCategoria
+    };
   }
 
   function cerrar() {
@@ -309,6 +365,7 @@ export function crearFinanceDb(rutaDb = process.env.FINANCE_DB_PATH || RUTA_DB_P
     registrarGasto,
     exportarResumenTrimestral,
     listarGastos,
+    resumenGastosMes,
     cerrar,
     db
   };

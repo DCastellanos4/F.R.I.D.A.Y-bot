@@ -76,11 +76,65 @@ export const TOOLS_SCHEMA = [
           description: 'Base imponible antes de impuestos (opcional)'
         },
         iva: {
-          type: 'number',
+          type: ['number', 'null'],
           description: 'Cuota de IVA aplicada (opcional)'
+        },
+        tenant_id: {
+          type: ['string', 'null'],
+          description: 'Identificador del tenant'
         }
       },
       required: ['categoria']
+    }
+  },
+  {
+    name: 'listar_gastos',
+    description: 'Lista los gastos registrados con filtros opcionales de ano, mes, categoria y limite.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        anio: {
+          type: ['number', 'string', 'null'],
+          description: 'Ano a filtrar (ej: 2026)'
+        },
+        mes: {
+          type: ['string', 'number', 'null'],
+          description: 'Mes o periodo en formato YYYY-MM o 1..12'
+        },
+        categoria: {
+          type: ['string', 'null'],
+          description: 'Categoria del gasto a filtrar'
+        },
+        limite: {
+          type: ['number', 'null'],
+          description: 'Numero maximo de gastos a retornar (defecto: 50)'
+        },
+        tenant_id: {
+          type: ['string', 'null'],
+          description: 'Identificador del tenant'
+        }
+      }
+    }
+  },
+  {
+    name: 'resumen_gastos_mes',
+    description: 'Resumen mensual de gastos con total, desglose por categoria e impuestos (base e IVA).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        anio: {
+          type: ['number', 'string', 'null'],
+          description: 'Ano a consultar (por defecto ano actual)'
+        },
+        mes: {
+          type: ['number', 'string', 'null'],
+          description: 'Mes a consultar (1..12, por defecto mes actual)'
+        },
+        tenant_id: {
+          type: ['string', 'null'],
+          description: 'Identificador del tenant'
+        }
+      }
     }
   },
   {
@@ -90,12 +144,16 @@ export const TOOLS_SCHEMA = [
       type: 'object',
       properties: {
         anio: {
-          type: 'number',
+          type: ['number', 'string', 'null'],
           description: 'Ano fiscal a consultar (ej: 2026)'
         },
         trimestre: {
-          type: 'string',
+          type: ['string', 'null'],
           description: 'Trimestre opcional a consultar (1..4, T1..T4 o Q1..Q4)'
+        },
+        tenant_id: {
+          type: ['string', 'null'],
+          description: 'Identificador del tenant'
         }
       },
       required: ['anio']
@@ -199,14 +257,37 @@ export function crearManejadorRpc(financeDb, { ocrFn } = {}) {
               comercio: args.comercio,
               fecha: args.fecha,
               base: args.base,
-              iva: args.iva
+              iva: args.iva,
+              tenant_id: args.tenant_id
+            });
+            break;
+
+          case 'listar_gastos':
+            datosResultado = {
+              ok: true,
+              gastos: financeDb.listarGastos({
+                anio: args.anio,
+                mes: args.mes,
+                categoria: args.categoria,
+                limite: args.limite,
+                tenant_id: args.tenant_id
+              })
+            };
+            break;
+
+          case 'resumen_gastos_mes':
+            datosResultado = financeDb.resumenGastosMes({
+              anio: args.anio,
+              mes: args.mes,
+              tenant_id: args.tenant_id
             });
             break;
 
           case 'exportar_resumen_trimestral':
             datosResultado = financeDb.exportarResumenTrimestral({
               anio: args.anio,
-              trimestre: args.trimestre
+              trimestre: args.trimestre,
+              tenant_id: args.tenant_id
             });
             break;
 

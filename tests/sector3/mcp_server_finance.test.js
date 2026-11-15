@@ -269,7 +269,9 @@ test('mcp-server-finance: ejecucion stdio JSON-RPC 2.0 via subproceso', async ()
     assert.ok(toolNames.includes('extraer_ticket_vision'));
     assert.ok(toolNames.includes('registrar_gasto'));
     assert.ok(toolNames.includes('exportar_resumen_trimestral'));
-    assert.equal(toolNames.length, 3);
+    assert.ok(toolNames.includes('listar_gastos'));
+    assert.ok(toolNames.includes('resumen_gastos_mes'));
+    assert.equal(toolNames.length, 5);
 
     // 5. tools/call: registrar_gasto
     const callGastoRes = await enviarPeticion({

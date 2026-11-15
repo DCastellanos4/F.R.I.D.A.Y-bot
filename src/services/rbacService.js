@@ -86,7 +86,8 @@ export const CLASIFICACION_HERRAMIENTAS = Object.freeze({
 
 export const CLASIFICACION_HERRAMIENTAS_MCP = Object.freeze({
   datos_tenant: [
-    'consultar_disponibilidad', 'reservar_cita', 'cancelar_cita', 'listar_citas'
+    'consultar_disponibilidad', 'reservar_cita', 'cancelar_cita', 'listar_citas',
+    'extraer_ticket_vision', 'exportar_resumen_trimestral'
   ],
   host: [
     'consultar_estado_servidor', 'ejecutar_comando_bash', 'inspeccionar_docker',
