@@ -429,7 +429,7 @@ export function analizarIntencion(mensaje) {
   }
 
   if (matchMensajeProgramado) {
-    tools.push(...herramientasJarvis.filter(h => h.function.name.includes('mensaje_programado') || h.function.name.includes('programar_mensaje')));
+    tools.push(...herramientasJarvis.filter(h => h.function.name.includes('mensaje_programado') || h.function.name.includes('programar_mensaje') || h.function.name === 'buscar_contacto' || h.function.name === 'listar_contactos'));
   }
 
   if (matchRecordatorio) {
