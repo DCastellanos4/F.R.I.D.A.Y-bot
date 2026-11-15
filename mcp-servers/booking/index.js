@@ -31,7 +31,7 @@ export const TOOLS_SCHEMA = [
           description: 'Fecha a consultar en formato YYYY-MM-DD'
         },
         duracion_minutos: {
-          type: 'number',
+          type: ['number', 'null'],
           description: 'Duracion estimada de la cita en minutos (opcional, por defecto 30)'
         }
       },
@@ -75,23 +75,23 @@ export const TOOLS_SCHEMA = [
       type: 'object',
       properties: {
         cita_id: {
-          type: 'string',
+          type: ['string', 'null'],
           description: 'Identificador unico de la cita'
         },
         cliente_nombre: {
-          type: 'string',
+          type: ['string', 'null'],
           description: 'Nombre del cliente para localizar y cancelar/liberar la cita'
         },
         cliente_telefono: {
-          type: 'string',
+          type: ['string', 'null'],
           description: 'Telefono del cliente para localizar la cita'
         },
         telefono: {
-          type: 'string',
+          type: ['string', 'null'],
           description: 'Alias alternativo de cliente_telefono'
         },
         fecha: {
-          type: 'string',
+          type: ['string', 'null'],
           description: 'Fecha de la cita (YYYY-MM-DD o ISO) para localizarla con el telefono o nombre'
         }
       }
@@ -104,19 +104,19 @@ export const TOOLS_SCHEMA = [
       type: 'object',
       properties: {
         fecha: {
-          type: 'string',
+          type: ['string', 'null'],
           description: 'Filtrar citas por fecha YYYY-MM-DD (opcional)'
         },
         cliente_telefono: {
-          type: 'string',
+          type: ['string', 'null'],
           description: 'Filtrar citas por telefono del cliente (opcional)'
         },
         cliente_nombre: {
-          type: 'string',
+          type: ['string', 'null'],
           description: 'Filtrar citas por nombre del cliente (opcional)'
         },
         estado: {
-          type: 'string',
+          type: ['string', 'null'],
           description: 'Filtrar por estado: "confirmada", "cancelada" o "todas" (por defecto "confirmada")'
         }
       }
