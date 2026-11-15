@@ -2488,7 +2488,9 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
 
   console.log(`[J.A.R.V.I.S.] Evaluando: "${mensajeUsuario}" [Herramientas: ${herramientasActivas.length > 0 ? herramientasActivas.map(h => h.function.name).join(', ') : 'Ninguna (Conversacional)'}]`);
 
-  let systemPrompt = NUCLEO_PERSONALIDAD + '\n' + CAPACIDADES_MINIMAS;
+  const fechaHoyStr = new Date().toISOString().slice(0, 10);
+  const horaHoyStr = new Date().toISOString().slice(11, 16);
+  let systemPrompt = NUCLEO_PERSONALIDAD + `\nFECHA Y HORA ACTUAL: Hoy es ${fechaHoyStr} (${horaHoyStr} UTC).\n` + CAPACIDADES_MINIMAS;
   const consultaNormalizada = mensajeUsuario.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const preguntaCapacidades = /que (?:sabes|puedes)|capacidades|cosas nuevas|herramientas (?:tienes|disponibles)|(?:tus|tienes|ofreces|haces|disponibles).*(?:funciones|servicios|opciones)|(?:funciones|servicios|opciones).*(?:tienes|ofreces|haces|disponibles)|en que (?:me )?(?:ayudas|ayudar|sirves)|para que (?:sirves|te puedo usar)/i.test(consultaNormalizada);
   const contextoCapacidades = `\n\nCAPACIDADES REALES Y LIMITE HONESTO:
