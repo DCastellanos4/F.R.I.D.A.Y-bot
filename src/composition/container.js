@@ -179,13 +179,17 @@ function crearMcpRegistryDesdeEntorno(overrides = {}) {
   }
 
   const registry = crearMcpRegistry();
+  const resolverRutaReal = (p) => {
+    try { return fs.realpathSync(p); } catch { return p; }
+  };
+  const rootReal = resolverRutaReal(PROJECT_ROOT);
   const bookingPath = path.join(PROJECT_ROOT, 'mcp-servers', 'booking', 'index.js');
   if (fs.existsSync(bookingPath)) {
     registry.registerServer('booking', crearMcpClientAdapter({
       name: 'mcp-server-booking',
       command: process.execPath,
-      args: [bookingPath],
-      cwd: PROJECT_ROOT,
+      args: [resolverRutaReal(bookingPath)],
+      cwd: rootReal,
       env: {
         ...(process.env.BOOKING_DB_PATH ? { BOOKING_DB_PATH: process.env.BOOKING_DB_PATH } : {})
       }
@@ -196,8 +200,8 @@ function crearMcpRegistryDesdeEntorno(overrides = {}) {
     registry.registerServer('devops', crearMcpClientAdapter({
       name: 'mcp-server-devops',
       command: process.execPath,
-      args: [devopsPath],
-      cwd: PROJECT_ROOT
+      args: [resolverRutaReal(devopsPath)],
+      cwd: rootReal
     }));
   }
   const financePath = path.join(PROJECT_ROOT, 'mcp-servers', 'finance', 'index.js');
@@ -205,8 +209,8 @@ function crearMcpRegistryDesdeEntorno(overrides = {}) {
     registry.registerServer('finance', crearMcpClientAdapter({
       name: 'mcp-server-finance',
       command: process.execPath,
-      args: [financePath],
-      cwd: PROJECT_ROOT,
+      args: [resolverRutaReal(financePath)],
+      cwd: rootReal,
       env: {
         ...(process.env.FINANCE_DB_PATH ? { FINANCE_DB_PATH: process.env.FINANCE_DB_PATH } : {})
       }
@@ -217,8 +221,8 @@ function crearMcpRegistryDesdeEntorno(overrides = {}) {
     registry.registerServer('lifestyle', crearMcpClientAdapter({
       name: 'mcp-server-lifestyle',
       command: process.execPath,
-      args: [lifestylePath],
-      cwd: PROJECT_ROOT,
+      args: [resolverRutaReal(lifestylePath)],
+      cwd: rootReal,
       env: {
         ...(process.env.LIFESTYLE_DB_PATH ? { LIFESTYLE_DB_PATH: process.env.LIFESTYLE_DB_PATH } : {})
       }
@@ -229,8 +233,8 @@ function crearMcpRegistryDesdeEntorno(overrides = {}) {
     registry.registerServer('media', crearMcpClientAdapter({
       name: 'mcp-server-media',
       command: process.execPath,
-      args: [mediaPath],
-      cwd: PROJECT_ROOT
+      args: [resolverRutaReal(mediaPath)],
+      cwd: rootReal
     }));
   }
   return registry;

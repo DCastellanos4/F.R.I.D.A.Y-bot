@@ -13,6 +13,7 @@
  * Strict Policy: Zero Emojis.
  */
 import readline from 'node:readline';
+import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { crearFinanceDb } from './db.js';
@@ -332,7 +333,13 @@ export function iniciarServidor(dbInstancia = crearFinanceDb()) {
 // Auto-arranque al ejecutar como script independiente
 const esEjecucionDirecta = Boolean(
   process.argv[1] &&
-  pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url
+  (() => {
+    try {
+      return fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(fileURLToPath(import.meta.url));
+    } catch {
+      return pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
+    }
+  })()
 );
 
 if (esEjecucionDirecta && process.env.TEST_IMPORT_ONLY !== 'true') {

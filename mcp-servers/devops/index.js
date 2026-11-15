@@ -721,8 +721,16 @@ export function startServer() {
 }
 
 // Comprobacion de ejecucion directa como script CLI
-const currentFilePath = fileURLToPath(import.meta.url);
-const executedFilePath = process.argv[1] ? path.resolve(process.argv[1]) : '';
-if (executedFilePath && currentFilePath === executedFilePath) {
+const esEjecucionDirecta = Boolean(
+  process.argv[1] &&
+  (() => {
+    try {
+      return fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(fileURLToPath(import.meta.url));
+    } catch {
+      return path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+    }
+  })()
+);
+if (esEjecucionDirecta) {
   startServer();
 }

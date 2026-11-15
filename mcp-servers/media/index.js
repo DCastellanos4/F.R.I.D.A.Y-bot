@@ -729,7 +729,13 @@ export function iniciarServidor(deps = {}) {
 // Auto-arranque al ejecutar como script independiente
 const esEjecucionDirecta = Boolean(
   process.argv[1] &&
-  pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url
+  (() => {
+    try {
+      return fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(fileURLToPath(import.meta.url));
+    } catch {
+      return pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
+    }
+  })()
 );
 
 if (esEjecucionDirecta && process.env.TEST_IMPORT_ONLY !== 'true') {

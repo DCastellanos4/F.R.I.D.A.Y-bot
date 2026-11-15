@@ -29,7 +29,16 @@ async function enviarPrueba(mensaje, timeoutMs = 60000) {
 }
 
 async function main() {
-  const args = process.argv.slice(2);
+  const rawArgs = process.argv.slice(2);
+  let customTimeoutMs = 60000;
+  const args = [];
+  for (const arg of rawArgs) {
+    if (/^\d{4,6}$/.test(arg)) {
+      customTimeoutMs = parseInt(arg, 10);
+    } else {
+      args.push(arg);
+    }
+  }
   const promptPersonalizado = args.join(' ');
 
   console.log('================================================================');
@@ -65,7 +74,7 @@ async function main() {
       console.log(`[David -> DAVIS]: "${caso.mensaje}"`);
 
       const t0 = Date.now();
-      const resultado = await enviarPrueba(caso.mensaje);
+      const resultado = await enviarPrueba(caso.mensaje, customTimeoutMs);
       const duracion = Date.now() - t0;
 
       console.log(`[DAVIS -> David]: "${resultado.respuestaDavis}"`);
