@@ -16,7 +16,7 @@ async function consultarEstado() {
   return res.json();
 }
 
-async function enviarPrueba(mensaje, timeoutMs = 30000) {
+async function enviarPrueba(mensaje, timeoutMs = 60000) {
   const res = await fetch(`${TESTER_URL}/ask`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

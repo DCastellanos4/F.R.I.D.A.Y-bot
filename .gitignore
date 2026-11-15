@@ -11,6 +11,7 @@ node_modules/
 
 # Sesiones de WhatsApp (Baileys Auth) y datos privados del usuario
 data/auth_info_baileys/
+data/auth_david_tester/
 data/*.json
 data/*.log
 data/*.db

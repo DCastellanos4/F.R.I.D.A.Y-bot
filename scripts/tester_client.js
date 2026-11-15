@@ -30,6 +30,7 @@ const ROOT_DIR = path.resolve(__dirname, '..');
 dotenv.config({ path: path.join(ROOT_DIR, '.env') });
 
 const BOT_PHONE = (process.env.BOT_PHONE || '34711222006').replace(/\D/g, '');
+const BOT_LID = (process.env.BOT_LID || '160409176813702').replace(/\D/g, '');
 const BOT_JID = `${BOT_PHONE}@s.whatsapp.net`;
 const TESTER_PORT = Number(process.env.TESTER_PORT || 3005);
 const AUTH_DIR = path.join(ROOT_DIR, 'data', 'auth_david_tester');
@@ -121,8 +122,15 @@ async function iniciarClienteDavid() {
     for (const msg of messages) {
       if (!msg.message) continue;
       const remoteJid = msg.key.remoteJid;
-      const esDeDavis = remoteJid && (remoteJid.includes(BOT_PHONE) || remoteJid === BOT_JID);
+      const esDeDavis = remoteJid && (
+        remoteJid.includes(BOT_PHONE) ||
+        remoteJid.includes(BOT_LID) ||
+        remoteJid === BOT_JID
+      );
       const texto = extraerTexto(msg);
+      if (remoteJid) {
+        console.log(`[Tester Socket Msg] De: ${remoteJid} (esDeDavis: ${esDeDavis}, fromMe: ${Boolean(msg.key.fromMe)}) | "${texto}"`);
+      }
 
       if (esDeDavis && !msg.key.fromMe) {
         const item = {
