@@ -211,9 +211,19 @@ Con fecha 2026-11-12, la infraestructura central MCP y los dos primeros micro-se
    - Herramientas: `ejecutar_comando_bash`, `consultar_estado_servidor`, `inspeccionar_docker`, `verificar_almacenamiento`, `comprobar_certificados_ssl`.
    - Clasificacion RBAC estricta: Herramientas catalogadas como `host` y restringidas al propietario. Fail-closed ante cualquier tenant no propietario.
 
-4. **Bateria de Pruebas Automatizadas (37 tests passing en Node.js Windows y Linux VPS)**:
+4. **Micro-servidor 3: `mcp-server-finance` (`mcp-servers/finance/`)**:
+   - Servidor ejecutable autonomo sobre `stdio` (`mcp-servers/finance/index.js`).
+   - Persistencia SQLite transaccional (`mcp-servers/finance/db.js`) con soporte dual de drivers (`better-sqlite3` y fallback a `node:sqlite`).
+   - Aislamiento Multi-Tenant: Columna `tenant_id TEXT NOT NULL DEFAULT 'propietario'` con indice `idx_gastos_tenant`. Gastos, balances mensuales e informes trimestrales particionados por tenant.
+   - Herramientas: `registrar_gasto`, `listar_gastos`, `resumen_gastos_mes`, `extraer_ticket_vision`, `exportar_resumen_trimestral`.
+   - Modulo OCR (`mcp-servers/finance/ocr.js`): Parseo estructurado de tickets y facturas (cif, base, iva, total).
+   - Tool Pruning: Cuando la intencion del usuario es financiera, el agente poda el catalogo e inyecta unicamente las herramientas financieras (~500 tokens).
+
+5. **Bateria de Pruebas Automatizadas (60 tests passing en Node.js Windows y Linux VPS)**:
    - `tests/sector3/mcp_client_adapter.test.js`: 11 tests de protocolo, timeouts, errores y ciclo de vida de procesos.
-   - `tests/sector3/mcp_server_booking.test.js`: 2 tests directos de motor SQLite y protocolo stdio con subprocesos.
-   - `tests/sector3/mcp_server_booking_multitenant.test.js`: Verificacion de aislamiento multi-tenant sin colision en SQLite.
+   - `tests/sector3/mcp_server_booking.test.js` y `mcp_server_booking_multitenant.test.js`: 3 tests de motor SQLite, subprocesos y aislamiento multi-tenant.
    - `tests/sector3/mcp_server_devops.test.js`: 22 tests unitarios e integracion con telemetria del sistema operativo.
-   - `tests/sector3/mcp_e2e_integration.test.js`: Prueba E2E que orquesta en vivo ambos micro-servidores hijos simultaneamente a traves de `McpRegistry`.
+   - `tests/sector3/mcp_server_finance.test.js` y `mcp_server_finance_multitenant.test.js`: 5 tests de persistencia, OCR, subprocesos stdio y aislamiento multi-tenant.
+   - `tests/sector3/mcp_e2e_integration.test.js`: Prueba E2E que orquesta en vivo micro-servidores hijos simultaneamente a traves de `McpRegistry`.
+   - `tests/sector3/mcp_agent_wiring.test.js`: 6 tests de ciclo completo de agente ReAct con delegacion en servidores MCP.
+   - `tests/sector3/mcp_adversarial_stress.test.js`: 7 tests de ataques de concurrencia, inyeccion SQL, timeouts y payloads masivos.
