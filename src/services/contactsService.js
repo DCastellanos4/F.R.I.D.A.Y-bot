@@ -34,10 +34,22 @@ function rutaArchivo(deps = {}) {
 function leer(deps = {}) {
   try {
     const data = JSON.parse(fs.readFileSync(rutaArchivo(deps), 'utf-8'));
-    return { contactos: Array.isArray(data.contactos) ? data.contactos : [] };
+    const lista = Array.isArray(data.contactos) ? data.contactos : [];
+    if (lista.length > 0) return { contactos: lista };
   } catch {
-    return { contactos: [] };
+    // Si no existe el archivo, intentamos sincronizar contactos existentes del Segundo Cerebro
   }
+  // Sincronizacion perezosa si contactos.json no tiene entradas
+  if (!deps.sinAutoSync) {
+    sincronizarContactosDesdeSegundoCerebro({ ...deps, sinAutoSync: true });
+    try {
+      const data = JSON.parse(fs.readFileSync(rutaArchivo(deps), 'utf-8'));
+      return { contactos: Array.isArray(data.contactos) ? data.contactos : [] };
+    } catch {
+      return { contactos: [] };
+    }
+  }
+  return { contactos: [] };
 }
 
 function guardar(estado, deps = {}) {
@@ -126,4 +138,42 @@ export function eliminarContacto(criterio, deps = {}) {
   const [borrado] = estado.contactos.splice(idx, 1);
   guardar(estado, deps);
   return { ok: true, contacto: borrado };
+}
+
+function extraerTelefonoDeTexto(texto) {
+  if (!texto) return null;
+  const m = String(texto).match(/\+?[\d\s-]{9,}/);
+  if (!m) return null;
+  const limpio = m[0].trim();
+  const digitos = limpio.replace(/\D/g, '');
+  if (digitos.length >= 8 && digitos.length <= 15) return limpio;
+  return null;
+}
+
+export function sincronizarContactosDesdeSegundoCerebro(deps = {}) {
+  const rutaMemorias = deps.rutaArchivoMemorias || path.join(DATA_DIR, 'brain_memory.json');
+  try {
+    if (!fs.existsSync(rutaMemorias)) return { ok: false, sincronizados: 0 };
+    const raw = fs.readFileSync(rutaMemorias, 'utf-8');
+    const memorias = JSON.parse(raw);
+    if (!Array.isArray(memorias)) return { ok: false, sincronizados: 0 };
+    let sincronizados = 0;
+    for (const m of memorias) {
+      if (m && m.categoria === 'contacto' && m.sujeto && m.dato) {
+        const tel = extraerTelefonoDeTexto(m.dato) || (Array.isArray(m.tags) ? m.tags.map(extraerTelefonoDeTexto).find(Boolean) : null);
+        if (tel) {
+          const res = registrarContacto({
+            nombre: m.sujeto,
+            telefono: tel,
+            relacion: m.relacion || 'contacto',
+            notas: 'Sincronizado desde Segundo Cerebro'
+          }, deps);
+          if (res.ok) sincronizados++;
+        }
+      }
+    }
+    return { ok: true, sincronizados };
+  } catch {
+    return { ok: false, sincronizados: 0 };
+  }
 }

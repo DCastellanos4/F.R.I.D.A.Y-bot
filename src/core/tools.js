@@ -2041,7 +2041,7 @@ export function limitarHerramientasParaProveedor(tools, mensajes = [], limite = 
 export const MAPA_INTENCION_HERRAMIENTAS = {
   clima: ['consultar_clima'],
   memoria: ['guardar_memoria', 'buscar_memoria', 'listar_memorias', 'olvidar_memoria'],
-  mensajeProgramado: ['programar_mensaje_whatsapp', 'listar_mensajes_programados', 'cancelar_mensaje_programado'],
+  mensajeProgramado: ['programar_mensaje_whatsapp', 'listar_mensajes_programados', 'cancelar_mensaje_programado', 'buscar_contacto', 'listar_contactos'],
   recordatorio: ['crear_recordatorio', 'listar_recordatorios', 'cancelar_recordatorio'],
   sniper: ['vigilar_producto', 'listar_productos_vigilados', 'cancelar_vigilancia'],
   noticias: ['obtener_noticias_actuales', 'navegar_y_leer_noticia'],

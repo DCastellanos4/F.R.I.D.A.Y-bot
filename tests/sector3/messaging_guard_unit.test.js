@@ -136,3 +136,26 @@ test('Privacidad: los logs no muestran telefonos ni contenidos de mensajes', asy
   assert.ok(!textoLog.includes('Ya he salido'), 'el contenido del mensaje no aparece en los logs');
   assert.ok(/redactado/.test(textoLog), 'la redaccion queda marcada');
 });
+
+test('Guard: contacto con categoria contacto en Segundo Cerebro sincroniza y permite envio', async () => {
+  const rutaMem = path.join(dirEntorno, 'brain_memory.json');
+  const rutaContactos = path.join(dirEntorno, 'contactos-sync.json');
+  const resMem = guardarMemoria({
+    sujeto: 'Paula',
+    dato: 'Número de teléfono +34690358664',
+    categoria: 'contacto',
+    tags: ['paula', '34690358664'],
+    rutaArchivo: rutaMem
+  });
+  assert.ok(resMem.ok, resMem.error);
+  const obs = { ejecuciones: [], mensajesTool: [] };
+  const llmPaula = llmQuePropone({ numero: '34690358664', mensaje: 'Hola Paula', inmediato: true }, obs);
+  await consultarJarvis('escribele un mensaje a paula', [], {
+    chatCompletion: llmPaula,
+    ejecutores: espiaEjecutores(obs),
+    rutaArchivoContactos: rutaContactos,
+    rutaArchivoMemorias: rutaMem
+  });
+  assert.equal(obs.ejecuciones.length, 1, 'contacto verificado del Segundo Cerebro debe permitir el envio');
+  assert.equal(obs.ejecuciones[0].numero, '34690358664');
+});

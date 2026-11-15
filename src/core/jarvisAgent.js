@@ -887,7 +887,11 @@ function destinatarioVerificado(numero, mensajeUsuario, historial, opciones = {}
     if (numerosCoinciden(n, numero)) return true;
   }
   try {
-    const contactos = listarContactos({ rutaArchivo: opciones.rutaArchivoContactos });
+    const contactos = listarContactos({
+      rutaArchivo: opciones.rutaArchivoContactos,
+      rutaArchivoMemorias: opciones.rutaArchivoMemorias,
+      tenantId: opciones.tenantId
+    });
     for (const c of contactos) {
       if (c.telefono && numerosCoinciden(c.telefono, numero)) return true;
     }
