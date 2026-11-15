@@ -340,18 +340,18 @@ export function crearSqliteFlashcardsStore(db) {
 // 8. MENSAJES PROGRAMADOS
 // ============================================================================
 export function crearSqliteScheduledMessageStore(db) {
-  const ins = db.prepare('INSERT INTO mensajes_programados (id, tenant_id, jid, mensaje, fecha_envio, estado, creado_en) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  const ins = db.prepare('INSERT INTO mensajes_programados (id, tenant_id, jid, mensaje, fecha_envio, estado, creado_en) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET jid = excluded.jid, mensaje = excluded.mensaje, fecha_envio = excluded.fecha_envio, estado = excluded.estado');
   const selPend = db.prepare('SELECT id, jid, mensaje, fecha_envio, estado, creado_en FROM mensajes_programados WHERE tenant_id = ? AND estado = ? ORDER BY fecha_envio ASC');
   const upd = db.prepare('UPDATE mensajes_programados SET estado = ? WHERE tenant_id = ? AND id = ?');
   const del = db.prepare('DELETE FROM mensajes_programados WHERE tenant_id = ? AND id = ?');
 
   return Object.freeze({
-    guardar({ id, jid, mensaje, fechaEnvio }, tenantId = TENANT_PROPIETARIO) {
+    guardar({ id, jid, mensaje, fechaEnvio, estado = 'pendiente' }, tenantId = TENANT_PROPIETARIO) {
       afirmarTenantId(tenantId);
       const mid = id || `msg_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
       const ahora = new Date().toISOString();
-      ins.run(mid, tenantId, String(jid || ''), String(mensaje || ''), String(fechaEnvio || ''), 'pendiente', ahora);
-      return { id: mid, jid, mensaje, fechaEnvio, estado: 'pendiente', creado_en: ahora };
+      ins.run(mid, tenantId, String(jid || ''), String(mensaje || ''), String(fechaEnvio || ''), String(estado || 'pendiente'), ahora);
+      return { id: mid, jid, mensaje, fechaEnvio, estado: estado || 'pendiente', creado_en: ahora };
     },
     listarPendientes(tenantId = TENANT_PROPIETARIO) {
       afirmarTenantId(tenantId);

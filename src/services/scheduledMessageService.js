@@ -114,16 +114,21 @@ export function leerMensajesProgramados(deps = {}) {
         timeZone: 'Europe/Madrid',
         day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
       });
+      const jid = r.jid || '';
+      const num = jid.includes('@') ? jid.split('@')[0] : jid;
       return {
         id: r.id,
         tenantId: r.tenant_id,
+        numero: num,
+        destinatarioJid: jid,
         destinatario: {
-          jid: r.jid,
-          numero: r.jid ? r.jid.split('@')[0] : ''
+          jid,
+          numero: num
         },
         mensaje: r.mensaje,
         timestamp: ts,
         fechaHoraLocal: formatoLocal,
+        enviado: r.estado === 'enviado' || r.estado === 'leido' || r.estado === 'entregado',
         estado: r.estado,
         creadoEn: r.creado_en
       };
@@ -153,9 +158,10 @@ export function guardarMensajesProgramados(lista, deps = {}) {
       for (const m of lista) {
         store.guardar({
           id: m.id,
-          jid: m.destinatario?.jid || m.jid || '',
+          jid: m.destinatarioJid || m.destinatario?.jid || (m.numero ? `${m.numero}@s.whatsapp.net` : ''),
           mensaje: m.mensaje,
-          fechaEnvio: new Date(m.timestamp || Date.now()).toISOString()
+          fechaEnvio: new Date(m.timestamp || Date.now()).toISOString(),
+          estado: m.estado || (m.enviado ? 'enviado' : 'pendiente')
         }, m.tenantId || deps.tenantId);
       }
     }
