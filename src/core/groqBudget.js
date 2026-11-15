@@ -103,7 +103,12 @@ export function crearPresupuestoGroq({ limite = (typeof process !== 'undefined' 
         } catch (err) {
           const errHeaders = err?.headers || err?.response?.headers;
           const retryMs = duracionCabecera(cabecera(errHeaders, 'retry-after'));
-          reserva.hasta = ahora() + (retryMs > 0 ? retryMs : 60000);
+          if (retryMs > esperaMaxima) {
+            reserva.tokens = 0;
+            reserva.hasta = ahora();
+          } else {
+            reserva.hasta = ahora() + (retryMs > 0 ? retryMs : 60000);
+          }
           observar(errHeaders);
           // Un error puede haber consumido tokens: reserva conservadora.
           throw err;
