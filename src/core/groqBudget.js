@@ -25,6 +25,8 @@ export function crearPresupuestoGroq({ limite = (typeof process !== 'undefined' 
   let saldo = null;
   let limiteEfectivo = limite;
   let bloqueoHasta = 0;
+  const despertadores = new Set();
+  const notificar = () => { for (const d of despertadores) d(); despertadores.clear(); };
   const observar = (headers) => {
     const lim = Number(cabecera(headers, 'x-ratelimit-limit-tokens'));
     if (Number.isFinite(lim) && lim > 0) limiteEfectivo = Math.min(limite, lim);
@@ -75,10 +77,11 @@ export function crearPresupuestoGroq({ limite = (typeof process !== 'undefined' 
             err.name = 'PresupuestoTemporalError';
             throw err;
           }
-          const paso = Math.min(Math.max(50, hasta - t), 500);
-          await esperar(paso);
+          let despertar = null;
+          const promesaDespertar = new Promise(r => { despertar = r; despertadores.add(r); });
+          await Promise.race([esperar(hasta - t), promesaDespertar]).finally(() => despertadores.delete(despertar));
         }
-        const reserva = { tokens: estimacion.total, hasta: ahora() + 15000 };
+        const reserva = { tokens: estimacion.total, hasta: ahora() + 60000 };
         reservas.push(reserva);
         if (saldo) saldo.tokens = Math.max(0, saldo.tokens - estimacion.total);
         const esperaMs = ahora() - inicio;
@@ -86,7 +89,7 @@ export function crearPresupuestoGroq({ limite = (typeof process !== 'undefined' 
           const { data, headers } = await enviar();
           // El proveedor puede contabilizar al completar, no al enviar.
           const resetPost = duracionCabecera(cabecera(headers, 'x-ratelimit-reset-tokens'));
-          reserva.hasta = ahora() + (resetPost > 0 ? resetPost : 1000);
+          reserva.hasta = ahora() + (resetPost > 0 ? resetPost : 60000);
           // Sin usage fiable se conserva la reserva completa. No presumir hits.
           const u = data?.usage;
           if (Number.isSafeInteger(u?.prompt_tokens) && u.prompt_tokens >= 0 && Number.isSafeInteger(u?.completion_tokens) && u.completion_tokens >= 0) {
@@ -101,6 +104,8 @@ export function crearPresupuestoGroq({ limite = (typeof process !== 'undefined' 
           observar(errHeaders);
           // Un error puede haber consumido tokens: reserva conservadora.
           throw err;
+        } finally {
+          notificar();
         }
       };
       const pendiente = cola.then(trabajo, trabajo);
