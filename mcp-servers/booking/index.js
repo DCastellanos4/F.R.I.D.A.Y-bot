@@ -99,7 +99,7 @@ export const TOOLS_SCHEMA = [
   },
   {
     name: 'listar_citas',
-    description: 'Lista citas registradas con filtros opcionales de fecha y telefono.',
+    description: 'Consulta y lista las citas de la agenda registradas en el sistema. Usar cuando el usuario pregunte por sus citas ("que citas tengo", "ver agenda", "citas de hoy", "citas de manana", etc.). Permite filtros opcionales de fecha (YYYY-MM-DD), telefono o nombre del cliente. Si no se especifican filtros, devuelve todas las citas activas.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -110,6 +110,14 @@ export const TOOLS_SCHEMA = [
         cliente_telefono: {
           type: 'string',
           description: 'Filtrar citas por telefono del cliente (opcional)'
+        },
+        cliente_nombre: {
+          type: 'string',
+          description: 'Filtrar citas por nombre del cliente (opcional)'
+        },
+        estado: {
+          type: 'string',
+          description: 'Filtrar por estado: "confirmada", "cancelada" o "todas" (por defecto "confirmada")'
         }
       }
     }
@@ -226,6 +234,7 @@ export function crearManejadorRpc(bookingDb) {
             datosResultado = bookingDb.listarCitas({
               fecha: args.fecha,
               cliente_telefono: args.cliente_telefono || args.telefono,
+              cliente_nombre: args.cliente_nombre,
               estado: args.estado
             });
             break;

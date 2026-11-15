@@ -198,8 +198,6 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
       const colisiona = citasMs.some((c) => slotStartMs < c.endMs && slotEndMs > c.startMs);
       if (!colisiona) {
         huecos_disponibles.push({
-          inicio: slotInicioIso,
-          fin: slotFinIso,
           hora_inicio: horaInicioStr,
           hora_fin: horaFinStr
         });
@@ -433,8 +431,8 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
   /**
    * Lista citas con filtros opcionales.
    */
-  function listarCitas({ fecha, cliente_telefono, telefono, estado } = {}) {
-    let sql = 'SELECT * FROM citas WHERE 1=1';
+  function listarCitas({ fecha, cliente_telefono, telefono, cliente_nombre, estado } = {}) {
+    let sql = 'SELECT id, cliente_nombre, cliente_telefono, fecha_inicio, duracion_minutos, servicio, estado FROM citas WHERE 1=1';
     const params = [];
 
     if (fecha && typeof fecha === 'string') {
@@ -448,9 +446,18 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
       params.push(tel, tel.replace(/\s+/g, ''));
     }
 
+    if (cliente_nombre && typeof cliente_nombre === 'string' && cliente_nombre.trim()) {
+      sql += ' AND cliente_nombre LIKE ?';
+      params.push(`%${cliente_nombre.trim()}%`);
+    }
+
     if (estado && typeof estado === 'string') {
-      sql += ' AND estado = ?';
-      params.push(estado.trim());
+      if (estado.toLowerCase() !== 'todas') {
+        sql += ' AND estado = ?';
+        params.push(estado.trim());
+      }
+    } else {
+      sql += " AND estado = 'confirmada'";
     }
 
     sql += ' ORDER BY fecha_inicio ASC';
