@@ -466,11 +466,11 @@ export function getToolsList() {
         type: 'object',
         properties: {
           ruta: {
-            type: 'string',
+            type: ['string', 'null'],
             description: 'Ruta opcional del punto de montaje o particion a verificar.'
           },
           umbral_alerta: {
-            type: 'number',
+            type: ['number', 'null'],
             description: 'Porcentaje umbral para disparar la alerta (por defecto 85%).'
           }
         }

@@ -771,7 +771,7 @@ export const herramientasJarvis = [
             description: 'Calcular tasa de transferencia y consumo de red en MB/s (por defecto true).'
           },
           dominio_ssl: {
-            type: 'string',
+            type: ['string', 'null'],
             description: 'Nombre de dominio opcional para verificar caducidad del certificado SSL (ej: "jarvis.davidcastellanos.es" o "google.com").'
           }
         }
