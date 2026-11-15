@@ -112,6 +112,29 @@ export function crearTenantQuotaService({
     if (tenantId === TENANT_PROPIETARIO) return PLANES.propietario;
     const asignado = planesAsignados.get(tenantId) || planPorDefecto;
     if (asignado && PLANES[asignado]) return PLANES[asignado];
+    if (limitesStore && typeof limitesStore.leer === 'function') {
+      try {
+        const persisted = limitesStore.leer(tenantId);
+        if (persisted) {
+          for (const [nombre, preset] of Object.entries(PLANES)) {
+            if (preset.tokensDia === persisted.tokensDia && preset.peticionesMinuto === persisted.peticionesMinuto) {
+              planesAsignados.set(tenantId, nombre);
+              return preset;
+            }
+          }
+          if (persisted.tokensDia !== null || persisted.peticionesMinuto !== null) {
+            return {
+              nombre: 'personalizado',
+              tokensDia: persisted.tokensDia,
+              tokensMes: persisted.tokensMes,
+              peticionesMinuto: persisted.peticionesMinuto
+            };
+          }
+        }
+      } catch {
+        // Ignorar fallos de lectura y seguir fail-closed
+      }
+    }
     return null;
   }
 
