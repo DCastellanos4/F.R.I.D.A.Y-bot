@@ -132,14 +132,29 @@ export function enqueueAlert(alertData, options = {}) {
  */
 export function drainAlerts(options = {}) {
   const queuePath = options.queuePath || DEFAULT_QUEUE_FILE;
-  const todas = readAlertsRaw(queuePath);
-  const pendingAlerts = todas.filter((a) => !a || !a.tenantId);
+  const filtroFn = typeof options.predicate === 'function'
+    ? options.predicate
+    : (typeof options.filtro === 'function' ? options.filtro : null);
 
-  if (todas.length > 0 && pendingAlerts.length > 0) {
-    writeAlertsRaw(todas.filter((a) => a && a.tenantId), queuePath);
+  const todas = readAlertsRaw(queuePath);
+  const aDrenar = [];
+  const restantes = [];
+
+  for (const a of todas) {
+    if (a && a.tenantId) {
+      restantes.push(a);
+    } else if (!filtroFn || filtroFn(a)) {
+      aDrenar.push(a);
+    } else {
+      restantes.push(a);
+    }
   }
 
-  return pendingAlerts;
+  if (todas.length > 0 && aDrenar.length > 0) {
+    writeAlertsRaw(restantes, queuePath);
+  }
+
+  return aDrenar;
 }
 
 /**

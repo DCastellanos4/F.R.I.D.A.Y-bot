@@ -4,6 +4,8 @@
  * Busca texto en el historial persistido del chat (el mismo que usa el bot
  * para dar contexto al modelo). Solo lectura: nunca modifica el historial.
  *
+ * Soporte dual: SQLite Store (ACID + multi-tenant) y fallback JSON.
+ *
  * Strict Policy: Zero Emojis.
  */
 import fs from 'node:fs';
@@ -11,11 +13,23 @@ import path from 'path';
 import crypto from 'node:crypto';
 import { DATA_DIR } from '../config/paths.js';
 
+let storeHistorialPorDefecto = null;
+
+export function registrarStoreHistorialPorDefecto(store) {
+  storeHistorialPorDefecto = store || null;
+}
+
+function storeDe(deps = {}) {
+  if (deps.store) return deps.store;
+  if (deps.carpetaHistorial || deps.rutaArchivo || process.env.DAVIS_HISTORY_DIR) return null;
+  return storeHistorialPorDefecto;
+}
+
 function carpeta(deps = {}) {
   if (deps.carpetaHistorial) return deps.carpetaHistorial;
   return process.env.DAVIS_HISTORY_DIR
     ? path.resolve(process.env.DAVIS_HISTORY_DIR)
-    : path.join(DATA_DIR, 'historial');
+    : path.join(DATA_DIR, 'history');
 }
 
 function rutaChat(chatId, deps = {}) {
@@ -31,6 +45,18 @@ export function buscarEnHistorial({ chatId, termino, limite = 5 } = {}, deps = {
   const t = String(termino || '').trim().toLowerCase();
   if (!chatId) return { ok: false, error: 'No se en que chat buscar.' };
   if (!t) return { ok: false, error: 'Dime que quieres que busque en el historial.' };
+
+  const tope = Math.min(Math.max(Number(limite) || 5, 1), 10);
+  const store = storeDe(deps);
+  if (store && typeof store.buscar === 'function') {
+    const filas = store.buscar(chatId, t, tope, deps.tenantId);
+    const coincidencias = (filas || []).map((m) => ({
+      role: m.role === 'assistant' ? 'yo' : (m.role === 'user' ? 'tu' : m.role),
+      content: String(m.content || '').slice(0, 300)
+    }));
+    return { ok: true, coincidencias, total: coincidencias.length };
+  }
+
   let mensajes;
   try {
     const data = JSON.parse(fs.readFileSync(rutaChat(chatId, deps), 'utf-8'));
@@ -38,7 +64,6 @@ export function buscarEnHistorial({ chatId, termino, limite = 5 } = {}, deps = {
   } catch {
     return { ok: true, coincidencias: [], total: 0 };
   }
-  const tope = Math.min(Math.max(Number(limite) || 5, 1), 10);
   const coincidencias = [];
   for (let i = mensajes.length - 1; i >= 0 && coincidencias.length < tope; i--) {
     const m = mensajes[i];

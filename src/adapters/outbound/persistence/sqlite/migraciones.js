@@ -465,6 +465,13 @@ export const MIGRACIONES = [
       );
       CREATE INDEX IF NOT EXISTS idx_historial_chat_tenant ON conversaciones_historial(tenant_id, chat_id, creado_en);
     `
+  },
+  {
+    version: 13,
+    nombre: '013_flashcards_ultima_alerta',
+    sql: `
+      ALTER TABLE estudio_flashcards ADD COLUMN ultima_alerta_en TEXT;
+    `
   }
 ];
 

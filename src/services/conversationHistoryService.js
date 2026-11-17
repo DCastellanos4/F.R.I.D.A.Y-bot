@@ -222,6 +222,9 @@ export async function condensarHistorial(chatId, deps = {}) {
   const store = storeDe(deps);
   if (store) {
     store.registrar(chatId, 'system', `Resumen: ${nuevoResumen}`, nuevoResumen, deps.tenantId);
+    if (typeof store.purgarAntiguos === 'function') {
+      store.purgarAntiguos(chatId, MAX_MENSAJES_VENTANA, deps.tenantId);
+    }
     return { ok: true, condensado: true, resumen: nuevoResumen };
   }
 

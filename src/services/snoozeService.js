@@ -163,7 +163,7 @@ export function listarSnoozes(deps = {}) {
 export function cancelarSnooze({ chatId, id } = {}, deps = {}) {
   const store = storeDe(deps);
   if (store) {
-    const res = store.desactivar(id || chatId, deps.tenantId);
+    const res = store.desactivar(id || chatId, 'cancelado', deps.tenantId);
     if (!res.ok) return { ok: false, error: 'No encuentro ningun recordatorio pendiente de ese chat.' };
     return { ok: true };
   }
@@ -194,7 +194,7 @@ export function lanzarRondaSnoozes(deps = {}) {
         priority: 'normal',
         source: 'snooze'
       });
-      store.desactivar(s.id, deps.tenantId);
+      store.desactivar(s.id, 'completado', deps.tenantId);
       disparados++;
     }
     return { ok: true, disparados };

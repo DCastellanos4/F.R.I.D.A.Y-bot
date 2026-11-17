@@ -44,7 +44,7 @@ import { iniciarMonitorFechas } from './src/services/specialDatesService.js';
 import { iniciarMonitorSnoozes } from './src/services/snoozeService.js';
 import { procesarUbicacionEntrante } from './src/services/arrivalWatchService.js';
 import { iniciarMonitorDigest } from './src/services/brainDigestService.js';
-import { enHorarioSilencio } from './src/services/quietHoursService.js';
+import { enHorarioSilencio, esAlertaUrgente } from './src/services/quietHoursService.js';
 import { estadoEntrevista, responderEntrevista, terminarEntrevista } from './src/services/interviewService.js';
 import { programarEnvioMatutino } from './src/services/dailyBriefing.js';
 import { normalizarTexto } from './src/services/memoryService.js';
@@ -58,7 +58,7 @@ import { isMediaUrl, downloadMedia, sendMediaMessage } from './src/services/medi
 import { synthesizeSpeech, sendVoiceNote } from './src/services/ttsService.js';
 import { classifyUrgency, getUrgencyPromptDirective } from './src/services/urgencyService.js';
 import { parseInteractiveResponse, parsePollVote } from './src/core/interactiveService.js';
-import { drainAlerts, formatAlertText } from './src/services/alertQueueService.js';
+import { drainAlerts, formatAlertText, peekAlerts } from './src/services/alertQueueService.js';
 import { checkAndHealContainers, inspectContainers, clasificarFalloDocker } from './src/monitors/dockerMonitorService.js';
 import { checkAndPurgeIfExceeded } from './src/system/diskStorageService.js';
 import { scanFail2banLog } from './src/monitors/fail2banMonitorService.js';
@@ -263,12 +263,31 @@ export function setMockSocket(mockSock) {
  */
 export async function drenarColaAlertas(deps = {}) {
   // Modo desconexion nocturno (nº 50): dentro de la franja las alertas no
-  // urgentes se quedan en cola hasta que acabe; no se descartan.
-  if (enHorarioSilencio(deps.quietDeps || {})) return [];
-  const alertas = (deps.drenar || drainAlerts)();
+  // urgentes se quedan en cola hasta que acabe; no se descartan. Solo se
+  // despachan de forma inmediata las alertas urgentes o criticas.
+  const fnSilencio = typeof deps.enHorarioSilencio === 'function' ? deps.enHorarioSilencio : enHorarioSilencio;
+  const enSilencio = fnSilencio(deps.quietDeps || {});
+
+  const drenarFn = deps.drenar || drainAlerts;
+  const esUrgenteFn = deps.esAlertaUrgente || esAlertaUrgente;
+  const enviarFn = deps.enviarMensajeADavid || enviarMensajeADavid;
+  const peekFn = deps.peekAlerts || peekAlerts;
+
+  let alertas = [];
+  if (enSilencio) {
+    const pendientes = typeof peekFn === 'function' ? peekFn(deps.drainOptions || {}) : [];
+    const hayUrgentes = Array.isArray(pendientes) && pendientes.some(esUrgenteFn);
+    if (!hayUrgentes) {
+      return [];
+    }
+    alertas = drenarFn({ predicate: esUrgenteFn, ...(deps.drainOptions || {}) });
+  } else {
+    alertas = drenarFn(deps.drainOptions || {});
+  }
+
   for (const alerta of alertas) {
     const textoAlerta = formatAlertText(alerta);
-    await enviarMensajeADavid(textoAlerta);
+    await enviarFn(textoAlerta);
   }
   return alertas;
 }

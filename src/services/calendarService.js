@@ -28,7 +28,8 @@ function escribirEventosLocales(eventos, deps = {}) {
 }
 
 export function getGoogleApiKey(deps = {}) {
-  return deps.apiKey || process.env.GOOGLE_CALENDAR_API_KEY || null;
+  if (deps.apiKey !== undefined) return deps.apiKey;
+  return process.env.GOOGLE_CALENDAR_API_KEY || null;
 }
 
 export function getCalendarId(deps = {}) {

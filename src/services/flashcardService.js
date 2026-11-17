@@ -192,7 +192,7 @@ function mapearDesdeSqlite(row) {
       proximaRevision: row.proximo_repaso,
       aciertos: row.repeticiones || 0,
       fallos: 0,
-      ultimaAlertaEn: null
+      ultimaAlertaEn: row.ultima_alerta_en || null
     },
     creadaEn: row.creada_en
   };
@@ -368,6 +368,9 @@ export function lanzarRondaRepaso(deps = {}) {
       source: 'flashcards'
     });
     t.repaso.ultimaAlertaEn = new Date(ahoraMs).toISOString();
+    if (store && typeof store.marcarAlerta === 'function') {
+      store.marcarAlerta(t.id, t.repaso.ultimaAlertaEn, deps.tenantId);
+    }
   }
   if (!store) {
     guardarTarjetas(tarjetas, deps);

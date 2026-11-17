@@ -73,35 +73,59 @@ export function crearSqliteHabitsStore(db) {
   const delHab = db.prepare('UPDATE habitos SET activo = 0 WHERE tenant_id = ? AND id = ?');
   const insLog = db.prepare('INSERT INTO habitos_logs (id, tenant_id, habito_id, fecha, completado) VALUES (?, ?, ?, ?, 1)');
   const selLogs = db.prepare('SELECT fecha FROM habitos_logs WHERE tenant_id = ? AND habito_id = ? ORDER BY fecha DESC');
+  const selExisteActivo = db.prepare('SELECT 1 FROM habitos WHERE tenant_id = ? AND activo = 1 AND LOWER(nombre) = LOWER(?)');
+  const selHabitoPorCriterio = db.prepare('SELECT id, nombre FROM habitos WHERE tenant_id = ? AND activo = 1 AND (id = ? OR LOWER(nombre) LIKE ?) LIMIT 1');
+  const selLogExiste = db.prepare('SELECT 1 FROM habitos_logs WHERE tenant_id = ? AND habito_id = ? AND fecha = ? LIMIT 1');
+  const selLogHoy = db.prepare('SELECT 1 FROM habitos_logs WHERE tenant_id = ? AND habito_id = ? AND fecha = ? LIMIT 1');
+  const cntLogsDistintos = db.prepare('SELECT COUNT(DISTINCT fecha) as total FROM habitos_logs WHERE tenant_id = ? AND habito_id = ?');
 
   return Object.freeze({
     crear({ id, nombre, frecuencia = 'diaria', dias = [], hora = null }, tenantId = TENANT_PROPIETARIO) {
       afirmarTenantId(tenantId);
-      const hid = id || `hab_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
-      insHab.run(hid, tenantId, nombre, frecuencia, JSON.stringify(dias), hora, 1, new Date().toISOString());
-      return { id: hid, nombre, frecuencia, dias, hora };
-    },
-    listar(tenantId = TENANT_PROPIETARIO) {
-      afirmarTenantId(tenantId);
-      const filas = selHab.all(tenantId);
-      return filas.map((f) => ({
-        id: f.id,
-        nombre: f.nombre,
-        frecuencia: f.frecuencia,
-        dias: JSON.parse(f.dias || '[]'),
-        hora: f.hora,
-        racha: this.calcularRacha(f.id, tenantId)
-      }));
-    },
-    marcar(habitoId, fecha = new Date().toISOString().slice(0, 10), tenantId = TENANT_PROPIETARIO) {
-      afirmarTenantId(tenantId);
-      const logId = `log_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
-      try {
-        insLog.run(logId, tenantId, habitoId, fecha);
-      } catch {
-        // Ignorar si ya estaba marcado
+      const n = String(nombre || '').trim();
+      const yaExiste = selExisteActivo.get(tenantId, n);
+      if (yaExiste) {
+        return { ok: false, error: 'Ya sigues el habito "' + n + '".' };
       }
-      return { ok: true, habitoId, fecha, racha: this.calcularRacha(habitoId, tenantId) };
+      const hid = id || `hab_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+      insHab.run(hid, tenantId, n, frecuencia, JSON.stringify(dias), hora, 1, new Date().toISOString());
+      return { id: hid, nombre: n, frecuencia, dias, hora };
+    },
+    listar(tenantId = TENANT_PROPIETARIO, fechaHoy = null) {
+      afirmarTenantId(tenantId);
+      const hoyStr = fechaHoy || new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Madrid' });
+      const filas = selHab.all(tenantId);
+      return filas.map((f) => {
+        const hechoHoy = Boolean(selLogHoy.get(tenantId, f.id, hoyStr));
+        const totRow = cntLogsDistintos.get(tenantId, f.id);
+        const totalDias = totRow ? Number(totRow.total) : 0;
+        return {
+          id: f.id,
+          nombre: f.nombre,
+          frecuencia: f.frecuencia,
+          dias: JSON.parse(f.dias || '[]'),
+          hora: f.hora,
+          hechoHoy,
+          racha: this.calcularRacha(f.id, tenantId),
+          totalDias
+        };
+      });
+    },
+    marcar(criterio, fecha = new Date().toISOString().slice(0, 10), tenantId = TENANT_PROPIETARIO) {
+      afirmarTenantId(tenantId);
+      const c = String(criterio || '').trim();
+      if (!c) return { ok: false, error: 'No encuentro ese habito. Lista los tuyos con "mis habitos".' };
+      const habito = selHabitoPorCriterio.get(tenantId, c, `%${c.toLowerCase()}%`);
+      if (!habito) {
+        return { ok: false, error: 'No encuentro ese habito. Lista los tuyos con "mis habitos".' };
+      }
+      const yaMarcado = selLogExiste.get(tenantId, habito.id, fecha);
+      if (yaMarcado) {
+        return { ok: false, error: '"' + habito.nombre + '" ya estaba marcado el ' + fecha + '.' };
+      }
+      const logId = `log_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+      insLog.run(logId, tenantId, habito.id, fecha);
+      return { ok: true, habito, habitoId: habito.id, fecha, racha: this.calcularRacha(habito.id, tenantId) };
     },
     calcularRacha(habitoId, tenantId = TENANT_PROPIETARIO) {
       const logs = selLogs.all(tenantId, habitoId).map((l) => l.fecha);
@@ -277,7 +301,7 @@ export function crearSqliteQuedadasStore(db) {
 export function crearSqliteSnoozeStore(db) {
   const ins = db.prepare('INSERT INTO snoozes (id, tenant_id, chat_id, mensaje_original_id, fecha_aviso, estado, creado_en) VALUES (?, ?, ?, ?, ?, ?, ?)');
   const selPend = db.prepare('SELECT id, chat_id, mensaje_original_id, fecha_aviso, estado, creado_en FROM snoozes WHERE tenant_id = ? AND estado = ? ORDER BY fecha_aviso ASC');
-  const upd = db.prepare('UPDATE snoozes SET estado = ? WHERE tenant_id = ? AND (id = ? OR chat_id = ?)');
+  const upd = db.prepare("UPDATE snoozes SET estado = ? WHERE tenant_id = ? AND estado = 'pendiente' AND (id = ? OR chat_id = ?)");
 
   return Object.freeze({
     guardar({ id, chatId, mensajeOriginalId, fechaAviso }, tenantId = TENANT_PROPIETARIO) {
@@ -291,9 +315,18 @@ export function crearSqliteSnoozeStore(db) {
       afirmarTenantId(tenantId);
       return selPend.all(tenantId, 'pendiente');
     },
-    desactivar(id, tenantId = TENANT_PROPIETARIO) {
-      afirmarTenantId(tenantId);
-      const info = upd.run('completado', tenantId, id, id);
+    desactivar(idOChatId, nuevoEstado = 'completado', tenantId = TENANT_PROPIETARIO) {
+      let estado = nuevoEstado;
+      let tId = tenantId;
+      if (nuevoEstado !== 'completado' && nuevoEstado !== 'cancelado') {
+        if (typeof nuevoEstado === 'string' && (nuevoEstado === 'propietario' || nuevoEstado.startsWith('tenant_') || (nuevoEstado.length > 0 && tenantId === TENANT_PROPIETARIO))) {
+          tId = nuevoEstado;
+          estado = 'completado';
+        }
+      }
+      afirmarTenantId(tId);
+      const sid = String(idOChatId || '');
+      const info = upd.run(estado, tId, sid, sid);
       return { ok: info.changes > 0 };
     }
   });
@@ -304,9 +337,10 @@ export function crearSqliteSnoozeStore(db) {
 // ============================================================================
 export function crearSqliteFlashcardsStore(db) {
   const ins = db.prepare('INSERT INTO estudio_flashcards (id, tenant_id, asignatura, pregunta, respuesta, proximo_repaso, intervalo_dias, facilidad, repeticiones, creada_en) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-  const sel = db.prepare('SELECT id, asignatura, pregunta, respuesta, proximo_repaso, intervalo_dias, facilidad, repeticiones, creada_en FROM estudio_flashcards WHERE tenant_id = ? ORDER BY proximo_repaso ASC');
-  const selDue = db.prepare('SELECT id, asignatura, pregunta, respuesta, proximo_repaso, intervalo_dias, facilidad, repeticiones, creada_en FROM estudio_flashcards WHERE tenant_id = ? AND proximo_repaso <= ? ORDER BY proximo_repaso ASC');
+  const sel = db.prepare('SELECT id, asignatura, pregunta, respuesta, proximo_repaso, intervalo_dias, facilidad, repeticiones, ultima_alerta_en, creada_en FROM estudio_flashcards WHERE tenant_id = ? ORDER BY proximo_repaso ASC');
+  const selDue = db.prepare('SELECT id, asignatura, pregunta, respuesta, proximo_repaso, intervalo_dias, facilidad, repeticiones, ultima_alerta_en, creada_en FROM estudio_flashcards WHERE tenant_id = ? AND proximo_repaso <= ? ORDER BY proximo_repaso ASC');
   const upd = db.prepare('UPDATE estudio_flashcards SET proximo_repaso = ?, intervalo_dias = ?, facilidad = ?, repeticiones = ? WHERE tenant_id = ? AND id = ?');
+  const updAlerta = db.prepare('UPDATE estudio_flashcards SET ultima_alerta_en = ? WHERE tenant_id = ? AND id = ?');
   const del = db.prepare('DELETE FROM estudio_flashcards WHERE tenant_id = ? AND id = ?');
 
   return Object.freeze({
@@ -324,6 +358,11 @@ export function crearSqliteFlashcardsStore(db) {
     pendientesRepaso(tenantId = TENANT_PROPIETARIO, hasta = new Date().toISOString()) {
       afirmarTenantId(tenantId);
       return selDue.all(tenantId, hasta);
+    },
+    marcarAlerta(id, fechaIso, tenantId = TENANT_PROPIETARIO) {
+      afirmarTenantId(tenantId);
+      const info = updAlerta.run(String(fechaIso || new Date().toISOString()), tenantId, id);
+      return { ok: info.changes > 0 };
     },
     responder(id, { intervaloDias, facilidad, repeticiones, proximoRepaso }, tenantId = TENANT_PROPIETARIO) {
       afirmarTenantId(tenantId);
@@ -380,8 +419,12 @@ export function crearSqliteScheduledMessageStore(db) {
 // ============================================================================
 export function crearSqliteHistoryStore(db) {
   const ins = db.prepare('INSERT INTO conversaciones_historial (id, tenant_id, chat_id, role, content, resumen, creado_en) VALUES (?, ?, ?, ?, ?, ?, ?)');
-  const sel = db.prepare('SELECT role, content, resumen, creado_en FROM conversaciones_historial WHERE tenant_id = ? AND chat_id = ? ORDER BY creado_en ASC');
+  const selResumen = db.prepare('SELECT resumen FROM conversaciones_historial WHERE tenant_id = ? AND chat_id = ? AND resumen IS NOT NULL ORDER BY creado_en DESC LIMIT 1');
+  const selMensajes = db.prepare('SELECT role, content FROM (SELECT role, content, creado_en, rowid FROM conversaciones_historial WHERE tenant_id = ? AND chat_id = ? ORDER BY creado_en DESC, rowid DESC LIMIT ?) ORDER BY creado_en ASC, rowid ASC');
   const delChat = db.prepare('DELETE FROM conversaciones_historial WHERE tenant_id = ? AND chat_id = ?');
+  const delAntiguos = db.prepare('DELETE FROM conversaciones_historial WHERE tenant_id = ? AND chat_id = ? AND id NOT IN (SELECT id FROM conversaciones_historial WHERE tenant_id = ? AND chat_id = ? ORDER BY creado_en DESC, rowid DESC LIMIT ?)');
+  const selBuscar = db.prepare('SELECT role, content FROM conversaciones_historial WHERE tenant_id = ? AND chat_id = ? AND LOWER(content) LIKE ? ORDER BY creado_en DESC, rowid DESC LIMIT ?');
+  const cntMensajes = db.prepare('SELECT COUNT(*) as total FROM conversaciones_historial WHERE tenant_id = ? AND chat_id = ?');
 
   return Object.freeze({
     registrar(chatId, role, content, resumen = null, tenantId = TENANT_PROPIETARIO) {
@@ -392,11 +435,29 @@ export function crearSqliteHistoryStore(db) {
     },
     obtener(chatId, limite = 12, tenantId = TENANT_PROPIETARIO) {
       afirmarTenantId(tenantId);
-      const filas = sel.all(tenantId, String(chatId || ''));
-      if (filas.length === 0) return { resumen: null, mensajes: [] };
-      const ultimoResumen = filas.filter((f) => f.resumen).slice(-1)[0]?.resumen || null;
-      const mensajes = filas.slice(-limite).map((f) => ({ role: f.role, content: f.content }));
+      const l = Math.max(Number(limite) || 12, 1);
+      const filaResumen = selResumen.get(tenantId, String(chatId || ''));
+      const ultimoResumen = filaResumen ? filaResumen.resumen : null;
+      const mensajes = selMensajes.all(tenantId, String(chatId || ''), l).map((f) => ({ role: f.role, content: f.content }));
       return { resumen: ultimoResumen, mensajes };
+    },
+    purgarAntiguos(chatId, conservarLimite, tenantId = TENANT_PROPIETARIO) {
+      afirmarTenantId(tenantId);
+      const k = Math.max(Number(conservarLimite) || 0, 0);
+      const info = delAntiguos.run(tenantId, String(chatId || ''), tenantId, String(chatId || ''), k);
+      return { ok: true, eliminados: info.changes };
+    },
+    buscar(chatId, termino, limite = 5, tenantId = TENANT_PROPIETARIO) {
+      afirmarTenantId(tenantId);
+      const l = Math.min(Math.max(Number(limite) || 5, 1), 50);
+      const t = String(termino || '').trim().toLowerCase();
+      const filas = selBuscar.all(tenantId, String(chatId || ''), `%${t}%`, l);
+      return filas;
+    },
+    contar(chatId, tenantId = TENANT_PROPIETARIO) {
+      afirmarTenantId(tenantId);
+      const r = cntMensajes.get(tenantId, String(chatId || ''));
+      return r ? Number(r.total) : 0;
     },
     limpiar(chatId, tenantId = TENANT_PROPIETARIO) {
       afirmarTenantId(tenantId);

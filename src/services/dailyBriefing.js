@@ -7,12 +7,17 @@
  * Strict Policy: Zero Emojis.
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
 import cron from 'node-cron';
 import { config } from '../config/config.js';
+import { DATA_DIR } from '../config/paths.js';
 import { consultarClima } from './weatherService.js';
 import { listarRecordatorios } from './reminderService.js';
 import { consultarSaludServidor } from '../monitors/proactiveAlerts.js';
 import { consultarEventos } from './calendarService.js';
+import { emtConfigurado } from './emtAdapter.js';
+import { abrirBaseDatos } from '../adapters/outbound/persistence/sqlite/connection.js';
 
 export const CRON_HORA_MATUTINA = '55 6 * * *'; // 06:55 Europe/Madrid
 
@@ -33,14 +38,47 @@ export function eliminarEmojis(texto) {
     .trim();
 }
 
+function formatearHoraCita(fechaIso) {
+  const d = new Date(fechaIso);
+  return d.toLocaleTimeString('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+async function consultarCitasBooking(opts = {}, hoyMadrid) {
+  if (typeof opts.consultarCitasBooking === 'function') {
+    return await opts.consultarCitasBooking(hoyMadrid);
+  }
+  const rutaDb = opts.bookingDbPath || process.env.BOOKING_DB_PATH || path.join(DATA_DIR, 'booking.db');
+  if (!fs.existsSync(rutaDb)) return null;
+  try {
+    const db = opts.DatabaseDriver ? new opts.DatabaseDriver(rutaDb) : abrirBaseDatos(rutaDb);
+    try {
+      const stmt = db.prepare("SELECT cliente_nombre, servicio, duracion_minutos, fecha_inicio FROM citas WHERE estado = 'confirmada' ORDER BY fecha_inicio ASC");
+      const todas = stmt.all();
+      return (todas || []).filter((c) => {
+        const d = new Date(c.fecha_inicio);
+        const diaMadrid = d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Madrid' });
+        return diaMadrid === hoyMadrid;
+      });
+    } finally {
+      if (typeof db.close === 'function') db.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Genera el briefing completo matutino en formato estructurado sin emojis.
- * @param {string} [ciudad] Ciudad para el pronostico del tiempo.
+ * @param {string|object} [ciudad] Ciudad para el pronostico del tiempo u opciones.
+ * @param {object} [deps] Dependencias inyectadas para pruebas.
  * @returns {Promise<string>}
  */
-export async function generarBriefingCompleto(ciudad) {
-  const ubicacion = ciudad || config.weather?.defaultCity || 'Madrid';
-  const fechaHoy = new Date().toLocaleDateString('es-ES', {
+export async function generarBriefingCompleto(ciudad, deps = {}) {
+  const opts = (typeof ciudad === 'object' && ciudad !== null) ? ciudad : (deps || {});
+  const ubicacion = (typeof ciudad === 'string' ? ciudad : opts.ciudad) || config.weather?.defaultCity || 'Madrid';
+  const ref = opts.ahora ? new Date(opts.ahora) : new Date();
+  const hoyMadrid = ref.toLocaleDateString('sv-SE', { timeZone: 'Europe/Madrid' });
+  const fechaHoy = ref.toLocaleDateString('es-ES', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
@@ -69,18 +107,35 @@ export async function generarBriefingCompleto(ciudad) {
 
   // 2. Agenda y Eventos de Calendario
   secciones.push('\n[AGENDA Y CITAS DEL DIA]');
+  const itemsAgenda = [];
   try {
-    const resEventos = await consultarEventos();
-    if (resEventos && resEventos.ok && resEventos.eventos.length > 0) {
-      secciones.push(`Eventos programados hoy (${resEventos.eventos.length}):`);
-      resEventos.eventos.forEach((e, idx) => {
-        secciones.push(`${idx + 1}. [${e.inicio || 'Hoy'}] ${eliminarEmojis(e.titulo)}`);
-      });
-    } else {
-      secciones.push('Agenda despejada sin citas ni reuniones registradas para hoy.');
+    const citas = await consultarCitasBooking(opts, hoyMadrid);
+    if (Array.isArray(citas) && citas.length > 0) {
+      for (const c of citas) {
+        const hora = formatearHoraCita(c.fecha_inicio);
+        itemsAgenda.push(`Cita [${hora}]: ${eliminarEmojis(c.cliente_nombre)} - ${eliminarEmojis(c.servicio)} (${c.duracion_minutos} min)`);
+      }
     }
   } catch {
-    secciones.push('Sin eventos inmediatos en el calendario.');
+    // Fallback silencioso en citas de reservas
+  }
+
+  try {
+    const fnEventos = opts.consultarEventos || consultarEventos;
+    const resEventos = await fnEventos(opts.calendarOpts || {}, opts);
+    if (resEventos && resEventos.ok && Array.isArray(resEventos.eventos) && resEventos.eventos.length > 0) {
+      resEventos.eventos.forEach((e, idx) => {
+        itemsAgenda.push(`${idx + 1}. [${e.inicio || 'Hoy'}] ${eliminarEmojis(e.titulo)}`);
+      });
+    }
+  } catch {
+    // Fallback silencioso en eventos de calendario
+  }
+
+  if (itemsAgenda.length > 0) {
+    itemsAgenda.forEach((item) => secciones.push(item));
+  } else {
+    secciones.push('Sin citas de reservas ni eventos de calendario programados para hoy.');
   }
 
   // 3. Recordatorios y Deadlines
@@ -101,7 +156,11 @@ export async function generarBriefingCompleto(ciudad) {
 
   // 4. Transporte y Desplazamientos
   secciones.push('\n[TRANSPORTE Y LOGISTICA]');
-  secciones.push('Lineas Cercanías/EMT: Servicio nominal. Modulo listo para conexion de API.');
+  if (emtConfigurado(opts)) {
+    secciones.push('Lineas Cercanias/EMT: Servicio nominal.');
+  } else {
+    secciones.push('Lineas Cercanias/EMT: Proveedor no configurado (faltan credenciales DAVIS_EMT_CLIENT_ID / DAVIS_EMT_PASS_KEY).');
+  }
 
   // 5. Estado del Servidor
   secciones.push('\n[ESTADO DEL SISTEMA]');

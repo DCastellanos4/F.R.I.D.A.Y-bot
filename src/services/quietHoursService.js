@@ -59,3 +59,14 @@ export function enHorarioSilencio(deps = {}) {
   if (ini <= fin) return minutos >= ini && minutos < fin;
   return minutos >= ini || minutos < fin;
 }
+
+/**
+ * Determina si una alerta debe considerarse urgente y saltarse el modo silencioso.
+ */
+export function esAlertaUrgente(alerta) {
+  if (!alerta || typeof alerta !== 'object') return false;
+  if (alerta.urgente === true) return true;
+  const p = String(alerta.priority || alerta.prioridad || '').trim().toLowerCase();
+  return p === 'urgent' || p === 'critical' || p === 'urgente' || p === 'critica';
+}
+

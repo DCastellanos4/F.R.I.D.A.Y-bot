@@ -76,6 +76,7 @@ export function registrarHabito({ nombre } = {}, deps = {}) {
   if (store) {
     try {
       const habito = store.crear({ nombre: n }, deps.tenantId);
+      if (habito && habito.ok === false) return habito;
       return { ok: true, habito };
     } catch (err) {
       return { ok: false, error: err.message };
@@ -114,7 +115,7 @@ export function marcarHabito({ criterio, fecha } = {}, deps = {}) {
 export function listarHabitos(deps = {}) {
   const store = storeDe(deps);
   if (store) {
-    return store.listar(deps.tenantId);
+    return store.listar(deps.tenantId, hoy(deps));
   }
 
   const hoyStr = hoy(deps);

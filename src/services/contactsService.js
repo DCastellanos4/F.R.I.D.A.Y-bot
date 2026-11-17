@@ -16,9 +16,14 @@ import { DATA_DIR } from '../config/paths.js';
 export const ARCHIVO_DEFECTO = path.join(DATA_DIR, 'contactos.json');
 
 let storeContactosPorDefecto = null;
+let storeMemoriasPorDefecto = null;
 
 export function registrarStoreContactosPorDefecto(store) {
   storeContactosPorDefecto = store || null;
+}
+
+export function registrarStoreMemoriasPorDefecto(store) {
+  storeMemoriasPorDefecto = store || null;
 }
 
 function storeDe(deps = {}) {
@@ -151,34 +156,44 @@ function extraerTelefonoDeTexto(texto) {
 }
 
 export function sincronizarContactosDesdeSegundoCerebro(deps = {}) {
-  const rutaMemorias = deps.rutaArchivoMemorias || path.join(DATA_DIR, 'brain_memory.json');
-  // Si el store por defecto (SQLite) esta activo y no se pide ruta explicita de archivo,
-  // usamos el store para que los contactos queden persistidos en SQLite, no solo en JSON.
-  const depsEfectivos = deps.rutaArchivo ? deps : { ...deps };
-  try {
+  const memoryStore = deps.memoryStore || storeMemoriasPorDefecto;
+  let memorias = null;
+  if (memoryStore && typeof memoryStore.leer === 'function') {
+    try {
+      memorias = memoryStore.leer(deps.tenantId);
+    } catch {
+      memorias = null;
+    }
+  }
+  if (!memorias) {
+    const rutaMemorias = deps.rutaArchivoMemorias || path.join(DATA_DIR, 'brain_memory.json');
     if (!fs.existsSync(rutaMemorias)) return { ok: false, sincronizados: 0 };
-    const raw = fs.readFileSync(rutaMemorias, 'utf-8');
-    const memorias = JSON.parse(raw);
-    if (!Array.isArray(memorias)) return { ok: false, sincronizados: 0 };
-    let sincronizados = 0;
-    for (const m of memorias) {
-      if (m && m.categoria === 'contacto' && m.sujeto && m.dato) {
-        const tel = extraerTelefonoDeTexto(m.dato) || (Array.isArray(m.tags) ? m.tags.map(extraerTelefonoDeTexto).find(Boolean) : null);
-        if (tel) {
-          const res = registrarContacto({
-            nombre: m.sujeto,
-            telefono: tel,
-            relacion: m.relacion || 'contacto',
-            notas: 'Sincronizado desde Segundo Cerebro'
-          }, depsEfectivos);
-          if (res.ok) sincronizados++;
-        }
+    try {
+      const raw = fs.readFileSync(rutaMemorias, 'utf-8');
+      memorias = JSON.parse(raw);
+    } catch {
+      return { ok: false, sincronizados: 0 };
+    }
+  }
+  if (!Array.isArray(memorias)) return { ok: false, sincronizados: 0 };
+
+  const depsEfectivos = deps.rutaArchivo ? deps : { ...deps };
+  let sincronizados = 0;
+  for (const m of memorias) {
+    if (m && m.categoria === 'contacto' && m.sujeto && m.dato) {
+      const tel = extraerTelefonoDeTexto(m.dato) || (Array.isArray(m.tags) ? m.tags.map(extraerTelefonoDeTexto).find(Boolean) : null);
+      if (tel) {
+        const res = registrarContacto({
+          nombre: m.sujeto,
+          telefono: tel,
+          relacion: m.relacion || 'contacto',
+          notas: 'Sincronizado desde Segundo Cerebro'
+        }, depsEfectivos);
+        if (res.ok) sincronizados++;
       }
     }
-    return { ok: true, sincronizados };
-  } catch {
-    return { ok: false, sincronizados: 0 };
   }
+  return { ok: true, sincronizados };
 }
 
 /**

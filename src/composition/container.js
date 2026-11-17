@@ -28,12 +28,13 @@ import { registrarFuenteMemoriasPorDefecto } from '../services/semanticMemorySer
 import { registrarStoreCompraPorDefecto } from '../services/shoppingService.js';
 import { registrarStoreHabitosPorDefecto } from '../services/habitsService.js';
 import { registrarStoreRecordatoriosPorDefecto } from '../services/reminderService.js';
-import { registrarStoreContactosPorDefecto, importarContactosDesdeJson, sincronizarContactosDesdeSegundoCerebro } from '../services/contactsService.js';
+import { registrarStoreContactosPorDefecto, registrarStoreMemoriasPorDefecto as registrarStoreMemoriasContactosPorDefecto, importarContactosDesdeJson, sincronizarContactosDesdeSegundoCerebro } from '../services/contactsService.js';
 import { registrarStoreQuedadasPorDefecto } from '../services/quedadasService.js';
 import { registrarStoreSnoozesPorDefecto } from '../services/snoozeService.js';
 import { registrarStoreFlashcardsPorDefecto } from '../services/flashcardService.js';
 import { registrarStoreMensajesProgramadosPorDefecto } from '../services/scheduledMessageService.js';
 import { registrarStoreHistorialPorDefecto } from '../services/conversationHistoryService.js';
+import { registrarStoreHistorialPorDefecto as registrarStoreHistorialBusquedaPorDefecto } from '../services/historySearchService.js';
 import { crearPersistenciaSqlite } from '../adapters/outbound/persistence/sqlite/persistenciaSqlite.js';
 import { crearSqliteMemoryRepository } from '../adapters/outbound/persistence/sqlite/sqliteMemoryRepository.js';
 import { crearSqliteMemoryStore } from '../adapters/outbound/persistence/sqlite/sqliteMemoryStore.js';
@@ -93,11 +94,14 @@ function crearPersistenciaActiva(overrides) {
   registrarStoreFlashcardsPorDefecto(persistencia.flashcardsStore);
   registrarStoreMensajesProgramadosPorDefecto(persistencia.scheduledMessageStore);
   registrarStoreHistorialPorDefecto(persistencia.historyStore);
+  registrarStoreHistorialBusquedaPorDefecto(persistencia.historyStore);
+  registrarStoreMemoriasContactosPorDefecto(persistencia.memoryStore);
   try {
     const rutaContactos = path.join(DATA_DIR, 'contactos.json');
     importarContactosDesdeJson(rutaContactos);
     sincronizarContactosDesdeSegundoCerebro({
-      rutaArchivoMemorias: path.join(DATA_DIR, 'brain_memory.json')
+      rutaArchivoMemorias: path.join(DATA_DIR, 'brain_memory.json'),
+      memoryStore: persistencia.memoryStore
     });
   } catch (err) {
     console.warn('[Container] Aviso bootstrap contactos:', err.message);
