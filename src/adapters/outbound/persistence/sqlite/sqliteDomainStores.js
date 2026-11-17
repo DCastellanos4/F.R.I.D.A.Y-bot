@@ -200,10 +200,12 @@ export function crearSqliteContactsStore(db) {
   return Object.freeze({
     guardar({ id, nombre, telefono = '', relacion = '', email = '', notas = '' }, tenantId = TENANT_PROPIETARIO) {
       afirmarTenantId(tenantId);
-      const cid = id || `cnt_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+      const nombreLimpio = String(nombre || '').trim();
+      const porNombre = db.prepare('SELECT id FROM contactos WHERE tenant_id = ? AND LOWER(nombre) = LOWER(?)').get(tenantId, nombreLimpio);
+      const cid = id || (porNombre ? porNombre.id : `cnt_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`);
       const payloadNotas = (relacion || email) ? JSON.stringify({ relacion, email, notas }) : (notas || null);
-      ins.run(cid, tenantId, String(nombre || '').trim(), String(telefono || '').trim(), payloadNotas, new Date().toISOString());
-      return { id: cid, nombre, telefono, relacion, email, notas };
+      ins.run(cid, tenantId, nombreLimpio, String(telefono || '').trim(), payloadNotas, new Date().toISOString());
+      return { id: cid, nombre: nombreLimpio, telefono, relacion, email, notas };
     },
     listar(tenantId = TENANT_PROPIETARIO) {
       afirmarTenantId(tenantId);
