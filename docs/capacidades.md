@@ -45,8 +45,9 @@ configuracion extra. Las marcas:
 - `resumir_enlace`: resume webs y videos de YouTube (transcripcion).
 - `capturar_pagina`: archiva una pagina como nota del segundo cerebro.
 
-## Segundo cerebro
+## Segundo cerebro y Knowledge Graph
 
+- Knowledge Graph Multi-Tenant en SQLite: grafo de conocimiento con entidades y relaciones semanticas multidimensionales indexadas por tenantId. Permite enriquecimiento contextual en el prompt del LLM sin cruces de datos entre tenants.
 - Memorias: `guardar_memoria`, `buscar_memoria`, `listar_memorias`,
   `olvidar_memoria`. Categorias y tags con expansion; la categoria `clave`
   se cifra en reposo (AES-256-GCM) y exige `MEMORY_ENCRYPTION_KEY`
@@ -74,6 +75,14 @@ configuracion extra. Las marcas:
 - Verificacion de ofertas: `verificar_oferta` (lee la pagina del vendedor
   con anti-SSRF, vincula producto-oferta por datos estructurados y valida
   moneda; lo ilegible es no-verificable).
+
+## Calendario y Agenda (Google Calendar)
+
+- `crear_evento`: registra nuevas citas o eventos en la agenda personal.
+- `modificar_evento`: actualiza fecha, hora, descripcion o titulo de eventos existentes.
+- `cancelar_evento`: cancela o elimina citas de la agenda.
+- `consultar_eventos`: consulta disponibilidad y eventos en un rango de fechas.
+- Soporte dual: sincronizacion oficial con Google Calendar v3 API cuando existen credenciales (`GOOGLE_CALENDAR_API_KEY`, `GOOGLE_CALENDAR_ACCESS_TOKEN`), con persistencia local estructurada como fallback automatico.
 
 ## Recordatorios y mensajes
 
@@ -126,13 +135,12 @@ configuracion extra. Las marcas:
 - Metro: sin fuente publica verificada; el bot no lo ofrece.
 - Sin avisos automaticos de transporte (no hay monitor).
 
-## Viajes
+## Viajes y Transporte Vivo
 
 - `vigilar_ruta`, `listar_rutas_vigiladas`, `cancelar_vigilancia_ruta`,
-  `registrar_precio_ruta`: seguimiento de rutas con precio objetivo.
-- Fuente de precios en vivo: **config-required** (no hay fuente gratuita
-  sin alta). Operativo sin ella: registro de rutas y de precios que el
-  propietario ve, con comparacion e historial.
+  `registrar_precio_ruta`: seguimiento de rutas con precio objetivo e historial.
+- Precios de transporte vivo: conectado directamente al motor de tarifas oficiales de Renfe (corredores AVE, Avlo, Avant, Media Distancia y Cercanias) y red de estaciones GTFS.
+- Comprobacion automatizada con aviso de bajadas mediante la cola de alertas prioritarias (`alertQueueService`).
 
 ## Servidor y operacion del bot
 
@@ -140,6 +148,7 @@ configuracion extra. Las marcas:
 - `execute_bash_command`: consola bash remota con clasificacion de riesgo y
   OTP para comandos criticos. Ver [Seguridad](seguridad.md).
 - `manage_tunnel`: tuneles Cloudflare/Tailscale (estado, arranque, parada).
+- Copias de seguridad nocturnas automatizadas: scheduler diario (`backupScheduleService.js`) en `D:\Documentos\DAVIS BACKUPS` con cron (`0 3 * * *`) y politica de conservacion atomica de unicamente el ultimo backup.
 - `trigger_encrypted_backup`, `crear_backup_sesion`,
   `verificar_backup_sesion`: copias cifradas (clave por entorno, nunca por
   chat). La subida a Object Storage es **config-required**.
@@ -165,8 +174,9 @@ configuracion extra. Las marcas:
   `configurar_aviso_descargas` (**opt-in**).
 - `estimar_factura_oracle`: OCI CLI/Cost API (**config-required**).
 
-## Desarrollo
+## Desarrollo y Agente GitHub
 
+- Agente GitHub Autonomo: `crear_rama_trabajo`, `crear_commit`, `abrir_pull_request`, `empujar_rama`, `ejecutar_tarea_programacion`. Gestion autonoma del repositorio local y publicacion en GitHub REST API con `DAVIS_GITHUB_TOKEN`.
 - `revisar_pr`: resena de seguridad y estilo de una PR para el propietario;
   nunca publica comentarios en GitHub.
 - `generar_changelog`: redacta la entrada desde `git log`; no toca archivos.

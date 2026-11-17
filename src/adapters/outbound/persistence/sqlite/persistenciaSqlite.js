@@ -28,7 +28,8 @@ import {
   crearSqliteSnoozeStore,
   crearSqliteFlashcardsStore,
   crearSqliteScheduledMessageStore,
-  crearSqliteHistoryStore
+  crearSqliteHistoryStore,
+  crearSqliteKnowledgeGraphStore
 } from './sqliteDomainStores.js';
 import { importarJsonASqlite, comprobarEstadoConsistente } from './importExport.js';
 
@@ -52,6 +53,7 @@ export function crearPersistenciaSqlite({ rutaDb, rutaMemoriasJson = null, rutaF
   const flashcardsStore = crearSqliteFlashcardsStore(db);
   const scheduledMessageStore = crearSqliteScheduledMessageStore(db);
   const historyStore = crearSqliteHistoryStore(db);
+  const knowledgeGraphStore = crearSqliteKnowledgeGraphStore(db);
 
   const problema = comprobarEstadoConsistente(db);
   if (problema) {
@@ -106,6 +108,7 @@ export function crearPersistenciaSqlite({ rutaDb, rutaMemoriasJson = null, rutaF
     flashcardsStore,
     scheduledMessageStore,
     historyStore,
+    knowledgeGraphStore,
     fuenteSemantica,
     importacion,
     cerrar: () => db.close()

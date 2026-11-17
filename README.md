@@ -29,8 +29,24 @@ flowchart LR
     Bot --> Agent["jarvisAgent.js: LLM + tool orchestration"]
     Agent --> S1["Sector 1: WhatsApp, voice and media"]
     Agent --> S2["Sector 2: DevOps and SysAdmin"]
+    Agent --> KG["Knowledge Graph Multi-Tenant (SQLite)"]
+    Agent --> GH["Agente GitHub Autonomo"]
+    Agent --> Cal["Google Calendar Bidireccional"]
+    Agent --> Viajes["Transporte Vivo Renfe / GTFS"]
     Mon["Background watchdogs (Docker, disk, SSL, network, fail2ban)"] --> Bot
+    Bkp["Backup Nocturno (Ultimo backup)"] --> Bot
 ```
+
+---
+
+## Capacidades Avanzadas
+
+- **Knowledge Graph en SQLite Multi-Tenant**: Tablas relacionales indexadas (`knowledge_graph_entidades`, `knowledge_graph_relaciones`) con columna `tenant_id` e indices especificos. Busqueda de vecindad y extraccion contextual inyectada en el prompt del LLM sin cruce de datos entre tenants.
+- **Google Calendar Bidireccional**: Herramientas `crear_evento`, `modificar_evento`, `cancelar_evento` y `consultar_eventos` con soporte dual: integracion oficial con Google Calendar v3 API y fallback a almacenamiento local estructurado.
+- **Transporte Vivo y Precios de Viajes**: Motor `viajesService` conectado a tarifas oficiales de Renfe (AVE, Avlo, Avant, Media Distancia, Cercanias) y red de estaciones GTFS. Seguimiento y vigilancia programada de rutas con alertas de bajadas de precio por la cola de avisos.
+- **Agente GitHub Autonomo**: Conjunto de herramientas operativas (`crear_rama_trabajo`, `crear_commit`, `abrir_pull_request`, `empujar_rama`, `ejecutar_tarea_programacion`) con ejecucion segura de Git y GitHub REST API.
+- **Copias de Seguridad Nocturnas**: Scheduler en `backupScheduleService.js` con destino por defecto en `D:\Documentos\DAVIS BACKUPS` y cron nocturno (`0 3 * * *`). Politica de conservacion de unicamente el ultimo backup: elimina de forma atomica el backup anterior unicamente tras verificar la creacion exitosa del nuevo contenedor cifrado `.davbak`.
+- **Fallback LLM Robusto**: Enrutador de respaldo con prioridad `llama-3.3-70b-versatile` y destierro sistematico de modelos Qwen.
 
 ---
 

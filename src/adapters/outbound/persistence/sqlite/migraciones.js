@@ -480,6 +480,38 @@ export const MIGRACIONES = [
       ALTER TABLE mensajes_programados ADD COLUMN whatsapp_id TEXT;
       CREATE INDEX IF NOT EXISTS idx_mensajes_prog_whatsapp_id ON mensajes_programados(whatsapp_id);
     `
+  },
+  {
+    version: 15,
+    nombre: '015_knowledge_graph_multitenant',
+    sql: `
+      CREATE TABLE IF NOT EXISTS knowledge_graph_entidades (
+        id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        nombre TEXT NOT NULL,
+        tipo TEXT NOT NULL DEFAULT 'concepto',
+        metadata TEXT NOT NULL DEFAULT '{}',
+        actualizado_en TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_kg_entidades_tenant ON knowledge_graph_entidades(tenant_id, tipo);
+      CREATE INDEX IF NOT EXISTS idx_kg_entidades_nombre ON knowledge_graph_entidades(tenant_id, nombre);
+
+      CREATE TABLE IF NOT EXISTS knowledge_graph_relaciones (
+        id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        origen TEXT NOT NULL,
+        destino TEXT NOT NULL,
+        relacion TEXT NOT NULL,
+        peso REAL NOT NULL DEFAULT 1.0,
+        metadata TEXT NOT NULL DEFAULT '{}',
+        actualizado_en TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_kg_relaciones_origen ON knowledge_graph_relaciones(tenant_id, origen);
+      CREATE INDEX IF NOT EXISTS idx_kg_relaciones_destino ON knowledge_graph_relaciones(tenant_id, destino);
+      CREATE INDEX IF NOT EXISTS idx_kg_relaciones_rel ON knowledge_graph_relaciones(tenant_id, origen, destino, relacion);
+    `
   }
 ];
 

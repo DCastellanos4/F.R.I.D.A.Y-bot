@@ -220,10 +220,55 @@ export function buscarVecindadGrafo(grafo, entidadId, maxProfundidad = 2) {
   };
 }
 
+let storeGrafoPorDefecto = null;
+
+export function registrarStoreGrafoPorDefecto(store) {
+  storeGrafoPorDefecto = store || null;
+}
+
+export function registrarStoreKnowledgeGraphPorDefecto(store) {
+  storeGrafoPorDefecto = store || null;
+}
+
+export function obtenerStoreGrafoPorDefecto() {
+  return storeGrafoPorDefecto;
+}
+
 /**
  * Extrae entidades de una consulta y devuelve un resumen contextual para inyectar al LLM.
  */
 export function obtenerContextoGrafo(consulta, deps = {}) {
+  const store = deps.knowledgeGraphStore || deps.store || storeGrafoPorDefecto;
+  const tenantId = deps.tenantId || 'propietario';
+
+  if (store && typeof store.buscarVecinos === 'function' && !deps.rutaArchivo) {
+    const entidades = extraerEntidadesDeTexto(consulta);
+    if (entidades.length === 0) return '';
+
+    const lineas = [];
+    const entidadesProcesadas = new Set();
+
+    for (const ent of entidades) {
+      const idNorm = normalizarId(ent.nombre);
+      if (entidadesProcesadas.has(idNorm)) continue;
+      entidadesProcesadas.add(idNorm);
+
+      const vecindad = store.buscarVecinos(idNorm, 1, tenantId);
+      if (vecindad && vecindad.conexiones && vecindad.conexiones.length > 0) {
+        for (const con of vecindad.conexiones) {
+          if (con.direccion === 'saliente') {
+            lineas.push(`- Entidad [${con.desde.nombre}] -> (${con.relacion}) -> [${con.hacia.nombre}] (${con.hacia.tipo})`);
+          } else {
+            lineas.push(`- Entidad [${con.hacia.nombre}] <- (${con.relacion}) <- [${con.desde.nombre}] (${con.desde.tipo})`);
+          }
+        }
+      }
+    }
+
+    if (lineas.length === 0) return '';
+    return `Conocimiento Relacional en Grafo:\n${lineas.join('\n')}`;
+  }
+
   const grafo = cargarGrafo(deps);
   const entidades = extraerEntidadesDeTexto(consulta);
   if (entidades.length === 0) return '';

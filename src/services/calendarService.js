@@ -1,7 +1,7 @@
 /**
  * calendarService.js - Sincronizacion bidireccional con Google Calendar y Tareas.
- * Permite a D.A.V.I.S. consultar disponibilidad, listar eventos, crear citas
- * y sincronizar entregas/examenes con calendarios reales.
+ * Permite a D.A.V.I.S. consultar disponibilidad, listar eventos, crear citas,
+ * modificar eventos y cancelar citas con sincronizacion en Google Calendar y local.
  *
  * Strict Policy: Zero Emojis.
  */
@@ -34,6 +34,11 @@ export function getGoogleApiKey(deps = {}) {
 
 export function getCalendarId(deps = {}) {
   return deps.calendarId || process.env.GOOGLE_CALENDAR_ID || 'primary';
+}
+
+export function getGoogleAccessToken(deps = {}) {
+  if (deps.accessToken !== undefined) return deps.accessToken;
+  return process.env.GOOGLE_CALENDAR_ACCESS_TOKEN || process.env.GOOGLE_CALENDAR_TOKEN || null;
 }
 
 /**
@@ -87,38 +92,166 @@ export async function crearEvento({ titulo, inicio, fin, descripcion } = {}, dep
   if (!t) return { ok: false, error: 'Especifica el titulo del evento o cita.' };
   if (!inicio) return { ok: false, error: 'Especifica la fecha y hora de inicio (formato ISO o YYYY-MM-DD HH:mm).' };
 
+  const calId = encodeURIComponent(getCalendarId(deps));
+  const apiKey = getGoogleApiKey(deps);
+  const token = getGoogleAccessToken(deps);
+  let remoteId = null;
+  let fuente = 'local';
+
+  if (deps.fetchFn || (apiKey && token)) {
+    const fetchFn = deps.fetchFn || fetchSeguro;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events${apiKey ? `?key=${apiKey}` : ''}`;
+    try {
+      const res = await fetchFn(url, {
+        method: 'POST',
+        headers: {
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          summary: t,
+          description: descripcion ? String(descripcion).trim() : undefined,
+          start: { dateTime: String(inicio).trim() },
+          end: { dateTime: fin ? String(fin).trim() : String(inicio).trim() }
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.id) {
+          remoteId = data.id;
+          fuente = 'google';
+        }
+      }
+    } catch {}
+  }
+
   const evento = {
-    id: `cal-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    id: remoteId || `cal-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
     titulo: t,
     inicio: String(inicio).trim(),
     fin: fin ? String(fin).trim() : null,
     descripcion: descripcion ? String(descripcion).trim() : null,
-    creadoEn: (deps.ahora ? new Date(deps.ahora) : new Date()).toISOString()
+    creadoEn: (deps.ahora ? new Date(deps.ahora) : new Date()).toISOString(),
+    origen: fuente === 'google' ? 'google_calendar' : 'local'
   };
 
   const lista = leerEventosLocales(deps);
   lista.push(evento);
   escribirEventosLocales(lista, deps);
 
-  return { ok: true, evento, nota: 'Evento registrado en la agenda de D.A.V.I.S.' };
+  return { ok: true, evento, nota: 'Evento registrado en la agenda de D.A.V.I.S.', fuente };
 }
 
 /**
- * Elimina un evento por ID o titulo.
+ * Modifica un evento existente en el calendario.
  */
-export async function eliminarEvento({ id, titulo } = {}, deps = {}) {
+export async function modificarEvento({ id, criterio, titulo, inicio, fin, descripcion } = {}, deps = {}) {
+  const c = String(id || criterio || titulo || '').trim().toLowerCase();
+  if (!c) return { ok: false, error: 'Especifica el ID o titulo del evento a modificar.' };
+
+  const lista = leerEventosLocales(deps);
+  const evento = lista.find((e) => {
+    if (id && e.id === id) return true;
+    if (e.id.toLowerCase() === c) return true;
+    if (e.titulo.toLowerCase().includes(c)) return true;
+    return false;
+  });
+
+  if (!evento) {
+    return { ok: false, error: 'No se encontro ningun evento que coincida para modificar.' };
+  }
+
+  if (titulo !== undefined && String(titulo).trim()) {
+    evento.titulo = String(titulo).trim();
+  }
+  if (inicio !== undefined && String(inicio).trim()) {
+    evento.inicio = String(inicio).trim();
+  }
+  if (fin !== undefined) {
+    evento.fin = fin ? String(fin).trim() : null;
+  }
+  if (descripcion !== undefined) {
+    evento.descripcion = descripcion ? String(descripcion).trim() : null;
+  }
+  evento.actualizadoEn = (deps.ahora ? new Date(deps.ahora) : new Date()).toISOString();
+
+  const calId = encodeURIComponent(getCalendarId(deps));
+  const apiKey = getGoogleApiKey(deps);
+  const token = getGoogleAccessToken(deps);
+  let fuente = 'local';
+
+  if ((deps.fetchFn || (apiKey && token)) && evento.id && !evento.id.startsWith('cal-')) {
+    const fetchFn = deps.fetchFn || fetchSeguro;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${encodeURIComponent(evento.id)}${apiKey ? `?key=${apiKey}` : ''}`;
+    try {
+      const res = await fetchFn(url, {
+        method: 'PATCH',
+        headers: {
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          summary: evento.titulo,
+          description: evento.descripcion || undefined,
+          start: { dateTime: evento.inicio },
+          end: { dateTime: evento.fin || evento.inicio }
+        })
+      });
+      if (res.ok) fuente = 'google';
+    } catch {}
+  }
+
+  escribirEventosLocales(lista, deps);
+  return { ok: true, evento, nota: 'Evento modificado en la agenda de D.A.V.I.S.', fuente };
+}
+
+/**
+ * Cancela o elimina un evento por ID o titulo.
+ */
+export async function cancelarEvento({ id, criterio, titulo } = {}, deps = {}) {
+  const c = String(id || criterio || titulo || '').trim().toLowerCase();
+  if (!c) return { ok: false, error: 'Especifica el ID o titulo del evento a cancelar.' };
+
   const lista = leerEventosLocales(deps);
   const inicial = lista.length;
+  const aEliminar = [];
   const filtrados = lista.filter((e) => {
-    if (id && e.id === id) return false;
-    if (titulo && e.titulo.toLowerCase().includes(titulo.toLowerCase())) return false;
+    const coincide = (id && e.id === id) ||
+                     (e.id.toLowerCase() === c) ||
+                     (e.titulo.toLowerCase().includes(c));
+    if (coincide) {
+      aEliminar.push(e);
+      return false;
+    }
     return true;
   });
 
   if (filtrados.length === inicial) {
-    return { ok: false, error: 'No se encontro ningun evento que coincida para eliminar.' };
+    return { ok: false, error: 'No se encontro ningun evento que coincida para cancelar.' };
+  }
+
+  const calId = encodeURIComponent(getCalendarId(deps));
+  const apiKey = getGoogleApiKey(deps);
+  const token = getGoogleAccessToken(deps);
+
+  if (deps.fetchFn || (apiKey && token)) {
+    const fetchFn = deps.fetchFn || fetchSeguro;
+    for (const ev of aEliminar) {
+      if (ev.id && !ev.id.startsWith('cal-')) {
+        try {
+          const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${encodeURIComponent(ev.id)}${apiKey ? `?key=${apiKey}` : ''}`;
+          await fetchFn(url, {
+            method: 'DELETE',
+            headers: token ? { authorization: `Bearer ${token}` } : {}
+          });
+        } catch {}
+      }
+    }
   }
 
   escribirEventosLocales(filtrados, deps);
-  return { ok: true, eliminados: inicial - filtrados.length };
+  const eliminados = inicial - filtrados.length;
+  return { ok: true, eliminados, cancelados: eliminados, nota: 'Evento cancelado de la agenda.' };
 }
+
+export const eliminarEvento = cancelarEvento;

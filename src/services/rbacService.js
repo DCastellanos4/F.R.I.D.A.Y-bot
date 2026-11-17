@@ -39,10 +39,12 @@ export const CLASIFICACION_HERRAMIENTAS = Object.freeze({
     'consultar_estado_servidor', 'descargar_multimedia', 'capturar_pagina', 'navegar_y_leer_noticia',
     'resumir_enlace', 'generar_wiki', 'generar_changelog', 'verificar_oferta', 'proximas_llegadas_transporte', 'registrar_parada_favorita',
     'listar_paradas_favoritas', 'eliminar_parada_favorita',
-    'encender_pc', 'controlar_domotica', 'estado_descargas', 'estimar_factura_oracle'
+    'encender_pc', 'controlar_domotica', 'estado_descargas', 'estimar_factura_oracle',
+    'crear_rama_trabajo', 'crear_commit'
   ],
   credenciales: [
-    'generate_crypto_credential', 'actividad_repos', 'configurar_alertas_repos', 'revisar_pr'
+    'generate_crypto_credential', 'actividad_repos', 'configurar_alertas_repos', 'revisar_pr',
+    'empujar_rama', 'abrir_pull_request', 'ejecutar_tarea_programacion'
   ],
   identidad: [
     'activar_modo_vip', 'estado_modo_vip', 'agregar_contacto_vip', 'ejecutar_skill', 'proponer_skill', 'listar_skills'
@@ -72,7 +74,7 @@ export const CLASIFICACION_HERRAMIENTAS = Object.freeze({
     'configurar_presupuesto', 'estado_presupuestos', 'escribir_diario', 'leer_diario', 'preguntar_documentos',
     'sugerir_menu', 'recomendar_serie_pelicula', 'iniciar_simulacro_entrevista', 'analizar_cv_oferta',
     'resumir_apuntes', 'priorizar_ideas', 'consultar_clima',
-    'escanear_ofertas_empleo'
+    'escanear_ofertas_empleo', 'crear_evento', 'modificar_evento', 'cancelar_evento'
   ],
   datos_tenant: [
     'guardar_memoria', 'buscar_memoria', 'listar_memorias', 'olvidar_memoria', 'buscar_recuerdo_semantico',

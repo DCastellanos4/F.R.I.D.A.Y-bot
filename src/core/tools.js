@@ -2102,6 +2102,135 @@ export const herramientasJarvis = [
         required: ['nombre']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'crear_evento',
+      description: 'Crea un nuevo evento o cita en la agenda de D.A.V.I.S. y en Google Calendar.',
+      parameters: {
+        type: 'object',
+        properties: {
+          titulo: { type: 'string', description: 'Titulo o resumen del evento o cita.' },
+          inicio: { type: 'string', description: 'Fecha y hora de inicio en formato ISO o YYYY-MM-DD HH:mm.' },
+          fin: { type: 'string', description: 'Fecha y hora de finalizacion (opcional).' },
+          descripcion: { type: 'string', description: 'Descripcion o detalles adicionales del evento (opcional).' }
+        },
+        required: ['titulo', 'inicio']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'modificar_evento',
+      description: 'Modifica un evento o cita existente en la agenda y Google Calendar.',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string', description: 'ID o titulo del evento a modificar.' },
+          titulo: { type: 'string', description: 'Nuevo titulo para el evento (opcional).' },
+          inicio: { type: 'string', description: 'Nueva fecha y hora de inicio (opcional).' },
+          fin: { type: 'string', description: 'Nueva fecha y hora de fin (opcional).' },
+          descripcion: { type: 'string', description: 'Nueva descripcion (opcional).' }
+        },
+        required: ['criterio']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'cancelar_evento',
+      description: 'Cancela o elimina un evento o cita de la agenda y Google Calendar.',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string', description: 'ID o texto que identifique el evento a cancelar.' }
+        },
+        required: ['criterio']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'crear_rama_trabajo',
+      description: 'Crea una rama de trabajo local en el repositorio Git para una nueva tarea.',
+      parameters: {
+        type: 'object',
+        properties: {
+          nombreRama: { type: 'string', description: 'Nombre de la rama (por ejemplo: feat/nueva-funcionalidad).' },
+          base: { type: 'string', description: 'Rama base desde la que bifurcar (por defecto: main).' }
+        },
+        required: ['nombreRama']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'crear_commit',
+      description: 'Crea un commit en el repositorio Git con los archivos especificados.',
+      parameters: {
+        type: 'object',
+        properties: {
+          mensaje: { type: 'string', description: 'Mensaje descriptivo del commit.' },
+          archivos: { type: 'array', items: { type: 'string' }, description: 'Archivos a incluir en el commit (por defecto: ["."]).' }
+        },
+        required: ['mensaje']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'empujar_rama',
+      description: 'Empuja la rama local al repositorio remoto en GitHub con el token configurado.',
+      parameters: {
+        type: 'object',
+        properties: {
+          rama: { type: 'string', description: 'Nombre de la rama a empujar.' },
+          forzar: { type: 'boolean', description: 'Si es true, fuerza el empuje con --force.' }
+        },
+        required: ['rama']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'abrir_pull_request',
+      description: 'Abre una Pull Request en GitHub hacia la rama base.',
+      parameters: {
+        type: 'object',
+        properties: {
+          titulo: { type: 'string', description: 'Titulo descriptivo de la Pull Request.' },
+          cuerpo: { type: 'string', description: 'Descripcion detallada de los cambios.' },
+          rama: { type: 'string', description: 'Rama de origen con los cambios.' },
+          base: { type: 'string', description: 'Rama destino (por defecto: main).' },
+          repo: { type: 'string', description: 'Repositorio destino formato propietario/repo (opcional).' }
+        },
+        required: ['titulo', 'rama']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'ejecutar_tarea_programacion',
+      description: 'Orquesta un ciclo completo de programacion autonoma: rama -> commit -> push -> Pull Request.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tarea: { type: 'string', description: 'Descripcion de la tarea de programacion.' },
+          rama: { type: 'string', description: 'Nombre opcional para la rama de trabajo.' },
+          archivos: { type: 'array', items: { type: 'string' }, description: 'Lista de archivos a incluir (por defecto: ["."]).' },
+          base: { type: 'string', description: 'Rama base de destino (por defecto: main).' }
+        },
+        required: ['tarea']
+      }
+    }
   }
 ];
 
@@ -2187,6 +2316,8 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   procesos: ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'],
   finanzas: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'],
   skills: ['proponer_skill', 'listar_skills', 'ejecutar_skill'],
+  calendario: ['crear_evento', 'modificar_evento', 'cancelar_evento'],
+  github: ['crear_rama_trabajo', 'crear_commit', 'abrir_pull_request', 'empujar_rama', 'ejecutar_tarea_programacion'],
   conversacion: []
 };
 

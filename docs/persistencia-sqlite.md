@@ -107,3 +107,17 @@ datos para la futura multi-tenancy sin activarla.
    `DAVIS_PERSISTENCE=sqlite`, comprobar importacion y operaciones.
 3. Produccion sigue en JSON hasta que se decida el flip; la migracion
    es recuperable por el procedimiento de arriba.
+
+
+## Knowledge Graph Multi-Tenant (Migracion 015)
+
+Tablas `knowledge_graph_entidades` y `knowledge_graph_relaciones` con columna `tenant_id` e indices en `idx_kg_entidades_tenant`, `idx_kg_entidades_nombre`, `idx_kg_relaciones_tenant`, `idx_kg_relaciones_origen`, `idx_kg_relaciones_destino` y `idx_kg_relaciones_nombre`.
+
+Store de dominio `knowledgeGraphStore` en `sqliteDomainStores.js` con soporte para:
+- `obtenerGrafo(tenantId)`
+- `guardarEntidad(entidad, tenantId)`
+- `guardarRelacion(relacion, tenantId)`
+- `buscarVecinos(id, maxProfundidad, tenantId)`
+- `importarDesdeJson(data, tenantId)`
+
+Garantiza aislamiento estricto por tenantId evitando fugas o cruces de informacion relacional entre inquilinos.

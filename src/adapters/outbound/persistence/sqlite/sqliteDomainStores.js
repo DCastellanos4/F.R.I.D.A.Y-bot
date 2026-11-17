@@ -7,6 +7,7 @@
  * Strict Policy: Zero Emojis.
  */
 
+import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { TENANT_PROPIETARIO, afirmarTenantId } from '../../../../core/tenancy.js';
 
@@ -519,3 +520,210 @@ export function crearSqliteHistoryStore(db) {
     }
   });
 }
+
+// ============================================================================
+// 10. KNOWLEDGE GRAPH MULTI-TENANT (MIGRACION 015)
+// ============================================================================
+function normalizarIdGrafo(texto) {
+  if (!texto || typeof texto !== 'string') return '';
+  return texto
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9_\-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
+    .trim();
+}
+
+export function crearSqliteKnowledgeGraphStore(db) {
+  const insEntidad = db.prepare('INSERT INTO knowledge_graph_entidades (id, tenant_id, nombre, tipo, metadata, actualizado_en) VALUES (?, ?, ?, ?, ?, ?)');
+  const updEntidad = db.prepare('UPDATE knowledge_graph_entidades SET nombre = ?, tipo = ?, metadata = ?, actualizado_en = ? WHERE tenant_id = ? AND id = ?');
+  const selEntidad = db.prepare('SELECT id, tenant_id, nombre, tipo, metadata, actualizado_en FROM knowledge_graph_entidades WHERE tenant_id = ? AND id = ?');
+  const selTodasEntidades = db.prepare('SELECT id, tenant_id, nombre, tipo, metadata, actualizado_en FROM knowledge_graph_entidades WHERE tenant_id = ?');
+
+  const insRelacion = db.prepare('INSERT INTO knowledge_graph_relaciones (id, tenant_id, origen, destino, relacion, peso, metadata, actualizado_en) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  const updRelacion = db.prepare('UPDATE knowledge_graph_relaciones SET peso = ?, metadata = ?, actualizado_en = ? WHERE tenant_id = ? AND id = ?');
+  const selRelacion = db.prepare('SELECT id, tenant_id, origen, destino, relacion, peso, metadata, actualizado_en FROM knowledge_graph_relaciones WHERE tenant_id = ? AND origen = ? AND destino = ? AND relacion = ? LIMIT 1');
+  const selTodasRelaciones = db.prepare('SELECT id, tenant_id, origen, destino, relacion, peso, metadata, actualizado_en FROM knowledge_graph_relaciones WHERE tenant_id = ?');
+
+  const store = Object.freeze({
+    guardarEntidad({ id, nombre, tipo = 'concepto', metadata = {} } = {}, tenantId = TENANT_PROPIETARIO) {
+      afirmarTenantId(tenantId);
+      const idNorm = normalizarIdGrafo(id || nombre);
+      if (!idNorm) return null;
+      const ahora = new Date().toISOString();
+      const existente = selEntidad.get(tenantId, idNorm);
+      const metaObj = metadata && typeof metadata === 'object' ? metadata : {};
+      if (existente) {
+        let metaPrev = {};
+        try { metaPrev = JSON.parse(existente.metadata || '{}'); } catch {}
+        const combinada = { ...metaPrev, ...metaObj };
+        const nombreFinal = nombre || existente.nombre || idNorm;
+        const tipoFinal = tipo || existente.tipo || 'concepto';
+        updEntidad.run(nombreFinal, tipoFinal, JSON.stringify(combinada), ahora, tenantId, idNorm);
+        return { id: idNorm, nombre: nombreFinal, tipo: tipoFinal, metadata: combinada, actualizadoEn: ahora };
+      }
+      const nombreFinal = nombre || idNorm;
+      insEntidad.run(idNorm, tenantId, nombreFinal, tipo, JSON.stringify(metaObj), ahora);
+      return { id: idNorm, nombre: nombreFinal, tipo, metadata: metaObj, actualizadoEn: ahora };
+    },
+
+    guardarRelacion({ id, origen, destino, relacion = 'relacionado_con', peso = 1.0, metadata = {} } = {}, tenantId = TENANT_PROPIETARIO) {
+      afirmarTenantId(tenantId);
+      const oNorm = normalizarIdGrafo(origen);
+      const dNorm = normalizarIdGrafo(destino);
+      const relNorm = String(relacion || 'relacionado_con').trim().toLowerCase();
+      if (!oNorm || !dNorm || oNorm === dNorm) return null;
+
+      if (!selEntidad.get(tenantId, oNorm)) {
+        this.guardarEntidad({ id: oNorm, nombre: origen, tipo: 'concepto' }, tenantId);
+      }
+      if (!selEntidad.get(tenantId, dNorm)) {
+        this.guardarEntidad({ id: dNorm, nombre: destino, tipo: 'concepto' }, tenantId);
+      }
+
+      const ahora = new Date().toISOString();
+      const existente = selRelacion.get(tenantId, oNorm, dNorm, relNorm);
+      const metaObj = metadata && typeof metadata === 'object' ? metadata : {};
+
+      if (existente) {
+        let metaPrev = {};
+        try { metaPrev = JSON.parse(existente.metadata || '{}'); } catch {}
+        const combinada = { ...metaPrev, ...metaObj };
+        const nuevoPeso = Number(existente.peso || 1.0) + 0.1;
+        updRelacion.run(nuevoPeso, JSON.stringify(combinada), ahora, tenantId, existente.id);
+        return { id: existente.id, origen: oNorm, destino: dNorm, relacion: relNorm, peso: nuevoPeso, metadata: combinada, actualizadoEn: ahora };
+      }
+
+      const rid = id || crypto.randomBytes(6).toString('hex');
+      const pesoNum = Number(peso) || 1.0;
+      insRelacion.run(rid, tenantId, oNorm, dNorm, relNorm, pesoNum, JSON.stringify(metaObj), ahora);
+      return { id: rid, origen: oNorm, destino: dNorm, relacion: relNorm, peso: pesoNum, metadata: metaObj, actualizadoEn: ahora };
+    },
+
+    obtenerGrafo(tenantId = TENANT_PROPIETARIO) {
+      afirmarTenantId(tenantId);
+      const entidades = selTodasEntidades.all(tenantId);
+      const relaciones = selTodasRelaciones.all(tenantId);
+
+      const nodos = {};
+      for (const e of entidades) {
+        let meta = {};
+        try { meta = JSON.parse(e.metadata || '{}'); } catch {}
+        nodos[e.id] = {
+          id: e.id,
+          nombre: e.nombre,
+          tipo: e.tipo,
+          metadata: meta,
+          actualizadoEn: e.actualizado_en
+        };
+      }
+
+      const aristas = relaciones.map((r) => {
+        let meta = {};
+        try { meta = JSON.parse(r.metadata || '{}'); } catch {}
+        return {
+          id: r.id,
+          origen: r.origen,
+          destino: r.destino,
+          relacion: r.relacion,
+          peso: r.peso,
+          metadata: meta,
+          actualizadoEn: r.actualizado_en
+        };
+      });
+
+      return { nodos, aristas };
+    },
+
+    buscarVecinos(entidadId, maxProfundidad = 2, tenantId = TENANT_PROPIETARIO) {
+      afirmarTenantId(tenantId);
+      const inicioNorm = normalizarIdGrafo(entidadId);
+      if (!inicioNorm) return { entidad: null, conexiones: [] };
+
+      const grafo = this.obtenerGrafo(tenantId);
+      if (!grafo.nodos[inicioNorm]) return { entidad: null, conexiones: [] };
+
+      const visitados = new Set([inicioNorm]);
+      const frontera = [{ id: inicioNorm, nivel: 0 }];
+      const conexiones = [];
+
+      while (frontera.length > 0) {
+        const actual = frontera.shift();
+        if (actual.nivel >= maxProfundidad) continue;
+
+        for (const arista of grafo.aristas) {
+          if (arista.origen === actual.id && !visitados.has(arista.destino)) {
+            visitados.add(arista.destino);
+            frontera.push({ id: arista.destino, nivel: actual.nivel + 1 });
+            conexiones.push({
+              direccion: 'saliente',
+              desde: grafo.nodos[arista.origen],
+              hacia: grafo.nodos[arista.destino],
+              relacion: arista.relacion,
+              peso: arista.peso
+            });
+          } else if (arista.destino === actual.id && !visitados.has(arista.origen)) {
+            visitados.add(arista.origen);
+            frontera.push({ id: arista.origen, nivel: actual.nivel + 1 });
+            conexiones.push({
+              direccion: 'entrante',
+              desde: grafo.nodos[arista.origen],
+              hacia: grafo.nodos[arista.destino],
+              relacion: arista.relacion,
+              peso: arista.peso
+            });
+          }
+        }
+      }
+
+      return {
+        entidad: grafo.nodos[inicioNorm],
+        conexiones
+      };
+    },
+
+    importarDesdeJson(rutaOData, tenantId = TENANT_PROPIETARIO) {
+      afirmarTenantId(tenantId);
+      let data = null;
+      if (typeof rutaOData === 'string') {
+        if (!fs.existsSync(rutaOData)) {
+          return { ok: false, error: 'Archivo no encontrado' };
+        }
+        try {
+          data = JSON.parse(fs.readFileSync(rutaOData, 'utf-8'));
+        } catch (err) {
+          return { ok: false, error: `JSON corrupto: ${err.message}` };
+        }
+      } else if (typeof rutaOData === 'object' && rutaOData !== null) {
+        data = rutaOData;
+      }
+      if (!data) return { ok: false, error: 'Datos no validos' };
+
+      let entidadesCount = 0;
+      let relacionesCount = 0;
+      const tx = db.transaction(() => {
+        if (data.nodos && typeof data.nodos === 'object') {
+          for (const [k, n] of Object.entries(data.nodos)) {
+            const nodo = n && typeof n === 'object' ? n : { id: k, nombre: k };
+            this.guardarEntidad(nodo, tenantId);
+            entidadesCount++;
+          }
+        }
+        if (Array.isArray(data.aristas)) {
+          for (const a of data.aristas) {
+            this.guardarRelacion(a, tenantId);
+            relacionesCount++;
+          }
+        }
+      });
+      tx.immediate();
+      return { ok: true, entidades: entidadesCount, relaciones: relacionesCount };
+    }
+  });
+
+  return store;
+}
+
+export const knowledgeGraphStore = crearSqliteKnowledgeGraphStore;

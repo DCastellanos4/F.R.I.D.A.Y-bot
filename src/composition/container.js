@@ -35,6 +35,7 @@ import { registrarStoreFlashcardsPorDefecto } from '../services/flashcardService
 import { registrarStoreMensajesProgramadosPorDefecto } from '../services/scheduledMessageService.js';
 import { registrarStoreHistorialPorDefecto } from '../services/conversationHistoryService.js';
 import { registrarStoreHistorialPorDefecto as registrarStoreHistorialBusquedaPorDefecto } from '../services/historySearchService.js';
+import { registrarStoreKnowledgeGraphPorDefecto } from '../services/graphMemoryService.js';
 import { crearPersistenciaSqlite } from '../adapters/outbound/persistence/sqlite/persistenciaSqlite.js';
 import { crearSqliteMemoryRepository } from '../adapters/outbound/persistence/sqlite/sqliteMemoryRepository.js';
 import { crearSqliteMemoryStore } from '../adapters/outbound/persistence/sqlite/sqliteMemoryStore.js';
@@ -96,6 +97,7 @@ function crearPersistenciaActiva(overrides) {
   registrarStoreHistorialPorDefecto(persistencia.historyStore);
   registrarStoreHistorialBusquedaPorDefecto(persistencia.historyStore);
   registrarStoreMemoriasContactosPorDefecto(persistencia.memoryStore);
+  registrarStoreKnowledgeGraphPorDefecto(persistencia.knowledgeGraphStore);
   try {
     const rutaContactos = path.join(DATA_DIR, 'contactos.json');
     importarContactosDesdeJson(rutaContactos);
@@ -105,6 +107,14 @@ function crearPersistenciaActiva(overrides) {
     });
   } catch (err) {
     console.warn('[Container] Aviso bootstrap contactos:', err.message);
+  }
+  try {
+    const rutaGrafo = path.join(DATA_DIR, 'knowledge_graph.json');
+    if (fs.existsSync(rutaGrafo)) {
+      persistencia.knowledgeGraphStore.importarDesdeJson(rutaGrafo);
+    }
+  } catch (err) {
+    console.warn('[Container] Aviso bootstrap knowledge graph:', err.message);
   }
   const memoryRepository = crearSqliteMemoryRepository({
     memoryStore: persistencia.memoryStore,
@@ -363,6 +373,7 @@ export function crearContenedor(overrides = {}) {
     mcpRegistry,
     pipelineAsincrono: pipeline,
     persistencia: persistenciaActiva.persistencia || null,
+    knowledgeGraphStore: persistenciaActiva.persistencia?.knowledgeGraphStore || overrides.knowledgeGraphStore || null,
     quotaService,
     /** Alta en caliente del adaptador de entrega (canal con sesion abierta). */
     registrarRuntimePipeline(resolver) {if(typeof resolver!=='function')throw new TypeError('RF01_RUNTIME_REQUIRED');resolverRuntime=resolver;},

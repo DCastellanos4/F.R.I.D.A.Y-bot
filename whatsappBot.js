@@ -47,6 +47,7 @@ import { iniciarMonitorDigest } from './src/services/brainDigestService.js';
 import { enHorarioSilencio, esAlertaUrgente } from './src/services/quietHoursService.js';
 import { estadoEntrevista, responderEntrevista, terminarEntrevista } from './src/services/interviewService.js';
 import { programarEnvioMatutino } from './src/services/dailyBriefing.js';
+import { iniciarProgramacionBackup } from './src/services/backupScheduleService.js';
 import { normalizarTexto } from './src/services/memoryService.js';
 import { mensajeErrorParaUsuario } from './src/services/errorSanitizerService.js';
 import { transcribirAudioBuffer } from './src/services/audioTranscriberService.js';
@@ -483,6 +484,7 @@ function inicializarServiciosProactivos() {
     iniciarMonitorOps();
     iniciarMonitorHogar();
     iniciarMonitorViajes();
+    iniciarProgramacionBackup();
   } catch (errFlash) {
     console.error('Error iniciando monitor de flashcards:', errFlash.message);
   }

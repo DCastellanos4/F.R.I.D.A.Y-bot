@@ -729,3 +729,5 @@
 {"ts":"2026-11-17T14:10:15.124Z","tipo":"comando","nombre":"consulta_jarvis","duracionMs":26,"detalle":null}
 {"ts":"2026-11-17T14:10:15.195Z","tipo":"comando","nombre":"consulta_jarvis","duracionMs":56,"detalle":null}
 {"ts":"2026-11-17T14:10:15.227Z","tipo":"comando","nombre":"consulta_jarvis","duracionMs":17,"detalle":null}
+{"ts":"2026-11-17T21:23:03.413Z","tipo":"comando","nombre":"consulta_jarvis","duracionMs":25,"detalle":null}
+{"ts":"2026-11-17T21:23:03.425Z","tipo":"comando","nombre":"consulta_jarvis","duracionMs":5,"detalle":null}

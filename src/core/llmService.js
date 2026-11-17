@@ -3,6 +3,17 @@ import OpenAI from 'openai';
 import { config } from '../config/config.js';
 import { limitarHerramientasParaProveedor } from './tools.js';
 import { presupuestoGroqPara, reiniciarPresupuestosGroq } from './groqBudget.js';
+import {
+  desterrarQwen,
+  modelosRespaldoGroq,
+  esErrorConmutable,
+  segundosRetryAfter,
+  reiniciarCircuitoModelos,
+  circuitoModelos,
+  MAX_INTENTOS_POR_MODELO,
+  ESPERA_MAX_REINTENTO_MS,
+  MODELO_FALLBACK_ROBUSTO
+} from './routerLLM.js';
 
 // Ventana de contexto y limite de generacion configurables por entorno.
 // Subirlos en un VPS ARM es una HIPOTESIS a medir (latencia y memoria suben
@@ -99,6 +110,10 @@ export function resolveCloudConfig(options = {}) {
     } else {
       model = 'gpt-4o-mini';
     }
+  }
+
+  if (model) {
+    model = desterrarQwen(model);
   }
 
   return { provider, apiKey, baseUrl, model };
@@ -438,11 +453,12 @@ export async function chatCompletionCrudo({
     ? { client: options.crearCliente(), cloudConfig: resolveCloudConfig({ provider: activeProvider, model: modelOverride, apiKey: apiKeyOverride, baseUrl: baseUrlOverride }) }
     : getOpenAIClient({ provider: activeProvider, model: modelOverride, apiKey: apiKeyOverride, baseUrl: baseUrlOverride });
   const esperar = typeof options.esperar === 'function' ? options.esperar : (ms) => new Promise((r) => setTimeout(r, ms));
-  const modeloPrincipal = modelOverride || cloudConfig.model;
+  const modeloPrincipal = desterrarQwen(modelOverride || cloudConfig.model);
   const cadena = [modeloPrincipal];
   if (cloudConfig.provider === 'groq' || (cloudConfig.baseUrl || '').includes('groq.com')) {
     for (const m of modelosRespaldoGroq()) {
-      if (!cadena.includes(m)) cadena.push(m);
+      const mSaneado = desterrarQwen(m);
+      if (!cadena.includes(mSaneado)) cadena.push(mSaneado);
     }
   }
   const preparedMessages = prepareMessagesForProvider(messages, false);
@@ -593,41 +609,18 @@ export async function chatCompletionCrudo({
 // para no gastar llamadas inutiles. No hay proactividad por cabeceras: las
 // ventanas RPM/TPM no dicen el saldo diario (sonda 8 nov 2026), la señal de
 // TPD es el 429 model-scoped con su retry-after.
-const circuitoModelos = new Map(); // modelo -> { hasta: epochMs, motivo: 'cuota' | 'temporal' }
-const MAX_INTENTOS_POR_MODELO = 2;
-const ESPERA_MAX_REINTENTO_MS = 10000;
-
-/** Solo para pruebas: limpia el circuito de modelos aparcados. */
-export function reiniciarCircuitoModelos() {
-  circuitoModelos.clear();
-  reiniciarPresupuestosGroq();
-}
-
-function modelosRespaldoGroq() {
-  const crudo = process.env.GROQ_MODELOS_RESPALDO || 'openai/gpt-oss-20b';
-  return crudo.split(',').map((m) => m.trim()).filter(Boolean);
-}
-
-function esErrorConmutable(err) {
-  const status = err?.status ?? err?.statusCode ?? err?.response?.status;
-  if (status === 429) return true;
-  if (typeof status === 'number' && status >= 500 && status < 600) return true;
-  if (status == null) {
-    const texto = `${err?.name || ''} ${err?.code || ''} ${err?.message || ''}`;
-    if (/timeout|connection|network|econn|eai_again|socket|fetch failed/i.test(texto)) return true;
-  }
-  return false;
-}
-
-function segundosRetryAfter(err) {
-  const h = err?.headers;
-  const bruto = typeof h?.get === 'function' ? h.get('retry-after') : (h?.['retry-after'] ?? h?.['Retry-After']);
-  if (bruto == null) return null;
-  const n = Number(bruto);
-  if (Number.isFinite(n)) return Math.max(0, n);
-  const fecha = Date.parse(bruto);
-  return Number.isFinite(fecha) ? Math.max(0, Math.round((fecha - Date.now()) / 1000)) : null;
-}
+// Re-exportacion de utilidades de enrutamiento y respaldo LLM (routerLLM.js)
+export {
+  reiniciarCircuitoModelos,
+  desterrarQwen,
+  modelosRespaldoGroq,
+  esErrorConmutable,
+  segundosRetryAfter,
+  circuitoModelos,
+  MAX_INTENTOS_POR_MODELO,
+  ESPERA_MAX_REINTENTO_MS,
+  MODELO_FALLBACK_ROBUSTO
+};
 
 /**
  * Detecta respuestas cortadas por el limite de tokens: el proveedor marca

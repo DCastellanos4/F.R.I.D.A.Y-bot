@@ -101,3 +101,9 @@ respuesta. `errorSanitizerService` convierte errores internos del proveedor
 (cuotas, organizacion, claves) en mensajes seguros: el detalle queda en
 logs y a WhatsApp solo sale lo honesto y reutilizable, como el tiempo de
 reintento real.
+
+
+## Fallback LLM Robusto y Destierro de Qwen
+
+El modulo `src/core/routerLLM.js` implementa un circuito de failover con prioridad hacia `llama-3.3-70b-versatile`.
+Se aplica politica estricta de sanitizacion (`desterrarQwen`) que intercepta cualquier modelo de la familia Qwen (por inestabilidad o fallos de tool-calling) y lo sustituye inmediatamente por `llama-3.3-70b-versatile` garantizando ejecucion robusta y determinista.
