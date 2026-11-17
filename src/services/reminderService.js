@@ -243,8 +243,48 @@ let callbackNotificacionGlobal = null;
 /**
  * Comprueba y despacha de inmediato cualquier recordatorio vencido.
  */
-export async function despacharRecordatoriosPendientes() {
-  const lista = leerRecordatorios();
+export async function despacharRecordatoriosPendientes(deps = {}) {
+  const store = storeDe(deps);
+  if (store) {
+    const ahora = Date.now();
+    const pendientes = store.listar(deps.tenantId, 'pendiente');
+    const disparados = [];
+
+    for (const r of pendientes) {
+      const ts = new Date(r.fecha_objetivo).getTime();
+      if (ts <= ahora) {
+        store.actualizarEstado(r.id, 'completado', deps.tenantId);
+        const fechaHoraLocal = new Date(ts).toLocaleString('es-ES', {
+          timeZone: 'Europe/Madrid',
+          day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+        const rAdaptado = { ...r, timestamp: ts, fechaHoraLocal, completado: true };
+        disparados.push(rAdaptado);
+
+        const alertaTexto = `[RECORDATORIO]\n\nNota: ${r.mensaje}\nHora programada: ${fechaHoraLocal}`;
+        console.log(`\n========================================`);
+        console.log(`[ALERTA DISPARADA]`);
+        console.log(alertaTexto);
+        console.log(`========================================\n`);
+
+        const entradaLog = `[${new Date().toISOString()}] ${r.mensaje} (${fechaHoraLocal})\n`;
+        try {
+          fs.appendFileSync(ARCHIVO_LOG_ALERTAS, entradaLog, 'utf-8');
+        } catch (err) {}
+
+        if (typeof callbackNotificacionGlobal === 'function') {
+          try {
+            await callbackNotificacionGlobal(rAdaptado, alertaTexto);
+          } catch (err) {
+            console.error('Error enviando notificación WhatsApp:', err.message);
+          }
+        }
+      }
+    }
+    return disparados;
+  }
+
+  const lista = leerRecordatorios(deps);
   const ahora = Date.now();
   let huboCambios = false;
   const disparados = [];
@@ -277,7 +317,7 @@ export async function despacharRecordatoriosPendientes() {
   }
 
   if (huboCambios) {
-    guardarRecordatorios(lista);
+    guardarRecordatorios(lista, deps);
   }
 
   return disparados;

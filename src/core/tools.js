@@ -434,7 +434,7 @@ export const herramientasJarvis = [
         properties: {
           numero: {
             type: 'string',
-            description: 'Número de teléfono de destino (ej: 612345678, +34612345678, 34612345678). Si no incluye código internacional, se aplicará por defecto el prefijo de España (+34).'
+            description: 'Número de teléfono de destino (ej: +34612345678, 612345678) o el nombre de un contacto registrado (ej: "Paula", "madre"). Si David pide escribir o enviar a un contacto por su nombre, pasa aquí su nombre directamente y el sistema resolverá su teléfono de los contactos verificados. No pidas el número si el contacto ya está registrado.'
           },
           mensaje: {
             type: 'string',

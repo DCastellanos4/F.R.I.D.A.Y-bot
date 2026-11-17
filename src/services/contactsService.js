@@ -152,6 +152,9 @@ function extraerTelefonoDeTexto(texto) {
 
 export function sincronizarContactosDesdeSegundoCerebro(deps = {}) {
   const rutaMemorias = deps.rutaArchivoMemorias || path.join(DATA_DIR, 'brain_memory.json');
+  // Si el store por defecto (SQLite) esta activo y no se pide ruta explicita de archivo,
+  // usamos el store para que los contactos queden persistidos en SQLite, no solo en JSON.
+  const depsEfectivos = deps.rutaArchivo ? deps : { ...deps };
   try {
     if (!fs.existsSync(rutaMemorias)) return { ok: false, sincronizados: 0 };
     const raw = fs.readFileSync(rutaMemorias, 'utf-8');
@@ -167,7 +170,7 @@ export function sincronizarContactosDesdeSegundoCerebro(deps = {}) {
             telefono: tel,
             relacion: m.relacion || 'contacto',
             notas: 'Sincronizado desde Segundo Cerebro'
-          }, deps);
+          }, depsEfectivos);
           if (res.ok) sincronizados++;
         }
       }
@@ -175,5 +178,36 @@ export function sincronizarContactosDesdeSegundoCerebro(deps = {}) {
     return { ok: true, sincronizados };
   } catch {
     return { ok: false, sincronizados: 0 };
+  }
+}
+
+/**
+ * Importa contactos desde un archivo contactos.json al store activo (SQLite o JSON).
+ * Solo importa contactos que no existan ya (por nombre exacto). Idem-potente.
+ * Para uso en bootstrapping al arranque cuando el store SQLite esta vacio.
+ */
+export function importarContactosDesdeJson(rutaJson, deps = {}) {
+  try {
+    if (!fs.existsSync(rutaJson)) return { ok: true, importados: 0 };
+    const data = JSON.parse(fs.readFileSync(rutaJson, 'utf-8'));
+    const lista = Array.isArray(data.contactos) ? data.contactos : [];
+    if (lista.length === 0) return { ok: true, importados: 0 };
+    // Leer los que ya existen para no duplicar
+    const existentes = new Set(listarContactos(deps).map((c) => c.nombre.toLowerCase()));
+    let importados = 0;
+    for (const c of lista) {
+      if (!c.nombre || existentes.has(String(c.nombre).toLowerCase())) continue;
+      const res = registrarContacto({
+        nombre: c.nombre,
+        telefono: c.telefono || '',
+        relacion: c.relacion || '',
+        email: c.email || '',
+        notas: c.notas || ''
+      }, deps);
+      if (res.ok) { importados++; existentes.add(String(c.nombre).toLowerCase()); }
+    }
+    return { ok: true, importados };
+  } catch {
+    return { ok: false, importados: 0 };
   }
 }

@@ -28,7 +28,7 @@ import { registrarFuenteMemoriasPorDefecto } from '../services/semanticMemorySer
 import { registrarStoreCompraPorDefecto } from '../services/shoppingService.js';
 import { registrarStoreHabitosPorDefecto } from '../services/habitsService.js';
 import { registrarStoreRecordatoriosPorDefecto } from '../services/reminderService.js';
-import { registrarStoreContactosPorDefecto } from '../services/contactsService.js';
+import { registrarStoreContactosPorDefecto, importarContactosDesdeJson, sincronizarContactosDesdeSegundoCerebro } from '../services/contactsService.js';
 import { registrarStoreQuedadasPorDefecto } from '../services/quedadasService.js';
 import { registrarStoreSnoozesPorDefecto } from '../services/snoozeService.js';
 import { registrarStoreFlashcardsPorDefecto } from '../services/flashcardService.js';
@@ -93,6 +93,15 @@ function crearPersistenciaActiva(overrides) {
   registrarStoreFlashcardsPorDefecto(persistencia.flashcardsStore);
   registrarStoreMensajesProgramadosPorDefecto(persistencia.scheduledMessageStore);
   registrarStoreHistorialPorDefecto(persistencia.historyStore);
+  try {
+    const rutaContactos = path.join(DATA_DIR, 'contactos.json');
+    importarContactosDesdeJson(rutaContactos);
+    sincronizarContactosDesdeSegundoCerebro({
+      rutaArchivoMemorias: path.join(DATA_DIR, 'brain_memory.json')
+    });
+  } catch (err) {
+    console.warn('[Container] Aviso bootstrap contactos:', err.message);
+  }
   const memoryRepository = crearSqliteMemoryRepository({
     memoryStore: persistencia.memoryStore,
     crearStoreParaRuta: (ruta) => {
@@ -191,7 +200,8 @@ function crearMcpRegistryDesdeEntorno(overrides = {}) {
       args: [resolverRutaReal(bookingPath)],
       cwd: rootReal,
       env: {
-        ...(process.env.BOOKING_DB_PATH ? { BOOKING_DB_PATH: process.env.BOOKING_DB_PATH } : {})
+        BOOKING_DB_PATH: process.env.BOOKING_DB_PATH || path.join(DATA_DIR, 'booking.db'),
+        DAVIS_DATA_DIR: DATA_DIR
       }
     }));
   }
@@ -201,7 +211,10 @@ function crearMcpRegistryDesdeEntorno(overrides = {}) {
       name: 'mcp-server-devops',
       command: process.execPath,
       args: [resolverRutaReal(devopsPath)],
-      cwd: rootReal
+      cwd: rootReal,
+      env: {
+        DAVIS_DATA_DIR: DATA_DIR
+      }
     }));
   }
   const financePath = path.join(PROJECT_ROOT, 'mcp-servers', 'finance', 'index.js');
@@ -212,7 +225,8 @@ function crearMcpRegistryDesdeEntorno(overrides = {}) {
       args: [resolverRutaReal(financePath)],
       cwd: rootReal,
       env: {
-        ...(process.env.FINANCE_DB_PATH ? { FINANCE_DB_PATH: process.env.FINANCE_DB_PATH } : {})
+        FINANCE_DB_PATH: process.env.FINANCE_DB_PATH || path.join(DATA_DIR, 'finance.db'),
+        DAVIS_DATA_DIR: DATA_DIR
       }
     }));
   }
@@ -224,7 +238,8 @@ function crearMcpRegistryDesdeEntorno(overrides = {}) {
       args: [resolverRutaReal(lifestylePath)],
       cwd: rootReal,
       env: {
-        ...(process.env.LIFESTYLE_DB_PATH ? { LIFESTYLE_DB_PATH: process.env.LIFESTYLE_DB_PATH } : {})
+        LIFESTYLE_DB_PATH: process.env.LIFESTYLE_DB_PATH || path.join(DATA_DIR, 'lifestyle.db'),
+        DAVIS_DATA_DIR: DATA_DIR
       }
     }));
   }
