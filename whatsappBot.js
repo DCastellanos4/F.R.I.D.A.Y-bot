@@ -891,7 +891,7 @@ Prueba a decirme:
           } else {
             console.warn('Aviso: Audio no pudo ser transcrito con claridad.');
             await sock.sendMessage(remoteJid, {
-              text: 'Señor, he recibido su nota de voz pero no he podido transcribirla con claridad. ¿Podría repetírmela, por favor?'
+              text: 'He recibido la nota de voz pero no he podido transcribirla con claridad. Repitemela si puedes.'
             }, { quoted: msg });
             continue;
           }
@@ -1147,13 +1147,13 @@ Prueba a decirme:
           await sock.readMessages([msg.key]);
           await sock.sendPresenceUpdate('composing', remoteJid);
 
-          const frasesJarvis = [
-            'A su servicio, señor. Ajustando la cazoleta y optimizando la mezcla al máximo rendimiento para su sesión.',
-            'Por supuesto, señor. Presurizando la cámara y suministrando tabaco a la cachimba. Disfrute de su descanso.',
-            'Parámetros térmicos estabilizados y mezcla renovada, señor. Disfrute de la sesión.',
-            'A la orden, señor. Cachimba repuesta con mezcla premium y carbones a temperatura óptima.'
+          const frasesDavis = [
+            'Cazoleta ajustada y mezcla al punto. Si la quemas ya no es culpa del sistema.',
+            'Tabaco suministrado y camara presurizada. Ya puedes seguir con tu descanso.',
+            'Parametros termicos estabilizados y mezcla renovada. A disfrutar del humo.',
+            'Cachimba lista con carbones encendidos. No me hagas limpiarla luego.'
           ];
-          const frase = frasesJarvis[Math.floor(Math.random() * frasesJarvis.length)];
+          const frase = frasesDavis[Math.floor(Math.random() * frasesDavis.length)];
           const bufferImagen = fs.readFileSync(RUTA_IMAGEN_CACHIMBA);
 
           const pieDeFoto = esAudio ? `[Nota de voz]: "${texto}"\n\n${frase}` : frase;
@@ -1164,7 +1164,7 @@ Prueba a decirme:
           }, { quoted: msg });
 
           await sock.sendPresenceUpdate('paused', remoteJid);
-          console.log(`[J.A.R.V.I.S. a David]: [Imagen Cachimba enviada - "${frase}"]\n`);
+          console.log(`[D.A.V.I.S. a David]: [Imagen Cachimba enviada - "${frase}"]\n`);
           continue;
         } catch (errEaster) {
           console.error('Error enviando imagen de cachimba:', errEaster);
@@ -1243,7 +1243,7 @@ Prueba a decirme:
       if (esPeticionBorradoConversacion(texto)) {
         const idBorradoConv = registrarBorradoConversacionPendiente(remoteJid);
         await sock.sendMessage(remoteJid, {
-          text: `Entendido, señor. Esto borrara el historial de esta conversacion, sus episodios archivados y las trazas del recorrido. Sus recuerdos guardados (Second Brain) NO se tocan. Para ejecutarlo, responda: "confirmar borrado ${idBorradoConv}". Para cancelarlo: "cancelar borrado".`
+          text: `Entendido. Esto borrara el historial de esta conversacion, sus episodios archivados y las trazas del recorrido. Tus recuerdos guardados (Second Brain) NO se tocan. Para ejecutarlo, responde: "confirmar borrado ${idBorradoConv}". Para cancelarlo: "cancelar borrado".`
         }, { quoted: msg });
         continue;
       }
@@ -1257,7 +1257,7 @@ Prueba a decirme:
         if (resBorrado.confirmado && resBorrado.tipo === 'conversacion') {
           console.log('[Conversacion 2FA] Borrado de conversacion confirmado por David directamente, sin pasar por el LLM.');
           limpiarHistorial(remoteJid, deps);
-          textoBorrado = 'Historial de la conversacion, episodios y trazas borrados. Sus recuerdos del Second Brain siguen intactos.';
+          textoBorrado = 'Historial de la conversacion, episodios y trazas borrados. Tus recuerdos del Second Brain siguen intactos.';
         } else if (resBorrado.confirmado) {
           console.log('[Memoria 2FA] Borrado masivo confirmado por David directamente, sin pasar por el LLM.');
           const resVaciado = olvidarMemoria(resBorrado.criterio, { confirmado: true });
@@ -1276,7 +1276,7 @@ Prueba a decirme:
       const resVoz = resolverConfirmacionVoz(remoteJid, texto);
       if (resVoz && resVoz.resultado === 'cancelado') {
         await sock.sendMessage(remoteJid, {
-          text: 'Entendido, señor. Accion cancelada; no se ha realizado ningun cambio.'
+          text: 'Entendido. Accion cancelada; no se ha realizado ningun cambio.'
         }, { quoted: msg });
         continue;
       }
@@ -1289,7 +1289,7 @@ Prueba a decirme:
         // repetir una accion critica por voz la ejecutaba sin confirmar.
         guardarPendienteVoz(remoteJid, texto);
         await sock.sendMessage(remoteJid, {
-          text: `Antes de actuar, señor. He entendido: "${texto}". Es una accion con efectos externos o destructivos; confirme respondiendo "si" o "confirmo", o bien "no" para cancelarla.`
+          text: `Antes de actuar. He entendido: "${texto}". Es una accion con efectos externos o destructivos; confirme respondiendo "si" o "confirmo", o bien "no" para cancelarla.`
         }, { quoted: msg });
         continue;
       }

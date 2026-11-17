@@ -51,5 +51,40 @@ test('Multi-tenant booking: aislamiento estricto de citas y huecos por tenant', 
   assert.equal(listB.total, 1);
   assert.equal(listB.citas[0].cliente_nombre, 'Cliente B');
 
+  // 6. Intento de cancelacion cross-tenant: Tenant B intenta cancelar la cita de Tenant A por ID
+  const cancelCrossId = db.cancelarCita({
+    cita_id: resA.cita.id,
+    tenant_id: 'tenant_clinica_b'
+  });
+  assert.equal(cancelCrossId.ok, false);
+  assert.match(cancelCrossId.error, /No se encontro ninguna cita/);
+
+  // Intento de cancelacion cross-tenant por nombre
+  const cancelCrossNombre = db.cancelarCita({
+    cliente_nombre: 'Cliente A',
+    tenant_id: 'tenant_clinica_b'
+  });
+  assert.equal(cancelCrossNombre.ok, false);
+
+  // Intento de cancelacion cross-tenant por telefono y fecha
+  const cancelCrossTel = db.cancelarCita({
+    cliente_telefono: '+34600111222',
+    fecha,
+    tenant_id: 'tenant_clinica_b'
+  });
+  assert.equal(cancelCrossTel.ok, false);
+
+  // La cita de Tenant A sigue confirmada
+  const citaAVerif = db.obtenerCitaPorId(resA.cita.id, 'tenant_clinica_a');
+  assert.equal(citaAVerif.estado, 'confirmada');
+
+  // Cancelacion valida por su propio tenant
+  const cancelPropio = db.cancelarCita({
+    cita_id: resA.cita.id,
+    tenant_id: 'tenant_clinica_a'
+  });
+  assert.equal(cancelPropio.ok, true);
+  assert.equal(cancelPropio.cita.estado, 'cancelada');
+
   db.cerrar();
 });

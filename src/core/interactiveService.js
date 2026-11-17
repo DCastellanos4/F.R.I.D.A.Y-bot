@@ -64,8 +64,53 @@ function unwrapMessage(msg) {
   return m || null;
 }
 
-// In-memory registry for tracking native WhatsApp poll votes
+// In-memory registry for tracking native WhatsApp poll votes with TTL and bounded capacity
+export const DEFAULT_POLL_STORE_MAX_ENTRIES = 500;
+export const DEFAULT_POLL_STORE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+let pollStoreMaxEntries = DEFAULT_POLL_STORE_MAX_ENTRIES;
+let pollStoreTtlMs = DEFAULT_POLL_STORE_TTL_MS;
+
 const pollVoteStore = new Map();
+
+/**
+ * Configures capacity limit and TTL for pollVoteStore.
+ *
+ * @param {object} [options]
+ * @param {number} [options.maxEntries]
+ * @param {number} [options.ttlMs]
+ */
+export function configurePollStoreLimits({ maxEntries = DEFAULT_POLL_STORE_MAX_ENTRIES, ttlMs = DEFAULT_POLL_STORE_TTL_MS } = {}) {
+  pollStoreMaxEntries = maxEntries;
+  pollStoreTtlMs = ttlMs;
+}
+export const configurarLimitesPollStore = configurePollStoreLimits;
+
+/**
+ * Removes expired poll entries from pollVoteStore according to configured TTL.
+ *
+ * @param {number} [now=Date.now()]
+ */
+export function pruneExpiredPolls(now = Date.now()) {
+  for (const [id, entry] of pollVoteStore.entries()) {
+    const lastActive = entry?.updatedAt || entry?.createdAt || 0;
+    if (now - lastActive > pollStoreTtlMs) {
+      pollVoteStore.delete(id);
+    }
+  }
+}
+export const limpiarPollsExpirados = pruneExpiredPolls;
+
+/**
+ * Returns current count of tracked polls in memory.
+ *
+ * @returns {number}
+ */
+export function getPollStoreSize() {
+  pruneExpiredPolls();
+  return pollVoteStore.size;
+}
+export const obtenerTamanoPollStore = getPollStoreSize;
 
 /**
  * Sends a message with ephemeral TTL (auto-delete timer).
@@ -398,15 +443,38 @@ export function parsePollVote(msg) {
     timestamp
   };
 
-  // Record into in-memory store
+  // Record into in-memory store with bounded LRU eviction and TTL cleanup
   if (pollId && voterJid) {
-    if (!pollVoteStore.has(pollId)) {
-      pollVoteStore.set(pollId, new Map());
+    const now = Date.now();
+    pruneExpiredPolls(now);
+
+    let entry = pollVoteStore.get(pollId);
+    if (!entry) {
+      if (pollVoteStore.size >= pollStoreMaxEntries) {
+        const oldestKey = pollVoteStore.keys().next().value;
+        if (oldestKey) {
+          pollVoteStore.delete(oldestKey);
+        }
+      }
+      entry = {
+        votes: new Map(),
+        createdAt: now,
+        updatedAt: now
+      };
+      pollVoteStore.set(pollId, entry);
+    } else {
+      pollVoteStore.delete(pollId);
+      entry.updatedAt = now;
+      pollVoteStore.set(pollId, entry);
     }
-    pollVoteStore.get(pollId).set(voterJid, {
-      selectedOptions,
-      timestamp
-    });
+
+    const voterMap = entry.votes instanceof Map ? entry.votes : (entry instanceof Map ? entry : null);
+    if (voterMap) {
+      voterMap.set(voterJid, {
+        selectedOptions,
+        timestamp
+      });
+    }
   }
 
   return voteRecord;
@@ -419,10 +487,12 @@ export function parsePollVote(msg) {
  * @returns {Array<{ voterJid: string, selectedOptions: string[], timestamp: number }>}
  */
 export function getRecordedPollVotes(pollId) {
+  pruneExpiredPolls();
   if (!pollId || !pollVoteStore.has(pollId)) {
     return [];
   }
-  const voterMap = pollVoteStore.get(pollId);
+  const entry = pollVoteStore.get(pollId);
+  const voterMap = entry instanceof Map ? entry : (entry?.votes instanceof Map ? entry.votes : new Map());
   const results = [];
   for (const [voterJid, voteData] of voterMap.entries()) {
     results.push({

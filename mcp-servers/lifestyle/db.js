@@ -92,12 +92,14 @@ export function crearLifestyleDb(rutaDb = process.env.LIFESTYLE_DB_PATH || RUTA_
   db.exec(`
     CREATE TABLE IF NOT EXISTS habitos (
       id TEXT PRIMARY KEY,
-      nombre TEXT NOT NULL UNIQUE,
+      tenant_id TEXT NOT NULL DEFAULT 'propietario',
+      nombre TEXT NOT NULL,
       marcas TEXT NOT NULL DEFAULT '[]',
       creado_en TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS compra_items (
       id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'propietario',
       item TEXT NOT NULL,
       comprado INTEGER NOT NULL DEFAULT 0,
       creado_en TEXT NOT NULL
@@ -105,9 +107,18 @@ export function crearLifestyleDb(rutaDb = process.env.LIFESTYLE_DB_PATH || RUTA_
     CREATE INDEX IF NOT EXISTS idx_compra_comprado ON compra_items(comprado);
   `);
 
+  try {
+    db.exec("ALTER TABLE habitos ADD COLUMN tenant_id TEXT DEFAULT 'propietario'");
+  } catch (_) {}
+  try {
+    db.exec("ALTER TABLE compra_items ADD COLUMN tenant_id TEXT DEFAULT 'propietario'");
+  } catch (_) {}
+  db.exec("CREATE INDEX IF NOT EXISTS idx_habitos_tenant ON habitos(tenant_id);");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_compra_tenant ON compra_items(tenant_id);");
+
   /* ------------------- Metodos de Habitos ------------------- */
 
-  function registrarHabito({ nombre } = {}) {
+  function registrarHabito({ nombre, tenant_id = 'propietario' } = {}) {
     const n = String(nombre || '').trim();
     if (!n) {
       throw new Error('El parametro nombre es obligatorio para registrar un habito');
@@ -116,7 +127,7 @@ export function crearLifestyleDb(rutaDb = process.env.LIFESTYLE_DB_PATH || RUTA_
       throw new Error('El nombre del habito excede el limite maximo de 80 caracteres');
     }
 
-    const existente = db.prepare('SELECT id, nombre FROM habitos WHERE lower(nombre) = lower(?)').get(n);
+    const existente = db.prepare('SELECT id, nombre FROM habitos WHERE tenant_id = ? AND lower(nombre) = lower(?)').get(tenant_id, n);
     if (existente) {
       throw new Error(`Ya existe un habito registrado con el nombre "${n}"`);
     }
@@ -126,14 +137,15 @@ export function crearLifestyleDb(rutaDb = process.env.LIFESTYLE_DB_PATH || RUTA_
     const marcasJson = JSON.stringify([]);
 
     db.prepare(`
-      INSERT INTO habitos (id, nombre, marcas, creado_en)
-      VALUES (?, ?, ?, ?)
-    `).run(id, n, marcasJson, creadoEn);
+      INSERT INTO habitos (id, tenant_id, nombre, marcas, creado_en)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, tenant_id, n, marcasJson, creadoEn);
 
     return {
       ok: true,
       habito: {
         id,
+        tenant_id,
         nombre: n,
         marcas: [],
         creado_en: creadoEn
@@ -141,7 +153,7 @@ export function crearLifestyleDb(rutaDb = process.env.LIFESTYLE_DB_PATH || RUTA_
     };
   }
 
-  function marcarHabito({ criterio, fecha, hoy } = {}) {
+  function marcarHabito({ criterio, fecha, hoy, tenant_id = 'propietario' } = {}) {
     const c = String(criterio || '').trim().toLowerCase();
     if (!c) {
       throw new Error('El parametro criterio (id o nombre) es obligatorio para marcar un habito');
@@ -150,7 +162,7 @@ export function crearLifestyleDb(rutaDb = process.env.LIFESTYLE_DB_PATH || RUTA_
     const fechaHoyStr = hoy || fechaHoy();
     const f = /^\d{4}-\d{2}-\d{2}$/.test(String(fecha || '')) ? fecha : fechaHoyStr;
 
-    const filas = db.prepare('SELECT id, nombre, marcas, creado_en FROM habitos').all();
+    const filas = db.prepare('SELECT id, tenant_id, nombre, marcas, creado_en FROM habitos WHERE tenant_id = ?').all(tenant_id);
     const habito = filas.find((h) => h.id === criterio || h.nombre.toLowerCase().includes(c));
 
     if (!habito) {
@@ -169,7 +181,7 @@ export function crearLifestyleDb(rutaDb = process.env.LIFESTYLE_DB_PATH || RUTA_
     marcas.push(f);
     marcas.sort();
 
-    db.prepare('UPDATE habitos SET marcas = ? WHERE id = ?').run(JSON.stringify(marcas), habito.id);
+    db.prepare('UPDATE habitos SET marcas = ? WHERE id = ? AND tenant_id = ?').run(JSON.stringify(marcas), habito.id, tenant_id);
 
     const rachaActual = calcularRacha(marcas, fechaHoyStr);
 
@@ -177,6 +189,7 @@ export function crearLifestyleDb(rutaDb = process.env.LIFESTYLE_DB_PATH || RUTA_
       ok: true,
       habito: {
         id: habito.id,
+        tenant_id: habito.tenant_id || tenant_id,
         nombre: habito.nombre,
         marcas,
         creado_en: habito.creado_en
@@ -187,9 +200,9 @@ export function crearLifestyleDb(rutaDb = process.env.LIFESTYLE_DB_PATH || RUTA_
     };
   }
 
-  function listarHabitos({ hoy } = {}) {
+  function listarHabitos({ hoy, tenant_id = 'propietario' } = {}) {
     const fechaHoyStr = hoy || fechaHoy();
-    const filas = db.prepare('SELECT id, nombre, marcas, creado_en FROM habitos ORDER BY nombre ASC').all();
+    const filas = db.prepare('SELECT id, tenant_id, nombre, marcas, creado_en FROM habitos WHERE tenant_id = ? ORDER BY nombre ASC').all(tenant_id);
 
     const habitos = filas.map((h) => {
       let marcas = [];
@@ -199,6 +212,7 @@ export function crearLifestyleDb(rutaDb = process.env.LIFESTYLE_DB_PATH || RUTA_
 
       return {
         id: h.id,
+        tenant_id: h.tenant_id || tenant_id,
         nombre: h.nombre,
         hecho_hoy: marcas.includes(fechaHoyStr),
         racha: calcularRacha(marcas, fechaHoyStr),
@@ -215,7 +229,7 @@ export function crearLifestyleDb(rutaDb = process.env.LIFESTYLE_DB_PATH || RUTA_
 
   /* ------------------- Metodos de Lista de Compra ------------------- */
 
-  function anadirCompra({ item, items } = {}) {
+  function anadirCompra({ item, items, tenant_id = 'propietario' } = {}) {
     const lista = (Array.isArray(items) ? items : [item])
       .map((i) => String(i || '').trim().slice(0, 80))
       .filter(Boolean);
@@ -224,26 +238,26 @@ export function crearLifestyleDb(rutaDb = process.env.LIFESTYLE_DB_PATH || RUTA_
       throw new Error('Debe proporcionar al menos un item para anadir a la lista de compra');
     }
 
-    const pendientes = db.prepare('SELECT item FROM compra_items WHERE comprado = 0').all();
+    const pendientes = db.prepare('SELECT item FROM compra_items WHERE tenant_id = ? AND comprado = 0').all(tenant_id);
     const unicosPendientes = new Set(pendientes.map((p) => p.item.toLowerCase()));
 
     const anadidos = [];
     const creadoEn = new Date().toISOString();
 
     const insertStmt = db.prepare(`
-      INSERT INTO compra_items (id, item, comprado, creado_en)
-      VALUES (?, ?, 0, ?)
+      INSERT INTO compra_items (id, tenant_id, item, comprado, creado_en)
+      VALUES (?, ?, ?, 0, ?)
     `);
 
     for (const nombreItem of lista) {
       if (unicosPendientes.has(nombreItem.toLowerCase())) continue;
       const id = `cmp_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
-      insertStmt.run(id, nombreItem, creadoEn);
+      insertStmt.run(id, tenant_id, nombreItem, creadoEn);
       unicosPendientes.add(nombreItem.toLowerCase());
       anadidos.push(nombreItem);
     }
 
-    const totalPendientes = db.prepare('SELECT COUNT(*) as count FROM compra_items WHERE comprado = 0').get().count;
+    const totalPendientes = db.prepare('SELECT COUNT(*) as count FROM compra_items WHERE tenant_id = ? AND comprado = 0').get(tenant_id).count;
 
     return {
       ok: true,
@@ -252,8 +266,8 @@ export function crearLifestyleDb(rutaDb = process.env.LIFESTYLE_DB_PATH || RUTA_
     };
   }
 
-  function listarCompra() {
-    const filas = db.prepare('SELECT id, item, creado_en FROM compra_items WHERE comprado = 0 ORDER BY creado_en ASC').all();
+  function listarCompra({ tenant_id = 'propietario' } = {}) {
+    const filas = db.prepare('SELECT id, tenant_id, item, creado_en FROM compra_items WHERE tenant_id = ? AND comprado = 0 ORDER BY creado_en ASC').all(tenant_id);
     return {
       ok: true,
       total: filas.length,
@@ -262,22 +276,22 @@ export function crearLifestyleDb(rutaDb = process.env.LIFESTYLE_DB_PATH || RUTA_
     };
   }
 
-  function tacharCompra({ criterio } = {}) {
+  function tacharCompra({ criterio, tenant_id = 'propietario' } = {}) {
     const c = String(criterio || '').trim().toLowerCase();
     if (!c) {
       throw new Error('El parametro criterio es obligatorio para tachar un item');
     }
 
-    const pendientes = db.prepare('SELECT id, item FROM compra_items WHERE comprado = 0').all();
+    const pendientes = db.prepare('SELECT id, tenant_id, item FROM compra_items WHERE tenant_id = ? AND comprado = 0').all(tenant_id);
     const encontrado = pendientes.find((p) => p.id === criterio || p.item.toLowerCase().includes(c));
 
     if (!encontrado) {
       throw new Error(`No se encontro ningun item pendiente que coincida con "${criterio}"`);
     }
 
-    db.prepare('UPDATE compra_items SET comprado = 1 WHERE id = ?').run(encontrado.id);
+    db.prepare('UPDATE compra_items SET comprado = 1 WHERE id = ? AND tenant_id = ?').run(encontrado.id, tenant_id);
 
-    const totalPendientes = db.prepare('SELECT COUNT(*) as count FROM compra_items WHERE comprado = 0').get().count;
+    const totalPendientes = db.prepare('SELECT COUNT(*) as count FROM compra_items WHERE tenant_id = ? AND comprado = 0').get(tenant_id).count;
 
     return {
       ok: true,
@@ -286,8 +300,8 @@ export function crearLifestyleDb(rutaDb = process.env.LIFESTYLE_DB_PATH || RUTA_
     };
   }
 
-  function vaciarCompra() {
-    const info = db.prepare('DELETE FROM compra_items WHERE comprado = 0').run();
+  function vaciarCompra({ tenant_id = 'propietario' } = {}) {
+    const info = db.prepare('DELETE FROM compra_items WHERE tenant_id = ? AND comprado = 0').run(tenant_id);
     return {
       ok: true,
       eliminados: info.changes ?? 0

@@ -337,8 +337,19 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
 
   /**
    * Cancela una cita por cita_id, telefono y fecha, o nombre de cliente.
+   * Blindado contra cancelaciones cross-tenant mediante filtrado estricto por tenant_id.
    */
-  function cancelarCita({ cita_id, id, cliente_telefono, telefono, fecha, fecha_inicio, cliente_nombre, nombre } = {}) {
+  function cancelarCita({
+    cita_id,
+    id,
+    cliente_telefono,
+    telefono,
+    fecha,
+    fecha_inicio,
+    cliente_nombre,
+    nombre,
+    tenant_id = 'propietario'
+  } = {}) {
     const targetId = cita_id || id;
     const targetPhone = cliente_telefono || telefono;
     const targetFecha = fecha || fecha_inicio;
@@ -346,14 +357,26 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
 
     if (targetId) {
       const transaccionId = db.transaction(() => {
-        const cita = db.prepare('SELECT * FROM citas WHERE id = ?').get(targetId);
+        let sql = 'SELECT * FROM citas WHERE id = ?';
+        const params = [targetId];
+        if (tenant_id) {
+          sql += ' AND tenant_id = ?';
+          params.push(tenant_id);
+        }
+        const cita = db.prepare(sql).get(...params);
         if (!cita) {
           return { ok: false, error: `No se encontro ninguna cita con id: ${targetId}` };
         }
         if (cita.estado === 'cancelada') {
           return { ok: false, error: 'La cita ya se encuentra cancelada', cita };
         }
-        db.prepare("UPDATE citas SET estado = 'cancelada' WHERE id = ?").run(targetId);
+        let updateSql = "UPDATE citas SET estado = 'cancelada' WHERE id = ?";
+        const updateParams = [targetId];
+        if (tenant_id) {
+          updateSql += ' AND tenant_id = ?';
+          updateParams.push(tenant_id);
+        }
+        db.prepare(updateSql).run(...updateParams);
         const citaActualizada = db.prepare('SELECT * FROM citas WHERE id = ?').get(targetId);
         return { ok: true, mensaje: 'Cita cancelada exitosamente', cita: citaActualizada };
       });
@@ -367,6 +390,10 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
       const transaccionNombre = db.transaction(() => {
         let sql = "SELECT * FROM citas WHERE LOWER(cliente_nombre) LIKE LOWER(?) AND estado = 'confirmada'";
         const params = [`%${name}%`];
+        if (tenant_id) {
+          sql += ' AND tenant_id = ?';
+          params.push(tenant_id);
+        }
         if (fechaPrefijo) {
           sql += ' AND fecha_inicio LIKE ?';
           params.push(`${fechaPrefijo}%`);
@@ -381,7 +408,13 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
         }
 
         for (const c of citas) {
-          db.prepare("UPDATE citas SET estado = 'cancelada' WHERE id = ?").run(c.id);
+          let updateSql = "UPDATE citas SET estado = 'cancelada' WHERE id = ?";
+          const updateParams = [c.id];
+          if (tenant_id) {
+            updateSql += ' AND tenant_id = ?';
+            updateParams.push(tenant_id);
+          }
+          db.prepare(updateSql).run(...updateParams);
         }
 
         const ids = citas.map((c) => c.id);
@@ -404,12 +437,18 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
       const fechaPrefijo = String(targetFecha).trim().slice(0, 10);
 
       const transaccionTelefono = db.transaction(() => {
-        const citas = db.prepare(`
+        let sql = `
           SELECT * FROM citas
           WHERE (cliente_telefono = ? OR cliente_telefono = ?)
             AND fecha_inicio LIKE ?
             AND estado = 'confirmada'
-        `).all(phone, phoneSinEspacios, `${fechaPrefijo}%`);
+        `;
+        const params = [phone, phoneSinEspacios, `${fechaPrefijo}%`];
+        if (tenant_id) {
+          sql += ' AND tenant_id = ?';
+          params.push(tenant_id);
+        }
+        const citas = db.prepare(sql).all(...params);
 
         if (citas.length === 0) {
           return {
@@ -419,7 +458,13 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
         }
 
         for (const c of citas) {
-          db.prepare("UPDATE citas SET estado = 'cancelada' WHERE id = ?").run(c.id);
+          let updateSql = "UPDATE citas SET estado = 'cancelada' WHERE id = ?";
+          const updateParams = [c.id];
+          if (tenant_id) {
+            updateSql += ' AND tenant_id = ?';
+            updateParams.push(tenant_id);
+          }
+          db.prepare(updateSql).run(...updateParams);
         }
 
         const ids = citas.map((c) => c.id);
@@ -487,10 +532,13 @@ export function crearBookingDb(rutaDb = process.env.BOOKING_DB_PATH || RUTA_DB_P
   }
 
   /**
-   * Obtiene una cita por su identificador unico.
+   * Obtiene una cita por su identificador unico, con soporte opcional de aislamiento por tenant_id.
    */
-  function obtenerCitaPorId(id) {
+  function obtenerCitaPorId(id, tenant_id = null) {
     if (!id || typeof id !== 'string') return null;
+    if (tenant_id) {
+      return db.prepare('SELECT * FROM citas WHERE id = ? AND tenant_id = ?').get(id, tenant_id) || null;
+    }
     return db.prepare('SELECT * FROM citas WHERE id = ?').get(id) || null;
   }
 

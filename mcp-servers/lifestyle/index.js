@@ -44,6 +44,10 @@ export const TOOLS_SCHEMA = [
         fecha: {
           type: 'string',
           description: 'Fecha en formato YYYY-MM-DD para marcar (por defecto hoy)'
+        },
+        tenant_id: {
+          type: 'string',
+          description: 'Identificador del tenant (opcional, por defecto propietario)'
         }
       },
       required: ['accion']
@@ -72,6 +76,10 @@ export const TOOLS_SCHEMA = [
         criterio: {
           type: 'string',
           description: 'ID o texto del item a tachar de la lista'
+        },
+        tenant_id: {
+          type: 'string',
+          description: 'Identificador del tenant (opcional, por defecto propietario)'
         }
       },
       required: ['accion']
@@ -227,16 +235,19 @@ export function crearManejadorRpc(lifestyleDb) {
             else if (['completar', 'cumplir', 'hecho'].includes(accion) || (!accion && args.criterio)) accion = 'marcar';
             else if (['ver', 'consultar'].includes(accion) || !accion) accion = 'listar';
 
+            const tenantId = args.tenant_id || 'propietario';
+
             if (accion === 'registrar') {
-              datosResultado = lifestyleDb.registrarHabito({ nombre: args.nombre });
+              datosResultado = lifestyleDb.registrarHabito({ nombre: args.nombre, tenant_id: tenantId });
             } else if (accion === 'marcar') {
               datosResultado = lifestyleDb.marcarHabito({
                 criterio: args.criterio,
                 fecha: args.fecha,
-                hoy: args.hoy
+                hoy: args.hoy,
+                tenant_id: tenantId
               });
             } else if (accion === 'listar') {
-              datosResultado = lifestyleDb.listarHabitos({ hoy: args.hoy });
+              datosResultado = lifestyleDb.listarHabitos({ hoy: args.hoy, tenant_id: tenantId });
             } else {
               throw new Error(`Accion no valida para gestionar_habitos: ${accion}`);
             }
@@ -250,14 +261,16 @@ export function crearManejadorRpc(lifestyleDb) {
             else if (['limpiar', 'vaciar'].includes(accion)) accion = 'vaciar';
             else if (['ver', 'consultar'].includes(accion) || !accion) accion = 'listar';
 
+            const tenantId = args.tenant_id || 'propietario';
+
             if (accion === 'anadir') {
-              datosResultado = lifestyleDb.anadirCompra({ item: args.item, items: args.items });
+              datosResultado = lifestyleDb.anadirCompra({ item: args.item, items: args.items, tenant_id: tenantId });
             } else if (accion === 'listar') {
-              datosResultado = lifestyleDb.listarCompra();
+              datosResultado = lifestyleDb.listarCompra({ tenant_id: tenantId });
             } else if (accion === 'tachar') {
-              datosResultado = lifestyleDb.tacharCompra({ criterio: args.criterio });
+              datosResultado = lifestyleDb.tacharCompra({ criterio: args.criterio, tenant_id: tenantId });
             } else if (accion === 'vaciar') {
-              datosResultado = lifestyleDb.vaciarCompra();
+              datosResultado = lifestyleDb.vaciarCompra({ tenant_id: tenantId });
             } else {
               throw new Error(`Accion no valida para gestionar_lista_compra: ${accion}`);
             }
