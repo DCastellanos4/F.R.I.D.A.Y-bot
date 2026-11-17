@@ -14,7 +14,11 @@ Politica de estilo: Cero emojis, castellano tecnico, respuestas estructuradas pa
 5. [Sesion 5: Seguridad Operativa, Watchdogs de Infraestructura y Testing Nativo](#sesion-5-seguridad-operativa-watchdogs-de-infraestructura-y-testing-nativo)
 6. [Sesion 6: Arquitectura Multi-Tenant SaaS y Autoservicio Seguro](#sesion-6-arquitectura-multi-tenant-saas-y-autoservicio-seguro)
 7. [Sesion 7: Microservidores Modulares MCP y Guardas de Terceros](#sesion-7-microservidores-modulares-mcp-y-guardas-de-terceros)
-8. [Bateria de Preguntas y Respuestas para Entrevistas Tecnicas](#bateria-de-preguntas-y-respuestas-para-entrevistas-tecnicas)
+8. [Sesion 8: Knowledge Graph Cognitivo en SQLite Multi-Tenant](#sesion-8-knowledge-graph-cognitivo-en-sqlite-multi-tenant)
+9. [Sesion 9: Respaldo Cifrado Atomico y Politica de Retencion Unica](#sesion-9-respaldo-cifrado-atomico-y-politica-de-retencion-unica)
+10. [Sesion 10: Inferencia Resiliente, Destierro de Latencia y Multimodalidad Nativa](#sesion-10-inferencia-resiliente-destierro-de-latencia-y-multimodalidad-nativa)
+11. [Sesion 11: Operaciones Autonomas Externas (Calendar, Renfe y Agente GitHub)](#sesion-11-operaciones-autonomas-externas-calendar-renfe-y-agente-github)
+12. [Bateria de Preguntas y Respuestas para Entrevistas Tecnicas](#bateria-de-preguntas-y-respuestas-para-entrevistas-tecnicas)
 
 ---
 
@@ -180,6 +184,88 @@ Si un bot ejecuta una tarea y envia el mensaje directamente por red:
 
 ---
 
+## Sesion 8: Knowledge Graph Cognitivo en SQLite Multi-Tenant
+
+### 8.1 Por que SQLite para Grafos de Conocimiento
+- Evita la dependencia de infraestructuras pesadas como Neo4j, reduciendo el consumo de RAM en VPS de recursos ajustados a cero overhead adicional.
+- Permite transacciones ACID nativas acopladas con el resto del modelo de datos relacional de D.A.V.I.S.
+
+### 8.2 Modelo de Datos (Migracion 015)
+- **Fichero**: `src/database/migrations/015_knowledge_graph_sqlite.sql`.
+- **Tablas**:
+  - `knowledge_graph_entidades`: almacena `id`, `tenant_id`, `nombre`, `tipo`, `propiedades_json`, `created_at`, `updated_at`.
+  - `knowledge_graph_relaciones`: almacena `id`, `tenant_id`, `origen_id`, `destino_id`, `tipo_relacion`, `peso`, `metadata_json`, `created_at`.
+- **Indices Compuestos**: `idx_kg_entidades_tenant_nombre` y `idx_kg_relaciones_tenant` para busquedas sub-milisegundo.
+- **Aislamiento Multi-Tenant**: Toda consulta y mutacion de entidades y aristas filtra forzosamente por `tenant_id`, garantizando que ningun cliente descubra relaciones de otro.
+
+### 8.3 Resolucion Cognitiva y Prevencion de Colisiones
+- Fichero: `src/services/knowledgeGraphSqliteService.js`.
+- Resuelve ambiguedades de memoria relacional (ej. distinguir la relacion de parentesco familiar `madre` frente a un contacto de terceros o agenda).
+- Inyecta subgrafos contextuales en el prompt del LLM en tiempo de inferencia para enriquecer la toma de decisiones con relaciones de segundo orden (A conoce a B, B tiene cita con C).
+
+---
+
+## Sesion 9: Respaldo Cifrado Atomico y Politica de Retencion Unica
+
+### 9.1 Problema de Respaldo en Sistemas Multi-Tenant Activos
+- Copiar una base de datos SQLite en caliente durante escrituras de outbox corrompe el fichero `.db` (lecturas sucias de WAL).
+- La acumulacion descontrolada de backups colapsa el almacenamiento local o en discos secundarios.
+
+### 9.2 Arquitectura del Servicio de Respaldo
+- **Fichero**: `src/services/backupScheduleService.js` y `backupService.js`.
+- **Mecanismo Seguro de Snapshot**: Utiliza la API online de backup de SQLite (`VACUUM INTO` o conexion dedicada) para volcar un snapshot consistente sin bloquear a los lectores.
+- **Cifrado Criptografico AES-256-GCM**: Empaqueta SQLite, directorios de tenants (`data/tenants/`) y configuracion en un archivo comprimido cifrado (`.davbak`).
+- **Politica de Retencion Atomica Unica**:
+  1. Genera el nuevo archivo de backup `backup_<TIMESTAMP>.davbak`.
+  2. Verifica la integridad criptografica y el hash SHA-256 del nuevo archivo.
+  3. Tras validar que el nuevo backup es integro en disco, localiza y elimina de forma segura el backup anterior.
+  4. Garantiza que en la ruta configurada (ej. `D:\Documentos\DAVIS BACKUPS`) resida unicamente la copia valida mas reciente, minimizando el impacto en disco.
+
+---
+
+## Sesion 10: Inferencia Resiliente, Destierro de Latencia y Multimodalidad Nativa
+
+### 10.1 Destierro de Modelos Problematicos en Tool-Calling
+- **Problema**: Modelos como Qwen en proveedores cloud (Groq) introducen latencias elevadas (>30s) y timeouts en la serializacion de llamadas a herramientas complejas.
+- **Solucion Fail-Fast**:
+  - Implementacion de saneamiento en arranque (`desterrarQwen()`): sobreescritura automatica de configuracion para forzar `llama-3.3-70b-versatile`.
+  - Fallback encadenado: Si Groq reporta 429 o saturacion de cuota, degrada de forma transparente a Ollama local (`llama3.2:3b` o `mistral`) o proveedor alternativo sin interrumpir la sesion de WhatsApp.
+
+### 10.2 Audio Resiliente con Fallback en Cascada
+- **Fichero**: `src/services/audioTranscriptionService.js`.
+- Ingestion de notas de voz de WhatsApp (`audioMessage`, codecs Opus/OGG).
+- Intento primario: Whisper local en Node/Python para cero fuga de datos y coste cero.
+- Fallback automatico: Groq Whisper API (`whisper-large-v3-turbo`) con transcripcion en <1.5s si el worker local esta saturado o no disponible.
+
+### 10.3 Vision Multimodal y Lectura de Documentos
+- **Fichero**: `src/services/multimodalVisionService.js` y `documentReaderService.js`.
+- Ingestion nativa de mensajes `DocumentMessage` de Baileys: extraccion y parsing de texto en PDFs, DOCX y TXT sin dependencias externas innecesarias.
+- Procesamiento visual de imagenes, recibos y capturas de pantalla mediante adaptadores de vision hibridos (Gemini 2.5 Flash / Groq Vision).
+
+---
+
+## Sesion 11: Operaciones Autonomas Externas (Calendar, Renfe y Agente GitHub)
+
+### 11.1 Integracion Bidireccional de Google Calendar
+- **Fichero**: `src/services/googleCalendarService.js`.
+- Sincronizacion en tiempo real de citas y eventos: lectura de disponibilidad, creacion de eventos con alarmas y cancelacion.
+- Tratamiento de zona horaria local (`Europe/Madrid`) y reconciliacion con el motor de reservas multi-tenant (`booking`).
+
+### 11.2 Precios y Horarios de Transporte Ferroviario (Renfe)
+- **Fichero**: `src/services/renfeService.js`.
+- Consulta en vivo de conexiones, trayectos, horarios y tarifas de trenes directos.
+- Permite a D.A.V.I.S. cotizar viajes y recordar al usuario opciones optimas por coste y duracion desde el chat.
+
+### 11.3 Agente Autonomo de GitHub
+- **Fichero**: `src/services/githubAgentService.js`.
+- Bucle autonomo de ciclo de vida de desarrollo de software:
+  1. Inspeccion de issues asignados y lectura del arbol de directorios del repositorio.
+  2. Ejecucion y analisis de resultados de pruebas unitarias locales.
+  3. Aplicacion de parches de codigo y realizacion de commits estructurados.
+  4. Apertura y seguimiento de Pull Requests de forma desasistida.
+
+---
+
 ## Bateria de Preguntas y Respuestas para Entrevistas Tecnicas
 
 ### Pregunta 1: "¿Cual fue el reto arquitectonico mas complejo del proyecto?"
@@ -205,3 +291,15 @@ Si un bot ejecuta una tarea y envia el mensaje directamente por red:
 ### Pregunta 6: "¿Que beneficios aporta la migracion a Model Context Protocol (MCP) y como resuelves la validacion de esquemas con Groq?"
 **Respuesta recomendada**:  
 "MCP desacopla las herramientas del bucle principal del agente en procesos autonomos via JSON-RPC, facilitando escalabilidad y aislamiento de dependencias. Al conectarlo con proveedores estrictos como Groq, me encontre con que el modelo emitia `null` en parametros opcionales, provocando errores 400 de validacion de esquema. Lo solucione implementando esquemas flexibles con tipos compuestos (`type: ['string', 'null']`), permitiendo que el validador acepte nulos sin degradar el tipado de la herramienta."
+
+### Pregunta 7: "¿Por que implementar el Knowledge Graph en SQLite en lugar de una base de datos de grafos dedicada como Neo4j?"
+**Respuesta recomendada**:  
+"Por pragmatismo de infraestructura y coste operativo. Un cluster Neo4j o servicio de grafos externo consume al menos 500MB a 1GB de RAM y añade complejidad de red y mantenimiento en un VPS modesto. Implementando el grafo en SQLite con tablas relacionales (`knowledge_graph_entidades` y `knowledge_graph_relaciones`) e indices compuestos con `tenant_id`, conseguimos latencias de resolucion inferiores a 1 milisegundo, consumo de memoria virtual cero adicional y transaccionalidad ACID directa acoplada a la misma base de datos del sistema."
+
+### Pregunta 8: "¿Como resuelves la degradacion de latencia y fallos en inferencia multimodal y de voz?"
+**Respuesta recomendada**:  
+"Mediante una estrategia de arquitectura en cascada con saneamiento fail-fast. Para voz, el sistema intenta transcripcion local en Whisper; si el worker local se satura o supera umbrales de latencia, conmuta de inmediato a Groq Whisper Cloud (transcripcion en menos de 1.5s). Para el LLM, eliminamos modelos que introducen penalizaciones criticas en invocacion de herramientas estructuradas (como Qwen) fijando `llama-3.3-70b-versatile` con fallback automatico a modelos locales Ollama si el proveedor cloud agota cuota o rate-limit."
+
+### Pregunta 9: "¿Cual es la estrategia de respaldo y recuperacion ante desastres en D.A.V.I.S.?"
+**Respuesta recomendada**:  
+"Disene un servicio programado de respaldo atomico con cifrado AES-256-GCM. El servicio genera un snapshot consistente de SQLite mediante su mecanismo de backup en caliente para evitar bloqueos del Outbox WAL, empaqueta los directorios de los tenants y valida la integridad y el hash criptografico del nuevo archivo (`.davbak`). Solo tras confirmar que la nueva copia de seguridad es valida y autosuficiente en disco secundario, purga la version anterior, manteniendo estrictamente el respaldo mas reciente sin saturar el almacenamiento."
