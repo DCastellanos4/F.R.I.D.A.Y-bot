@@ -382,7 +382,7 @@ export function crearSqliteFlashcardsStore(db) {
 // ============================================================================
 export function crearSqliteScheduledMessageStore(db) {
   const ins = db.prepare('INSERT INTO mensajes_programados (id, tenant_id, jid, mensaje, fecha_envio, estado, creado_en) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET jid = excluded.jid, mensaje = excluded.mensaje, fecha_envio = excluded.fecha_envio, estado = excluded.estado');
-  const selPend = db.prepare('SELECT id, jid, mensaje, fecha_envio, estado, creado_en FROM mensajes_programados WHERE tenant_id = ? AND estado = ? ORDER BY fecha_envio ASC');
+  const selPend = db.prepare("SELECT id, jid, mensaje, fecha_envio, estado, creado_en FROM mensajes_programados WHERE tenant_id = ? AND estado IN ('pendiente', 'programado') ORDER BY fecha_envio ASC");
   const upd = db.prepare('UPDATE mensajes_programados SET estado = ? WHERE tenant_id = ? AND id = ?');
   const del = db.prepare('DELETE FROM mensajes_programados WHERE tenant_id = ? AND id = ?');
 
@@ -396,7 +396,7 @@ export function crearSqliteScheduledMessageStore(db) {
     },
     listarPendientes(tenantId = TENANT_PROPIETARIO) {
       afirmarTenantId(tenantId);
-      return selPend.all(tenantId, 'pendiente');
+      return selPend.all(tenantId);
     },
     actualizarEstado(id, nuevoEstado, tenantId = TENANT_PROPIETARIO) {
       afirmarTenantId(tenantId);
