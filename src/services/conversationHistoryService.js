@@ -42,7 +42,9 @@ export function registrarStoreHistorialPorDefecto(store) {
 
 function storeDe(deps = {}) {
   if (deps.store) return deps.store;
-  if (deps.rutaArchivo || deps.rutaHistorial || process.env.DAVIS_HISTORY_DIR) return null;
+  if (deps.rutaArchivo || deps.rutaHistorial) return null;
+  if (deps.tenantId) return storeHistorialPorDefecto;
+  if (process.env.DAVIS_HISTORY_DIR) return null;
   return storeHistorialPorDefecto;
 }
 

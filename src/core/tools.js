@@ -162,6 +162,46 @@ export const herramientasJarvis = [
       }
     }
   },
+  {
+    type: 'function',
+    function: {
+      name: 'escanear_ofertas_empleo',
+      description: 'Escanea las fuentes configuradas en el radar de empleo en busca de ofertas laborales nuevas que encajen con el perfil.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'configurar_radar_ofertas',
+      description: 'Configura los parametros de busqueda del radar de empleo: palabras clave, ubicacion, remoto y activacion. activo=true solo si David lo pide textualmente.',
+      parameters: {
+        type: 'object',
+        properties: {
+          palabrasClave: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Lista de palabras clave o tecnologias requeridas (ej: ["Node.js", "TypeScript"]).'
+          },
+          ubicacion: {
+            type: 'string',
+            description: 'Ciudad o region para filtrar las ofertas (ej: "Madrid", "Barcelona").'
+          },
+          remoto: {
+            type: 'boolean',
+            description: 'Indica si se deben filtrar unicamente ofertas con opcion de trabajo remoto.'
+          },
+          activo: {
+            type: 'boolean',
+            description: 'Activa o desactiva la busqueda periodica automatica del radar. Solo true si David lo pidio textualmente.'
+          }
+        }
+      }
+    }
+  },
   
   
   {
@@ -1863,6 +1903,78 @@ export const herramientasJarvis = [
       }
     }
   },
+  {
+    type: 'function',
+    function: {
+      name: 'encender_pc',
+      description: 'Enciende el ordenador de sobremesa enviando un paquete magico Wake-on-LAN a la red local. Requiere DAVIS_WOL_MAC configurada en el servidor.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'controlar_domotica',
+      description: 'Envia una orden de encendido, apagado o conmutacion a una entidad conectada a Home Assistant (bombillas, enchufes, interruptores).',
+      parameters: {
+        type: 'object',
+        properties: {
+          entidad: {
+            type: 'string',
+            description: 'Identificador exacto de la entidad en Home Assistant (ej: light.salon, switch.enchufe_escritorio).'
+          },
+          accion: {
+            type: 'string',
+            enum: ['encender', 'apagar', 'conmutar', 'on', 'off', 'toggle'],
+            description: 'Accion a realizar sobre el dispositivo: encender (on), apagar (off) o conmutar (toggle).'
+          }
+        },
+        required: ['entidad', 'accion']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'estado_descargas',
+      description: 'Consulta el espacio disponible en disco del servidor y el estado de las descargas y torrents activos en qBittorrent.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'configurar_aviso_descargas',
+      description: 'Activa o desactiva las notificaciones proactivas de finalizacion de descargas en qBittorrent. activo=true solo si David lo pide textualmente.',
+      parameters: {
+        type: 'object',
+        properties: {
+          activo: {
+            type: 'boolean',
+            description: 'true para activar los avisos al terminar descargas, false para desactivarlos. Requiere peticion explicita de David.'
+          }
+        },
+        required: ['activo']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'estimar_factura_oracle',
+      description: 'Consulta el resumen de costes acumulados y estimacion de facturacion en Oracle Cloud Infrastructure (OCI). Requiere OCI CLI configurada.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
   
   
   
@@ -2046,7 +2158,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   sniper: ['vigilar_producto', 'listar_productos_vigilados', 'cancelar_vigilancia'],
   noticias: ['obtener_noticias_actuales', 'navegar_y_leer_noticia'],
   navegacion: ['navegar_y_leer_noticia', 'resumir_enlace'],
-  servidor: ['consultar_estado_servidor'],
+  servidor: ['consultar_estado_servidor', 'estado_descargas', 'estimar_factura_oracle'],
   vip: ['activar_modo_vip', 'estado_modo_vip', 'agregar_contacto_vip'],
   grupo: ['resumir_grupo'],
   multimedia: ['descargar_multimedia'],
@@ -2057,10 +2169,10 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   crypto: ['generate_crypto_credential'],
   docker: ['get_infrastructure_status'],
   disco: ['get_infrastructure_status'],
-  infraestructura: ['get_infrastructure_status'],
+  infraestructura: ['get_infrastructure_status', 'estado_descargas', 'estimar_factura_oracle'],
   tuneles: ['manage_tunnel'],
   backup: ['trigger_encrypted_backup'],
-  empleo: ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura'],
+  empleo: ['registrar_candidatura', 'listar_candidaturas', 'actualizar_candidatura', 'escanear_ofertas_empleo', 'configurar_radar_ofertas'],
   estudio: ['planificar_estudio', 'listar_planes_estudio', 'registrar_avance_estudio', 'programar_recordatorios_estudio', 'crear_flashcard', 'repasar_flashcards', 'responder_flashcard', 'configurar_repaso_flashcards'],
   comunicacion: ['activar_traductor', 'desactivar_traductor', 'sugerir_respuestas', 'buscar_en_historial', 'registrar_fecha_senalada', 'listar_fechas_senaladas', 'eliminar_fecha_senalada', 'configurar_avisos_fechas', 'programar_snooze', 'listar_snoozes', 'cancelar_snooze', 'estadisticas_grupo', 'registrar_aviso_llegada', 'listar_avisos_llegada', 'cancelar_aviso_llegada'],
   transporte: ['registrar_parada_favorita', 'listar_paradas_favoritas', 'eliminar_parada_favorita', 'proximas_llegadas_transporte'],
@@ -2068,8 +2180,8 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   bienestar: ['escribir_diario', 'leer_diario', 'registrar_habito', 'marcar_habito', 'listar_habitos', 'poner_menu', 'ver_menu', 'sugerir_menu', 'anadir_compra', 'listar_compra', 'tachar_compra', 'vaciar_compra', 'recomendar_serie_pelicula', 'crear_quedada', 'listar_quedadas', 'redactar_invitacion', 'resumen_deportivo', 'configurar_modo_nocturno'],
   compras: ['buscar_producto', 'verificar_oferta'],
   devtools: ['anotar_idea', 'listar_ideas', 'priorizar_ideas', 'generar_changelog', 'guiar_depuracion', 'revisar_pr', 'explicar_recorrido'],
-  ops: ['auditar_dependencias', 'configurar_vigilancia_dependencias', 'informe_metricas', 'configurar_informe_metricas', 'actividad_repos', 'configurar_alertas_repos', 'crear_backup_sesion'],
-  hogar: ['listar_dispositivos_red', 'configurar_vigilancia_red', 'verificar_backup_sesion'],
+  ops: ['auditar_dependencias', 'configurar_vigilancia_dependencias', 'informe_metricas', 'configurar_informe_metricas', 'actividad_repos', 'configurar_alertas_repos', 'crear_backup_sesion', 'estimar_factura_oracle'],
+  hogar: ['listar_dispositivos_red', 'configurar_vigilancia_red', 'verificar_backup_sesion', 'encender_pc', 'controlar_domotica', 'estado_descargas', 'configurar_aviso_descargas', 'estimar_factura_oracle'],
   viajes: ['vigilar_ruta', 'listar_rutas_vigiladas', 'cancelar_vigilancia_ruta', 'registrar_precio_ruta'],
   carrera: ['iniciar_simulacro_entrevista', 'analizar_cv_oferta', 'resumir_apuntes', 'registrar_entrega', 'listar_entregas', 'eliminar_entrega'],
   procesos: ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'],

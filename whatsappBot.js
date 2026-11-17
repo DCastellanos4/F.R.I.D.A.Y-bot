@@ -49,7 +49,9 @@ import { estadoEntrevista, responderEntrevista, terminarEntrevista } from './src
 import { programarEnvioMatutino } from './src/services/dailyBriefing.js';
 import { normalizarTexto } from './src/services/memoryService.js';
 import { mensajeErrorParaUsuario } from './src/services/errorSanitizerService.js';
-import { transcribirAudioBuffer } from './src/services/voiceService.js';
+import { transcribirAudioBuffer } from './src/services/audioTranscriberService.js';
+import { analizarImagen, procesarDocumentoPDF } from './src/services/visionService.js';
+import { extraerTextoPDF, resumirDocumento, consultarSeccionPDF } from './src/services/pdfReaderService.js';
 import { capturarPantallaWeb } from './src/services/browserService.js';
 import { isVipModeActive, shouldFilterMessage } from './src/services/vipFilterService.js';
 import { recordGroupMessage, generateGroupSummary, isDavidMentioned } from './src/services/groupSummarizerService.js';
@@ -124,6 +126,7 @@ function extraerTextoMensaje(msg) {
   if (m.extendedTextMessage?.text) return m.extendedTextMessage.text.trim();
   if (m.imageMessage?.caption) return m.imageMessage.caption.trim();
   if (m.videoMessage?.caption) return m.videoMessage.caption.trim();
+  if (m.documentMessage?.caption) return m.documentMessage.caption.trim();
   return null;
 }
 
@@ -872,7 +875,7 @@ Prueba a decirme:
 
           const audioBuffer = await descargarMedia(msg);
 
-          const resVoz = await transcribirAudio(audioBuffer);
+          const resVoz = await transcribirAudio(audioBuffer, deps);
 
           if (resVoz.ok && resVoz.texto && resVoz.texto.length > 1) {
             texto = resVoz.texto;
@@ -903,9 +906,7 @@ Prueba a decirme:
         texto = extraerTextoMensaje(msg);
       }
 
-      // 4b. Foto de ticket: borrador de gasto pendiente de confirmacion (nº 24).
-      // La lectura de la imagen la hace un adaptador inyectado (deps.analizarTicket);
-      // sin adaptador configurado la funcion esta desactivada y se dice claramente.
+      // 4b. Imagen entrante: fotos de tickets o analisis general con visionService
       if (msg.message.imageMessage) {
         const captionFoto = (msg.message.imageMessage.caption || '').trim();
         if (/ticket|recibo|factura|compra|gasto/i.test(captionFoto)) {
@@ -932,6 +933,86 @@ Prueba a decirme:
               text: 'No he podido procesar la foto del ticket, David. Prueba de nuevo o dimelo en texto y lo anoto.'
             }, { quoted: msg });
           }
+          continue;
+        } else {
+          // 4b.2 Imagen general: interpretacion multimodal con visionService
+          const fnAnalizar = typeof deps.analizarImagen === 'function' ? deps.analizarImagen : analizarImagen;
+          try {
+            const descargarFoto = typeof deps.descargarMedia === 'function'
+              ? deps.descargarMedia
+              : (m) => downloadMediaMessage(m, 'buffer', {}, { logger: pino({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage });
+            const fotoBuffer = await descargarFoto(msg);
+            const resVision = await fnAnalizar({
+              bufferOPath: fotoBuffer,
+              prompt: captionFoto || undefined,
+              mimeType: msg.message.imageMessage.mimetype || 'image/jpeg'
+            }, deps);
+
+            if (resVision && resVision.ok && resVision.analisis) {
+              await sock.sendMessage(remoteJid, { text: resVision.analisis }, { quoted: msg });
+              continue;
+            } else if (resVision && !resVision.ok && resVision.error) {
+              await sock.sendMessage(remoteJid, { text: resVision.error }, { quoted: msg });
+              continue;
+            }
+          } catch (errFoto) {
+            console.error('Error procesando imagen general con visionService:', errFoto.message);
+            if (!captionFoto) {
+              await sock.sendMessage(remoteJid, {
+                text: 'No he podido procesar la imagen recibida, David.'
+              }, { quoted: msg });
+              continue;
+            }
+          }
+        }
+      }
+
+      // 4b.3 Documentos entrantes (PDF / TXT): lectura y analisis con pdfReaderService y visionService
+      const docMsg = msg.message.documentMessage || msg.message.documentWithCaptionMessage?.message?.documentMessage;
+      if (docMsg) {
+        console.log(`[WhatsApp] Documento recibido de David: ${docMsg.fileName || 'adjunto'} (${docMsg.mimetype || 'desconocido'}).`);
+        try {
+          const descargarDoc = typeof deps.descargarMedia === 'function'
+            ? deps.descargarMedia
+            : (m) => downloadMediaMessage(m, 'buffer', {}, { logger: pino({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage });
+          const docBuffer = await descargarDoc(msg);
+          const captionDoc = (docMsg.caption || docMsg.title || texto || '').trim();
+          const fileName = String(docMsg.fileName || '').toLowerCase();
+          const mimetype = String(docMsg.mimetype || '').toLowerCase();
+
+          if (mimetype.includes('pdf') || fileName.endsWith('.pdf')) {
+            const fnProcesarPDF = typeof deps.procesarDocumentoPDF === 'function' ? deps.procesarDocumentoPDF : procesarDocumentoPDF;
+            const resPDF = await fnProcesarPDF({ bufferOPath: docBuffer, pregunta: captionDoc || undefined }, deps);
+            if (resPDF && resPDF.ok) {
+              const textoRespuesta = resPDF.tipo === 'consulta' ? resPDF.respuesta : resPDF.resumen;
+              await sock.sendMessage(remoteJid, { text: textoRespuesta }, { quoted: msg });
+            } else {
+              await sock.sendMessage(remoteJid, { text: resPDF?.error || 'No he podido extraer texto legible del documento PDF.' }, { quoted: msg });
+            }
+            continue;
+          } else if (mimetype.includes('text') || mimetype.includes('plain') || fileName.endsWith('.txt')) {
+            const textoPlano = Buffer.isBuffer(docBuffer) ? docBuffer.toString('utf-8') : String(docBuffer || '');
+            const fnConsultar = typeof deps.consultarSeccionPDF === 'function' ? deps.consultarSeccionPDF : consultarSeccionPDF;
+            const fnResumir = typeof deps.resumirDocumento === 'function' ? deps.resumirDocumento : resumirDocumento;
+            if (captionDoc) {
+              const resConsulta = fnConsultar(captionDoc, textoPlano);
+              await sock.sendMessage(remoteJid, { text: resConsulta.answer || resConsulta.respuesta || String(resConsulta) }, { quoted: msg });
+            } else {
+              const resumen = fnResumir(textoPlano);
+              await sock.sendMessage(remoteJid, { text: resumen }, { quoted: msg });
+            }
+            continue;
+          } else {
+            await sock.sendMessage(remoteJid, {
+              text: `He recibido el archivo "${docMsg.fileName || 'adjunto'}", pero actualmente solo proceso documentos PDF o texto plano (TXT).`
+            }, { quoted: msg });
+            continue;
+          }
+        } catch (errDoc) {
+          console.error('Error procesando documento entrante:', errDoc.message);
+          await sock.sendMessage(remoteJid, {
+            text: 'No he podido procesar el documento recibido, David. Por favor verifica el archivo y prueba de nuevo.'
+          }, { quoted: msg });
           continue;
         }
       }

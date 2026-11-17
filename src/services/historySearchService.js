@@ -21,7 +21,9 @@ export function registrarStoreHistorialPorDefecto(store) {
 
 function storeDe(deps = {}) {
   if (deps.store) return deps.store;
-  if (deps.carpetaHistorial || deps.rutaArchivo || process.env.DAVIS_HISTORY_DIR) return null;
+  if (deps.carpetaHistorial || deps.rutaArchivo) return null;
+  if (deps.tenantId) return storeHistorialPorDefecto;
+  if (process.env.DAVIS_HISTORY_DIR) return null;
   return storeHistorialPorDefecto;
 }
 

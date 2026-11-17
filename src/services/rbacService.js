@@ -38,7 +38,8 @@ export const CLASIFICACION_HERRAMIENTAS = Object.freeze({
     'configurar_vigilancia_dependencias', 'informe_metricas', 'configurar_informe_metricas',
     'consultar_estado_servidor', 'descargar_multimedia', 'capturar_pagina', 'navegar_y_leer_noticia',
     'resumir_enlace', 'generar_wiki', 'generar_changelog', 'verificar_oferta', 'proximas_llegadas_transporte', 'registrar_parada_favorita',
-    'listar_paradas_favoritas', 'eliminar_parada_favorita'
+    'listar_paradas_favoritas', 'eliminar_parada_favorita',
+    'encender_pc', 'controlar_domotica', 'estado_descargas', 'estimar_factura_oracle'
   ],
   credenciales: [
     'generate_crypto_credential', 'actividad_repos', 'configurar_alertas_repos', 'revisar_pr'
@@ -61,7 +62,8 @@ export const CLASIFICACION_HERRAMIENTAS = Object.freeze({
     'cancelar_vigilancia', 'programar_snooze', 'listar_snoozes', 'cancelar_snooze',
     'registrar_aviso_llegada', 'listar_avisos_llegada', 'cancelar_aviso_llegada',
     'vigilar_ruta', 'listar_rutas_vigiladas', 'cancelar_vigilancia_ruta', 'registrar_precio_ruta',
-    'repasar_flashcards', 'responder_flashcard', 'crear_flashcard'
+    'repasar_flashcards', 'responder_flashcard', 'crear_flashcard',
+    'configurar_radar_ofertas', 'configurar_aviso_descargas'
   ],
   datos_propietario: [
     'planificar_estudio', 'listar_planes_estudio', 'registrar_avance_estudio', 'registrar_candidatura',
@@ -69,7 +71,8 @@ export const CLASIFICACION_HERRAMIENTAS = Object.freeze({
     'registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones',
     'configurar_presupuesto', 'estado_presupuestos', 'escribir_diario', 'leer_diario', 'preguntar_documentos',
     'sugerir_menu', 'recomendar_serie_pelicula', 'iniciar_simulacro_entrevista', 'analizar_cv_oferta',
-    'resumir_apuntes', 'priorizar_ideas', 'consultar_clima'
+    'resumir_apuntes', 'priorizar_ideas', 'consultar_clima',
+    'escanear_ofertas_empleo'
   ],
   datos_tenant: [
     'guardar_memoria', 'buscar_memoria', 'listar_memorias', 'olvidar_memoria', 'buscar_recuerdo_semantico',
