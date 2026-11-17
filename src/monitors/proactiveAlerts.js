@@ -4,10 +4,11 @@ import net from 'net';
 import os from 'os';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { DATA_DIR } from '../config/paths.js';
 
 const execFileAsync = promisify(execFile);
 
-const CARPETA_DATA = path.resolve('data');
+const CARPETA_DATA = DATA_DIR;
 const ARCHIVO_ESTADO = path.join(CARPETA_DATA, 'watchdog_state.json');
 const ARCHIVO_LOG_ALERTAS = path.join(CARPETA_DATA, 'proactive_alerts.log');
 
@@ -134,6 +135,10 @@ export function consultarSaludServidor() {
     totalRamGB,
     libreRamGB,
     porcentajeUso,
+    memoryUsage: porcentajeUso,
+    cpuUsage: loadAvg,
+    ram: porcentajeUso,
+    cpu: loadAvg,
     cpus,
     loadAvg,
     critico: parseFloat(libreRamGB) < 1.0,

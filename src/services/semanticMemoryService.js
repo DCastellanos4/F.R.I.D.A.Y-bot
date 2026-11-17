@@ -101,8 +101,10 @@ export function registrarBuscadorHibridoPorDefecto(buscador) {
 function fuenteDe(options, storePath) {
   // options.soloArchivo (ambito de tenant): nunca cae a la fuente por defecto
   // (SQLite del propietario); solo options.fuente puede sustituir al archivo.
+  if (options && options.fuente) return options.fuente;
   const soloArchivo = !!(options && typeof options === 'object' && options.soloArchivo === true);
-  const fuente = (options && options.fuente) || (soloArchivo ? null : fuenteMemoriasPorDefecto);
+  const esRutaArchivoReal = storePath && storePath !== getDefaultStorePath() && fs.existsSync(storePath);
+  const fuente = (soloArchivo || esRutaArchivoReal) ? null : fuenteMemoriasPorDefecto;
   if (fuente && typeof fuente.leerMemorias === 'function' && typeof fuente.firma === 'function') {
     return fuente;
   }

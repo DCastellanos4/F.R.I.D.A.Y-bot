@@ -78,9 +78,17 @@ export const TOOLS_SCHEMA = [
           type: ['string', 'null'],
           description: 'Identificador unico de la cita'
         },
+        id: {
+          type: ['string', 'null'],
+          description: 'Alias alternativo de cita_id'
+        },
         cliente_nombre: {
           type: ['string', 'null'],
           description: 'Nombre del cliente para localizar y cancelar/liberar la cita'
+        },
+        nombre: {
+          type: ['string', 'null'],
+          description: 'Alias alternativo de cliente_nombre'
         },
         cliente_telefono: {
           type: ['string', 'null'],
@@ -93,8 +101,26 @@ export const TOOLS_SCHEMA = [
         fecha: {
           type: ['string', 'null'],
           description: 'Fecha de la cita (YYYY-MM-DD o ISO) para localizarla con el telefono o nombre'
+        },
+        fecha_inicio: {
+          type: ['string', 'null'],
+          description: 'Alias alternativo de fecha'
+        },
+        tenant_id: {
+          type: ['string', 'null'],
+          description: 'Identificador del tenant'
         }
-      }
+      },
+      anyOf: [
+        { required: ['cita_id'] },
+        { required: ['id'] },
+        { required: ['cliente_nombre'] },
+        { required: ['nombre'] },
+        { required: ['cliente_telefono', 'fecha'] },
+        { required: ['telefono', 'fecha'] },
+        { required: ['cliente_telefono', 'fecha_inicio'] },
+        { required: ['telefono', 'fecha_inicio'] }
+      ]
     }
   },
   {

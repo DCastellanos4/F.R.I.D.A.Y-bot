@@ -84,7 +84,7 @@ export const TOOLS_SCHEMA = [
           description: 'Identificador del tenant'
         }
       },
-      required: ['categoria']
+      required: ['monto', 'concepto', 'categoria']
     }
   },
   {

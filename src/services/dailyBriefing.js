@@ -167,8 +167,10 @@ export async function generarBriefingCompleto(ciudad, deps = {}) {
   try {
     const salud = consultarSaludServidor();
     if (salud) {
-      const cpu = salud.cpuUsage !== undefined ? `${salud.cpuUsage}%` : 'Normal';
-      const memoria = salud.memoryUsage !== undefined ? `${salud.memoryUsage}%` : 'Normal';
+      const cpuVal = salud.cpuUsage ?? salud.cpu ?? salud.loadAvg;
+      const memVal = salud.memoryUsage ?? salud.ram ?? salud.porcentajeUso;
+      const cpu = cpuVal !== undefined ? (String(cpuVal).endsWith('%') ? String(cpuVal) : `${cpuVal}%`) : 'Normal';
+      const memoria = memVal !== undefined ? (String(memVal).endsWith('%') ? String(memVal) : `${memVal}%`) : 'Normal';
       secciones.push(`Estado del host: CPU ${cpu} | Memoria ${memoria} | Operativo`);
     } else {
       secciones.push('Servicios centrales operando dentro de los parametros normales.');

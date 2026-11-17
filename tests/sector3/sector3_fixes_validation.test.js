@@ -211,7 +211,7 @@ describe('Sector 3 - Validacion de los 8 fixes de persistencia y monitores', () 
       const deps = {
         rutaConfig,
         tenantId: 'propietario',
-        ahora: new Date('2026-11-17T12:00:00Z'),
+        ahora: new Date(Date.now() + 60000),
         enqueue: (a) => alertasEncoladas.push(a)
       };
 

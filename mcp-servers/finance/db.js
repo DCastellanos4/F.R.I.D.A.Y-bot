@@ -299,9 +299,22 @@ export function crearFinanceDb(rutaDb = process.env.FINANCE_DB_PATH || RUTA_DB_P
       sql += ' AND fecha >= ? AND fecha <= ?';
       params.push(`${anio}-01-01`, `${anio}-12-31`);
     }
-    if (mes) {
-      sql += ' AND substr(fecha, 1, 7) = ?';
-      params.push(String(mes));
+    if (mes !== undefined && mes !== null && String(mes).trim() !== '') {
+      const mesStr = String(mes).trim();
+      if (/^\d{4}-\d{2}$/.test(mesStr)) {
+        sql += ' AND substr(fecha, 1, 7) = ?';
+        params.push(mesStr);
+      } else {
+        const mesNum = Number(mesStr);
+        if (!Number.isNaN(mesNum) && mesNum >= 1 && mesNum <= 12) {
+          const mesPad = String(mesNum).padStart(2, '0');
+          sql += ' AND substr(fecha, 6, 2) = ?';
+          params.push(mesPad);
+        } else {
+          sql += ' AND substr(fecha, 1, 7) = ?';
+          params.push(mesStr);
+        }
+      }
     }
     if (categoria) {
       sql += ' AND categoria = ?';

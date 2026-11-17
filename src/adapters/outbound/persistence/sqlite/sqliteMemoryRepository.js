@@ -23,6 +23,7 @@ export function crearSqliteMemoryRepository({ memoryStore, crearStoreParaRuta = 
   const cachePorRuta = new Map();
   const storePara = (opts = {}) => {
     if (!opts.rutaArchivo || typeof crearStoreParaRuta !== 'function') return memoryStore;
+    if (opts.rutaArchivo.endsWith('.json')) return null;
     if (!cachePorRuta.has(opts.rutaArchivo)) {
       cachePorRuta.set(opts.rutaArchivo, crearStoreParaRuta(opts.rutaArchivo));
     }

@@ -381,27 +381,80 @@ export function crearSqliteFlashcardsStore(db) {
 // 8. MENSAJES PROGRAMADOS
 // ============================================================================
 export function crearSqliteScheduledMessageStore(db) {
-  const ins = db.prepare('INSERT INTO mensajes_programados (id, tenant_id, jid, mensaje, fecha_envio, estado, creado_en) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET jid = excluded.jid, mensaje = excluded.mensaje, fecha_envio = excluded.fecha_envio, estado = excluded.estado');
-  const selPend = db.prepare("SELECT id, jid, mensaje, fecha_envio, estado, creado_en FROM mensajes_programados WHERE tenant_id = ? AND estado IN ('pendiente', 'programado') ORDER BY fecha_envio ASC");
+  try {
+    const cols = db.prepare('PRAGMA table_info(mensajes_programados)').all();
+    if (!cols.some((c) => c.name === 'whatsapp_id')) {
+      db.exec('ALTER TABLE mensajes_programados ADD COLUMN whatsapp_id TEXT');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_mensajes_prog_whatsapp_id ON mensajes_programados(whatsapp_id)');
+    }
+  } catch {}
+
+  const ins = db.prepare(`
+    INSERT INTO mensajes_programados (id, tenant_id, jid, mensaje, fecha_envio, estado, whatsapp_id, creado_en)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      jid = excluded.jid,
+      mensaje = excluded.mensaje,
+      fecha_envio = excluded.fecha_envio,
+      estado = excluded.estado,
+      whatsapp_id = COALESCE(excluded.whatsapp_id, mensajes_programados.whatsapp_id)
+  `);
+  const selPend = db.prepare("SELECT id, tenant_id, jid, mensaje, fecha_envio, estado, whatsapp_id, creado_en FROM mensajes_programados WHERE tenant_id = ? AND estado IN ('pendiente', 'programado') ORDER BY fecha_envio ASC");
   const upd = db.prepare('UPDATE mensajes_programados SET estado = ? WHERE tenant_id = ? AND id = ?');
   const del = db.prepare('DELETE FROM mensajes_programados WHERE tenant_id = ? AND id = ?');
+  const updWaId = db.prepare('UPDATE mensajes_programados SET whatsapp_id = ? WHERE id = ?');
+  const selPorWaId = db.prepare('SELECT id, tenant_id, jid, mensaje, fecha_envio, estado, whatsapp_id, creado_en FROM mensajes_programados WHERE whatsapp_id = ?');
+  const updEstadoPorWaId = db.prepare('UPDATE mensajes_programados SET estado = ? WHERE whatsapp_id = ?');
+  const selPorId = db.prepare('SELECT id, tenant_id, jid, mensaje, fecha_envio, estado, whatsapp_id, creado_en FROM mensajes_programados WHERE id = ?');
+  const selTodos = db.prepare('SELECT id, tenant_id, jid, mensaje, fecha_envio, estado, whatsapp_id, creado_en FROM mensajes_programados ORDER BY fecha_envio ASC');
 
   return Object.freeze({
-    guardar({ id, jid, mensaje, fechaEnvio, estado = 'pendiente' }, tenantId = TENANT_PROPIETARIO) {
+    guardar({ id, jid, mensaje, fechaEnvio, estado = 'pendiente', whatsappId = null }, tenantId = TENANT_PROPIETARIO) {
       afirmarTenantId(tenantId);
       const mid = id || `msg_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
       const ahora = new Date().toISOString();
-      ins.run(mid, tenantId, String(jid || ''), String(mensaje || ''), String(fechaEnvio || ''), String(estado || 'pendiente'), ahora);
-      return { id: mid, jid, mensaje, fechaEnvio, estado: estado || 'pendiente', creado_en: ahora };
+      ins.run(mid, tenantId, String(jid || ''), String(mensaje || ''), String(fechaEnvio || ''), String(estado || 'pendiente'), whatsappId ? String(whatsappId) : null, ahora);
+      return { id: mid, jid, mensaje, fechaEnvio, estado: estado || 'pendiente', whatsappId: whatsappId || null, creado_en: ahora };
     },
     listarPendientes(tenantId = TENANT_PROPIETARIO) {
       afirmarTenantId(tenantId);
       return selPend.all(tenantId);
     },
     actualizarEstado(id, nuevoEstado, tenantId = TENANT_PROPIETARIO) {
-      afirmarTenantId(tenantId);
-      const info = upd.run(nuevoEstado, tenantId, id);
+      if (tenantId) afirmarTenantId(tenantId);
+      const sql = tenantId
+        ? 'UPDATE mensajes_programados SET estado = ? WHERE tenant_id = ? AND id = ?'
+        : 'UPDATE mensajes_programados SET estado = ? WHERE id = ?';
+      const info = tenantId ? db.prepare(sql).run(nuevoEstado, tenantId, id) : db.prepare(sql).run(nuevoEstado, id);
       return { ok: info.changes > 0 };
+    },
+    actualizarWhatsappId(id, whatsappId) {
+      if (!id || !whatsappId) return false;
+      const info = updWaId.run(String(whatsappId), id);
+      return info.changes > 0;
+    },
+    registrarWhatsappId(id, whatsappId) {
+      return this.actualizarWhatsappId(id, whatsappId);
+    },
+    buscarPorWhatsappId(whatsappId) {
+      if (!whatsappId) return null;
+      return selPorWaId.get(String(whatsappId)) || null;
+    },
+    actualizarEstadoPorWhatsappId(whatsappId, nuevoEstado) {
+      if (!whatsappId || !nuevoEstado) return { ok: false };
+      const info = updEstadoPorWaId.run(nuevoEstado, String(whatsappId));
+      return { ok: info.changes > 0 };
+    },
+    obtenerPorId(id) {
+      if (!id) return null;
+      return selPorId.get(id) || null;
+    },
+    listarTodos(tenantId) {
+      if (tenantId) {
+        afirmarTenantId(tenantId);
+        return db.prepare('SELECT id, tenant_id, jid, mensaje, fecha_envio, estado, whatsapp_id, creado_en FROM mensajes_programados WHERE tenant_id = ? ORDER BY fecha_envio ASC').all(tenantId);
+      }
+      return selTodos.all();
     },
     cancelar(id, tenantId = TENANT_PROPIETARIO) {
       return this.actualizarEstado(id, 'cancelado', tenantId);

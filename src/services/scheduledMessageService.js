@@ -130,6 +130,7 @@ export function leerMensajesProgramados(deps = {}) {
         fechaHoraLocal: formatoLocal,
         enviado: r.estado === 'enviado' || r.estado === 'leido' || r.estado === 'entregado',
         estado: r.estado,
+        whatsappId: r.whatsapp_id || null,
         creadoEn: r.creado_en
       };
     });
@@ -161,7 +162,8 @@ export function guardarMensajesProgramados(lista, deps = {}) {
           jid: m.destinatarioJid || m.destinatario?.jid || (m.numero ? `${m.numero}@s.whatsapp.net` : ''),
           mensaje: m.mensaje,
           fechaEnvio: new Date(m.timestamp || Date.now()).toISOString(),
-          estado: m.estado || (m.enviado ? 'enviado' : 'pendiente')
+          estado: m.estado || (m.enviado ? 'enviado' : 'pendiente'),
+          whatsappId: m.whatsappId || null
         }, m.tenantId || deps.tenantId);
       }
     }
@@ -617,13 +619,22 @@ export function detenerMonitorMensajesProgramados() {
  * Vincula el ID de mensaje de WhatsApp (clave Baileys) con el mensaje
  * programado, para poder reconciliar los acuses de recibo posteriores.
  */
-export function registrarIdWhatsApp(idProgramado, whatsappId) {
+export function registrarIdWhatsApp(idProgramado, whatsappId, deps = {}) {
   if (!idProgramado || !whatsappId) return false;
-  const lista = leerMensajesProgramados();
+  const store = storeDe(deps);
+  if (store) {
+    if (typeof store.registrarWhatsappId === 'function') {
+      return store.registrarWhatsappId(idProgramado, whatsappId);
+    }
+    if (typeof store.actualizarWhatsappId === 'function') {
+      return store.actualizarWhatsappId(idProgramado, whatsappId);
+    }
+  }
+  const lista = leerMensajesProgramados(deps);
   const m = lista.find(x => x.id === idProgramado);
   if (!m) return false;
   m.whatsappId = whatsappId;
-  guardarMensajesProgramados(lista);
+  guardarMensajesProgramados(lista, deps);
   return true;
 }
 
@@ -634,18 +645,56 @@ export function registrarIdWhatsApp(idProgramado, whatsappId) {
  * fallido. Devuelve las transiciones aplicadas para que el llamador decida
  * si notifica a David.
  */
-export function procesarActualizacionEntrega(actualizaciones = []) {
-  const lista = leerMensajesProgramados();
+export function procesarActualizacionEntrega(actualizaciones = [], deps = {}) {
+  const store = storeDe(deps);
   const transiciones = [];
+
+  if (store && (typeof store.buscarPorWhatsappId === 'function' || typeof store.actualizarEstadoPorWhatsappId === 'function')) {
+    for (const upd of actualizaciones || []) {
+      const idWa = upd?.key?.id;
+      if (!idWa) continue;
+      const m = typeof store.buscarPorWhatsappId === 'function' ? store.buscarPorWhatsappId(idWa) : null;
+      if (!m) continue;
+
+      const estado = upd?.update?.status;
+      const jid = m.jid || '';
+      const num = jid.includes('@') ? jid.split('@')[0] : jid;
+
+      if (upd?.update?.error) {
+        if (m.estado !== 'fallido') {
+          if (typeof store.actualizarEstadoPorWhatsappId === 'function') {
+            store.actualizarEstadoPorWhatsappId(idWa, 'fallido');
+          } else if (typeof store.actualizarEstado === 'function') {
+            store.actualizarEstado(m.id, 'fallido', m.tenant_id);
+          }
+          transiciones.push({ id: m.id, numero: num, estado: 'fallido' });
+        }
+      } else if (typeof estado === 'number' && estado >= 4 && m.estado !== 'leido') {
+        if (typeof store.actualizarEstadoPorWhatsappId === 'function') {
+          store.actualizarEstadoPorWhatsappId(idWa, 'leido');
+        } else if (typeof store.actualizarEstado === 'function') {
+          store.actualizarEstado(m.id, 'leido', m.tenant_id);
+        }
+        transiciones.push({ id: m.id, numero: num, estado: 'leido' });
+      } else if (typeof estado === 'number' && estado >= 3 && (m.estado === 'enviado' || m.estado === 'programado' || m.estado === 'pendiente')) {
+        if (typeof store.actualizarEstadoPorWhatsappId === 'function') {
+          store.actualizarEstadoPorWhatsappId(idWa, 'entregado');
+        } else if (typeof store.actualizarEstado === 'function') {
+          store.actualizarEstado(m.id, 'entregado', m.tenant_id);
+        }
+        transiciones.push({ id: m.id, numero: num, estado: 'entregado' });
+      }
+    }
+    return transiciones;
+  }
+
+  const lista = leerMensajesProgramados(deps);
   let huboCambios = false;
 
   for (const upd of actualizaciones || []) {
     const idWa = upd?.key?.id;
     if (!idWa) continue;
     const m = lista.find(x => x.whatsappId === idWa);
-    // Solo fichas con whatsappId (o sea, ya transmitidas); no se exige
-    // enviado=true: el acuse puede llegar DURANTE el despacho, antes de que
-    // el flag se escriba, y ese acuse no puede perderse.
     if (!m) continue;
 
     const estado = upd?.update?.status;
@@ -660,7 +709,7 @@ export function procesarActualizacionEntrega(actualizaciones = []) {
       m.estado = 'leido';
       transiciones.push({ id: m.id, numero: m.numero, estado: 'leido' });
       huboCambios = true;
-    } else if (typeof estado === 'number' && estado >= 3 && (m.estado === 'enviado' || m.estado === 'programado')) {
+    } else if (typeof estado === 'number' && estado >= 3 && (m.estado === 'enviado' || m.estado === 'programado' || m.estado === 'pendiente')) {
       m.estado = 'entregado';
       transiciones.push({ id: m.id, numero: m.numero, estado: 'entregado' });
       huboCambios = true;
@@ -668,7 +717,7 @@ export function procesarActualizacionEntrega(actualizaciones = []) {
   }
 
   if (huboCambios) {
-    guardarMensajesProgramados(lista);
+    guardarMensajesProgramados(lista, deps);
   }
   return transiciones;
 }

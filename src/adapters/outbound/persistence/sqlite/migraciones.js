@@ -472,6 +472,14 @@ export const MIGRACIONES = [
     sql: `
       ALTER TABLE estudio_flashcards ADD COLUMN ultima_alerta_en TEXT;
     `
+  },
+  {
+    version: 14,
+    nombre: '014_mensajes_programados_whatsapp_id',
+    sql: `
+      ALTER TABLE mensajes_programados ADD COLUMN whatsapp_id TEXT;
+      CREATE INDEX IF NOT EXISTS idx_mensajes_prog_whatsapp_id ON mensajes_programados(whatsapp_id);
+    `
   }
 ];
 

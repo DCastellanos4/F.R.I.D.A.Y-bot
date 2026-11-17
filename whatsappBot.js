@@ -15,7 +15,7 @@ import { DATA_DIR } from './src/config/paths.js';
 // El bot (capa de canal) ya no importa el cerebro: traduce cada mensaje de
 // Baileys al puerto de entrada InboundMessage y lo entrega al procesador
 // compuesto en la raiz de composicion, que inyecta los puertos de salida.
-import { procesarMensajeEntrante, crearPuenteWhatsAppTenantsCompuesto } from './src/composition/container.js';
+import { procesarMensajeEntrante, crearPuenteWhatsAppTenantsCompuesto, contenedorCompartido } from './src/composition/container.js';
 import { chatCompletion as chatCompletionPorDefecto } from './src/core/llmService.js';
 import { crearInboundDesdeWhatsApp } from './src/adapters/inbound/whatsapp/whatsappInboundAdapter.js';
 import { crearWhatsAppChannelAdapter } from './src/adapters/outbound/channels/whatsappChannelAdapter.js';
@@ -1306,6 +1306,35 @@ Prueba a decirme:
       }
     }
 }
+
+export function registrarApagadoLimpio(deps = {}) {
+  const persistencia = deps.persistencia || contenedorCompartido?.persistencia;
+  const cerrar = () => {
+    try {
+      if (persistencia && typeof persistencia.cerrar === 'function') {
+        persistencia.cerrar();
+        console.log('[WhatsAppBot] Base de datos SQLite cerrada limpiamente.');
+      }
+    } catch (err) {
+      console.error('[WhatsAppBot] Error al cerrar SQLite:', err?.message || err);
+    }
+  };
+
+  const handler = (senal) => {
+    console.log(`[WhatsAppBot] Recibida senal ${senal}. Cierre limpio de SQLite...`);
+    cerrar();
+    if (deps.salir !== false && process.env.NODE_ENV !== 'test') {
+      process.exit(0);
+    }
+  };
+
+  process.once('SIGINT', () => handler('SIGINT'));
+  process.once('SIGTERM', () => handler('SIGTERM'));
+
+  return { cerrar, handler };
+}
+
+registrarApagadoLimpio();
 
 // Iniciar automáticamente
 const isTest = process.env.NODE_ENV === 'test' ||

@@ -13,6 +13,14 @@
 
 import { afirmarMcpClient } from '../../../ports/outbound/McpClientPort.js';
 
+const HERRAMIENTAS_CONOCIDAS = {
+  booking: ['consultar_disponibilidad', 'reservar_cita', 'cancelar_cita', 'listar_citas'],
+  devops: ['ejecutar_comando_bash', 'consultar_estado_servidor', 'inspeccionar_docker', 'verificar_almacenamiento', 'comprobar_certificados_ssl'],
+  finance: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'extraer_ticket_vision', 'exportar_resumen_trimestral'],
+  lifestyle: ['gestionar_habitos', 'gestionar_lista_compra', 'consultar_trenes_renfe', 'consultar_radar_vuelos'],
+  media: ['descargar_multimedia', 'transcribir_audio', 'sintetizar_voz']
+};
+
 export class McpRegistry {
   constructor() {
     /** @type {Map<string, Object>} */
@@ -36,13 +44,8 @@ export class McpRegistry {
 
     this.domainServers.set(domain, adapter);
 
-    const herramientasConocidas = {
-      booking: ['consultar_disponibilidad', 'reservar_cita', 'cancelar_cita', 'listar_citas'],
-      devops: ['ejecutar_comando_bash', 'consultar_estado_servidor', 'inspeccionar_docker', 'verificar_almacenamiento', 'comprobar_certificados_ssl'],
-      finance: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'extraer_ticket_vision', 'exportar_resumen_trimestral']
-    };
-    if (herramientasConocidas[domain]) {
-      for (const toolName of herramientasConocidas[domain]) {
+    if (HERRAMIENTAS_CONOCIDAS[domain]) {
+      for (const toolName of HERRAMIENTAS_CONOCIDAS[domain]) {
         this.toolToDomain.set(toolName, domain);
       }
     }
@@ -60,13 +63,8 @@ export class McpRegistry {
     if (!name || typeof name !== 'string') return false;
     if (this.toolToDomain.has(name)) return true;
 
-    const herramientasConocidas = {
-      booking: ['consultar_disponibilidad', 'reservar_cita', 'cancelar_cita', 'listar_citas'],
-      devops: ['ejecutar_comando_bash', 'consultar_estado_servidor', 'inspeccionar_docker', 'verificar_almacenamiento', 'comprobar_certificados_ssl'],
-      finance: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'extraer_ticket_vision', 'exportar_resumen_trimestral']
-    };
     for (const domain of this.domainServers.keys()) {
-      if (herramientasConocidas[domain]?.includes(name)) {
+      if (HERRAMIENTAS_CONOCIDAS[domain]?.includes(name)) {
         this.toolToDomain.set(name, domain);
         return true;
       }
