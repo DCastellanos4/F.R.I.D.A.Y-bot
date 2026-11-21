@@ -290,7 +290,7 @@ export function analizarIntencion(mensaje) {
     mensajeProgramado: /(programa(r)?\s+(un\s+)?mensaje|manda(r)?\s+(un\s+)?mensaje|envia(r)?\s+(un\s+)?mensaje|(manda|envia|escribe)(r)?\s+(un\s+|por\s+)?whats?app|escribe(le)?\s+a\s+(\+?\d+|[a-zA-Z]+)|mandale\s+(un\s+)?mensaje|enviale\s+(un\s+)?mensaje|(explica|cuenta|comenta|comunica|transmite)(le)?\s+a\s+[a-zA-Z]+(\s+[a-zA-Z]+){0,6}\s+(en\s+un\s+mensaje|en\s+un\s+whatsapp|por\s+whatsapp)|mensajes?\s+programados?|cancela(r)?\s+(el\s+)?mensaje\s+programado|dile\s+a\s+(\+?\d{5,}|[a-zA-Z]+)(\s+[a-zA-Z]+){0,3}\s+(que|en\s+\d+\s*(min|hora|dia|seg)|ahora|esta\s+(noche|tarde|manana)))/i,
 
     // Recordatorios, avisos y alarmas temporales personales
-    esRecordatorio: /(recuerda|record|acuerda|acord|avis|alarm|despiert|agend|cita|evento|tareas? pendientes?|que (tengo|hay) (pendiente|que hacer)|a las \d+|en \d+\s*(min|hora|dia|seg)|manana a las|pon (un )?(recordatorio|aviso|alarma)|cancela.*recordatorio|elimina.*recordatorio|borra.*recordatorio)/i,
+    esRecordatorio: /(recuerda|record|acuerda|acord|avis|alarm|despiert|agend|cita|evento|tareas? pendientes?|que (tengo|hay) (pendiente|que hacer)|a las \d+|en \d+\s*(min|hora|dia|seg)|manana a las|pon (un )?(recordatorio|aviso|alarma)|cancela.*recordatorio|elimina.*recordatorio|borra.*recordatorio|(?:dime|ver|mostrar|muestra|lista(?:r)?|qu[eé]|cu[aá]les)\s+(?:los\s+|mis\s+)?recordatorios|(?:mis\s+)?recordatorios\s+(?:pendientes|que\s+tengo|guardados))/i,
 
     // Sniper de precios (Item Tracker)
     sniper: /(vigila|vigilar|precio|precios|oferta|ofertas|baja de|baje de|chollos?|gangas?|stock|disponibilidad de (stock|producto)|cuesta.*menos|cuanto vale|cuanto cuesta|amazon\.|wallapop|pccomponentes|aliexpress|productos? (vigilados?|en seguimiento)|que (vigilas|sigues|rastreas)|tracker|item tracker|tracking|seguimiento|deja de vigilar|cancela.*vigilancia)/i,
@@ -328,27 +328,27 @@ export function analizarIntencion(mensaje) {
     // Empleo y practicas: radar de ofertas y CRM de candidaturas
     empleo: /(pr[aá]cticas\s+(de\s+)?(empresa|curriculares)?|oferta(s)?\s+de\s+(empleo|trabajo|pr[aá]cticas)|busca(r)?\s+(empleo|trabajo|ofertas)|candidatura(s)?|curr[ií]culum|\bcv\b|entrevista\s+(de\s+)?(trabajo|empleo)|infojobs|linkedin|radar\s+de\s+ofertas|seguimiento\s+de\s+candidatura)/i,
     estudio: /(ex[aá]men(es)?|\bestudiar\b|plan\s+de\s+estudio|temario|asignatura(s)?|flashcard(s)?|tarjeta(s)?\s+de\s+repaso|repaso\s+espaciado|\brepasar\b)/i,
-    finanzas: /(\bgastos?\b|\bgast[eé]\b|\btickets?\b|recibo(s)?|suscripci[oó]n(es)?|presupuesto(s)?|\bfinanzas\b|cu[aá]nto\s+(he\s+|llevo\s+)?gastado|renovaci[oó]n\s+de)/i,
-    procesos: /(\bvigil\w*\s+(el\s+|un\s+)?proceso|proceso\s+(caido|vivo|muerto|parado)|procesos\s+del\s+(vps|servidor)|vigilancia\s+de\s+procesos)/i,
+    finanzas: /(\bgastos?\b|\bgast[eé]\b|\btickets?\b|recibo(s)?|suscripci[oó]n(es)?|presupuesto(s)?|\bfinanzas\b|cu[aá]nto\s+(he\s+|llevo\s+)?gastado|renovaci[oó]n\s+de|(?:dime|ver|mostrar|muestra|lista(?:r)?|qu[eé]|cu[aá]les)\s+(?:los\s+|mis\s+)?(?:gastos|suscripciones|presupuestos)|(?:mis\s+)?gastos(?:\s+(?:del\s+mes|de\s+este\s+mes|recientes))?)/i,
+    procesos: /(\bvigil\w*\s+(el\s+|un\s+)?proceso|proceso\s+(caido|vivo|muerto|parado)|procesos\s+del\s+(vps|servidor)|vigilancia\s+de\s+procesos|(?:dime|ver|mostrar|muestra|lista(?:r)?|qu[eé]|cu[aá]les)\s+(?:los\s+|mis\s+)?procesos(?:\s+vigilados)?)/i,
     // Transporte publico de Madrid (bloque extra aprobado por David, 5 nov 2026)
     transporte: /(\bcercan[ií]as\b|\bEMT\b|\b(?:buses|autob[uú]s(?:es)?)\b|\bbus\b(?!\s+(?:de\s+datos|can|serie|usb|pci)\b)|parada\s+(de\s+)?(bus|autob[uú]s|emt)|pr[oó]xim[oa]s?\s+(bus|autob[uú]s|tren(es)?|cercan[ií]as|ave)|cu[aá]ndo\s+(llega|viene|pasa|sale)n?\s+(el\s+|mi\s+)?(bus|autob[uú]s|tren|cercan[ií]as|ave)|cu[aá]nto\s+(falta|tarda)n?\s+(el\s+|mi\s+)?(bus|autob[uú]s|tren|cercan[ií]as)|trenes?\s+(de|desde|hacia|a)\s+\w|trenes?\s+que\s+(?:salen|sale|llegan|llega|vienen|viene|parten|parte|pasan|pasa|hay)|(?:qu[eé]|cu[aá]les|dime|hay|tienes|busco|quiero|sabes)\s+[^.?!]{0,30}\btrenes?\b[^.?!]{0,30}\b(?:de|desde|hacia|para)\s+\w)/i,
     // Segundo cerebro: contactos, busqueda semantica, digest, wiki, captura web y preguntas a documentos
     cerebro: /(agenda(?:\s+de\s+contactos)?|(?:dime|qu[eé]|cu[aá]les|ver|mostrar|muestra|lista(?:r)?|consultar?)\s+(?:los\s+|mis\s+|qu[eé]\s+)?contactos|(?:mis\s+)?contactos(?:\s+(?:guardados|que\s+tengo|registrados))?|buscar?\s+contacto|contacto\s+de|qu[eé]\s+(s[eé]|tengo)\s+(de|sobre)\s+\w|busca(r)?\s+(en\s+)?(mis\s+)?(recuerdos|memorias|notas)|digest|resumen\s+(de\s+)?(mi\s+)?segundo\s+cerebro|\bwiki\b|guarda(r)?\s+(esta\s+)?(p[aá]gina|pagina|web|enlace)\s+en\s+(mis\s+)?notas|captura(r)?\s+(esta\s+)?(p[aá]gina|web)|qu[eé]\s+dicen\s+mis\s+(apuntes|notas|documentos)|pregunta\s+(a|sobre)\s+mis\s+(apuntes|notas|documentos))/i,
     // Bienestar (nº 43-50): diario, habitos, menus, compra, recomendaciones, quedadas, deporte y modo nocturno
-    bienestar: /(\bdiario\b|apunta(r)?\s+en\s+(el\s+|mi\s+)?diario|qu[eé]\s+(escrib[ií]|puse)\s+(en\s+)?(el\s+)?diario|\bh[aá]bito|h[aá]bitos|racha\s+de\s+d[ií]as|men[uú]\s+(de\s+la\s+)?semana|men[uú]s?\s+semanal|qu[eé]\s+(como|cenamos?|comemos)|lista\s+de\s+la\s+compra|a[nñ]ade\s+.\s+a\s+la\s+compra|tacha(r)?\s+.\s+de\s+la\s+compra|recomi[eé]nda(me)?\s+(una\s+)?(pel[ií]cula|peli|serie)|qu[eé]\s+(veo|me\s+pongo\s+a\s+ver)|\bquedada\b|organiza(r)?\s+(una\s+)?quedada|invitaci[oó]n\s+(a\s+|de\s+)?(la\s+)?quedada|resumen\s+deportivo|qu[eé]\s+(ha\s+pasado|pasa)\s+en\s+(el\s+)?deporte|resultados?\s+deportiv|modo\s+(nocturno|desconexi[oó]n)|no\s+me\s+molestes\s+por\s+la\s+noche|silencia\s+los\s+avisos)/i,
+    bienestar: /(\bdiario\b|apunta(r)?\s+en\s+(el\s+|mi\s+)?diario|qu[eé]\s+(escrib[ií]|puse)\s+(en\s+)?(el\s+)?diario|\bh[aá]bito|h[aá]bitos|racha\s+de\s+d[ií]as|men[uú]\s+(de\s+la\s+)?semana|men[uú]s?\s+semanal|qu[eé]\s+(como|cenamos?|comemos)|lista\s+de\s+la\s+compra|a[nñ]ade\s+.\s+a\s+la\s+compra|tacha(r)?\s+.\s+de\s+la\s+compra|recomi[eé]nda(me)?\s+(una\s+)?(pel[ií]cula|peli|serie)|qu[eé]\s+(veo|me\s+pongo\s+a\s+ver)|\bquedada\b|organiza(r)?\s+(una\s+)?quedada|invitaci[oó]n\s+(a\s+|de\s+)?(la\s+)?quedada|resumen\s+deportivo|qu[eé]\s+(ha\s+pasado|pasa)\s+en\s+(el\s+)?deporte|resultados?\s+deportiv|modo\s+(nocturno|desconexi[oó]n)|no\s+me\s+molestes\s+por\s+la\s+noche|silencia\s+los\s+avisos|(?:dime|ver|mostrar|muestra|lista(?:r)?|qu[eé]|cu[aá]les)\s+(?:los\s+|mis\s+)?(?:h[aá]bitos|quedadas|cosas\s+de\s+la\s+compra)|qu[eé]\s+(?:tengo|hay)\s+en\s+la\s+compra|(?:mis\s+)?quedadas(?:\s+pendientes)?)/i,
     // Carrera y estudios (nº 3, 4, 7, 8): simulacro de entrevista, CV contra oferta, resumen de apuntes y calendario de entregas
     carrera: /(simulacro\s+de\s+entrevista|practica(r)?\s+(una\s+)?entrevista|entrevista\s+(t[eé]cnica|de\s+trabajo)|analiza(r)?\s+(mi\s+)?cv|encaja(r)?\s+(mi\s+)?cv|mi\s+cv\s+(con|para)|resume(me)?\s+(mis\s+)?apuntes|resumen\s+de\s+(mis\s+)?apuntes|apunta(r)?\s+(un(a)?\s+)?(entrega|ex[aá]men)|\bentregas?\b\s+(y|o)\s+ex[aá]menes|qu[eé]\s+(entregas|ex[aá]menes)\s+(tengo|hay)|cu[aá]ndo\s+(es|tengo)\s+(el|la|mi)\s+(ex[aá]men|entrega)|calendario\s+de\s+(entregas|ex[aá]menes))/i,
     // Ops del bot (bloque 13): dependencias, metricas, repos, backup
     ops: /(audita(r)?\s+(las\s+)?dependencias|npm\s+audit|vulnerabilidades\s+de\s+(las\s+)?dependencias|m[eé]tricas\s+del\s+bot|informe\s+(semanal\s+)?de\s+m[eé]tricas|actividad\s+de\s+(mis\s+)?repos|alertas\s+de\s+(mis\s+)?repos|backup\s+de\s+(la\s+)?sesi[oó]n|copia\s+de\s+seguridad\s+(de\s+la\s+)?sesi[oó]n)/i,
     hogar: /(enciende\s+(el|mi)\s+(pc|ordenador)|wake[ -]?on[ -]?lan|dispositivos\s+(conectados\s+)?(a|en|de)\s+(mi\s+|la\s+)?red|vigilancia\s+de\s+(mi\s+|la\s+)?red|dispositivos\s+desconocidos|qui[eé]n\s+(est[aá]|hay)\s+conectado|dom[oó]tica|home\s+assistant|enciende\s+(la\s+)?(luz|l[aá]mpara)|apaga\s+(la\s+)?(luz|l[aá]mpara)|panel\s+de\s+descargas|estado\s+de\s+(las\s+)?descargas|avisa(me)?\s+cuando\s+(termine|acabe|baje)\s+(la\s+)?descarga|aviso\s+de\s+descargas|factura\s+de\s+oracle|term[oó]metro\s+de\s+oracle|cu[aá]nto\s+(me\s+)?(cuesta|costar[aá]|gasta)\s+(el\s+)?(oracle|vps|servidor))/i,
-    viajes: /(vigila(r)?\s+(el|un|mi)\s+(vuelo|tren)|vuelos?\s+(a|para|hacia)\s+\w|tren(es)?\s+(a|para|hacia)\s+\w|rutas?\s+(de\s+)?(vuelos?|tren(es)?)|avisa(me)?\s+si\s+baja\s+(el\s+)?(vuelo|tren|billete)|seguimiento\s+de\s+(vuelos|trenes)|billete(s)?\s+(de\s+)?(avion|tren|renfe)|escapada\s+(a|en)\s+\w|precio\s+del\s+(vuelo|tren|billete))/i,
+    viajes: /(vigila(r)?\s+(el|un|mi)\s+(vuelo|tren)|vuelos?\s+(a|para|hacia)\s+\w|tren(es)?\s+(a|para|hacia)\s+\w|rutas?\s+(de\s+)?(vuelos?|tren(es)?)|avisa(me)?\s+si\s+baja\s+(el\s+)?(vuelo|tren|billete)|seguimiento\s+de\s+(vuelos|trenes)|billete(s)?\s+(de\s+)?(avion|tren|renfe)|escapada\s+(a|en)\s+\w|precio\s+del\s+(vuelo|tren|billete)|(?:dime|ver|mostrar|muestra|lista(?:r)?|qu[eé]|cu[aá]les)\s+(?:las\s+|mis\s+)?rutas(?:\s+vigiladas)?)/i,
     // DevTools (bloque 12): revisor PRs, changelog, pair programming, ideas
-    devtools: /(revisa(r)?\s+(la\s+|el\s+|esta\s+)?(pr|pull\s+request)|changelog|guia(r)?\s+(la\s+)?depuraci[oó]n|depura(r)?\s+(este|el|mi)\s+(fallo|error|c[oó]digo)|pair\s+programming|tengo\s+un\s+fallo|anota(r)?\s+(esta\s+|una\s+)?idea|mis\s+ideas|prioriza(r)?\s+(mis\s+)?ideas|recorrido\s+de\s+(mi|tu|esa|esta|la|un)\s+(respuesta|peticion|mensaje)|como\s+has\s+llegado\s+a\s+(esa|esta|tu)\s+respuesta|explica(r|me)?\s+(el\s+)?recorrido|que\s+herramientas\s+has\s+usado)/i,
+    devtools: /(revisa(r)?\s+(la\s+|el\s+|esta\s+)?(pr|pull\s+request)|changelog|guia(r)?\s+(la\s+)?depuraci[oó]n|depura(r)?\s+(este|el|mi)\s+(fallo|error|c[oó]digo)|pair\s+programming|tengo\s+un\s+fallo|anota(r)?\s+(esta\s+|una\s+)?idea|mis\s+ideas|prioriza(r)?\s+(mis\s+)?ideas|recorrido\s+de\s+(mi|tu|esa|esta|la|un)\s+(respuesta|peticion|mensaje)|como\s+has\s+llegado\s+a\s+(esa|esta|tu)\s+respuesta|explica(r|me)?\s+(el\s+)?recorrido|que\s+herramientas\s+has\s+usado|(?:dime|ver|mostrar|muestra|lista(?:r)?|qu[eé]|cu[aá]les)\s+(?:las\s+|mis\s+)?ideas)/i,
     // Compras bajo demanda (extra aprobado por David, 5 nov 2026): sin compras ni vigilancia
     compras: /(busca(r)?\s+(el\s+|la\+|un\s+|una\s+)?(producto|oferta|chollo)|compara(r)?\s+precios|d[oó]nde\s+(lo\s+|la\s+)?(compro|consigo)|precio\s+(de|del)\s+(producto|oferta)|verifica(r)?\s+(esta\s+|esa\s+)?(oferta|ficha|tienda)|est[aá]\s+(disponible|en\s+stock)|comprobar\s+(precio|stock|disponibilidad))/i,
     // OJO: "que te dije" NO va aqui; se resuelve arriba entre memoria y
     // historial (esConsultaMemoriaNatural / esConsultaHistorialChat).
-    comunicacion: /(\btraduc|\btraductor|qu[eé]\s+le\s+respondo|sugier\w*\s+respuesta|busca(r)?\s+en\s+(el\s+)?historial|cumplea[nñ]os|\bcumple\b|fecha\s+se[nñ]alada|aniversario|\bsnooze\b|recu[eé]rdame\s+(este|el|lo de este)\s+(chat|grupo)|estad[ií]sticas?\s+(del|de este|de este grupo|grupo)|cu[aá]ndo\s+(llegue|llego)|av[ií]sa(me)?\s+cuando\s+llegue|aviso\s+de\s+llegada)/i,
+    comunicacion: /(\btraduc|\btraductor|qu[eé]\s+le\s+respondo|sugier\w*\s+respuesta|busca(r)?\s+en\s+(el\s+)?historial|cumplea[nñ]os|\bcumple\b|fecha\s+se[nñ]alada|aniversario|\bsnooze\b|recu[eé]rdame\s+(este|el|lo de este)\s+(chat|grupo)|estad[ií]sticas?\s+(del|de este|de este grupo|grupo)|cu[aá]ndo\s+(llegue|llego)|av[ií]sa(me)?\s+cuando\s+llegue|aviso\s+de\s+llegada|(?:dime|ver|mostrar|muestra|lista(?:r)?|qu[eé]|cu[aá]les)\s+(?:las\s+|mis\s+)?(?:fechas?\s+se[nñ]aladas?|snoozes?|cumplea[nñ]os|aniversarios)|pr[oó]xim[ao]s?\s+(?:fechas?\s+se[nñ]aladas?|cumplea[nñ]os))/i,
 
     // Terminal, consola bash y codigos 2FA OTP (Sector 2)
     bash: /(consola|terminal|bash|comando|ejecuta|ejecutar|lanzar|shell|otp|2fa|autorizar|confirmar\s+otp|codigo\s+de\s+confirmacion|uptime|top|free|df|ps\s+aux|pm2\s+status|pm2\s+restart|systemctl)/i,
@@ -437,7 +437,7 @@ export function analizarIntencion(mensaje) {
   let matchCuota = intents.cuota.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
-  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchContactos && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro && !matchBienestar && !matchCarrera && !matchCompras && !matchDevtools && !matchOps && !matchHogar && !matchViajes && !matchGenerativo) {
+  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchContactos && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro && !matchBienestar && !matchCarrera && !matchCompras && !matchDevtools && !matchOps && !matchHogar && !matchViajes && !matchGenerativo && !matchCalendario && !matchGithub && !matchCuota && !matchFinanzas && !matchProcesos && !matchComunicacion && !matchSkills) {
     return { herramientas: [], intenciones: ['conversacion'], safetyNet: false, esChitChat: true };
   }
 
@@ -925,7 +925,8 @@ function destinatarioVerificado(numero, mensajeUsuario, historial, opciones = {}
     const contactos = listarContactos({
       rutaArchivo: opciones.rutaArchivoContactos,
       rutaArchivoMemorias: opciones.rutaArchivoMemorias,
-      tenantId: opciones.tenantId
+      tenantId: opciones.tenantId,
+      store: opciones.contactsStore
     });
     for (const c of contactos) {
       if (c.telefono && numerosCoinciden(c.telefono, numero)) return true;
@@ -1117,6 +1118,13 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
           fecha: args.fecha,
           inmediato: args.inmediato,
           tenantId: opciones.tenantId
+        }, {
+          rutaArchivo: opciones.rutaArchivoProgramados,
+          tenantId: opciones.tenantId,
+          store: opciones.scheduledMessageStore,
+          contactsStore: opciones.contactsStore,
+          knowledgeGraphStore: opciones.knowledgeGraphStore,
+          memoryStore: opciones.memoryRepository || opciones.memoryStore
         });
         if (res.ok) {
           if (res.inmediato) {
@@ -1128,14 +1136,14 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
           resultadoTool = `No ha sido posible programar el mensaje, señor. Detalle: ${res.error}`;
         }
       } else if (nombreFuncion === 'listar_mensajes_programados') {
-        const lista = listarMensajesProgramados(true, { rutaArchivo: opciones.rutaArchivoProgramados, tenantId: opciones.tenantId });
+        const lista = listarMensajesProgramados(true, { rutaArchivo: opciones.rutaArchivoProgramados, tenantId: opciones.tenantId, store: opciones.scheduledMessageStore });
         if (lista.length === 0) {
           resultadoTool = 'No hay ningún mensaje de WhatsApp programado pendiente de envío, señor.';
         } else {
           resultadoTool = 'Mensajes de WhatsApp programados pendientes:\n' + lista.map((m, i) => `${i + 1}. [${m.fechaHoraLocal}] Para +${m.numero}: "${m.mensaje}" (ID: ${m.id})`).join('\n');
         }
       } else if (nombreFuncion === 'cancelar_mensaje_programado') {
-        const res = cancelarMensajeProgramado(args.criterio, { rutaArchivo: opciones.rutaArchivoProgramados, tenantId: opciones.tenantId });
+        const res = cancelarMensajeProgramado(args.criterio, { rutaArchivo: opciones.rutaArchivoProgramados, tenantId: opciones.tenantId, store: opciones.scheduledMessageStore });
         if (res.ok) {
           resultadoTool = res.mensaje || 'Mensaje programado cancelado con éxito, señor.';
         } else {
@@ -1420,12 +1428,17 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
         const res = await proximasLlegadas({ parada: paradaFinal, tipo: args.tipo, codigo: args.codigo, destino: destinoFinal }, depsTransporteDe(opciones));
         resultadoTool = textoResultadoTransporte(res);
       } else if (nombreFuncion === 'registrar_contacto') {
-        const res = registrarContacto({ nombre: args.nombre, telefono: args.telefono, relacion: args.relacion, email: args.email, notas: args.notas }, { rutaArchivo: opciones.rutaArchivoContactos });
+        const res = registrarContacto({ nombre: args.nombre, telefono: args.telefono, relacion: args.relacion, email: args.email, notas: args.notas }, {
+          rutaArchivo: opciones.rutaArchivoContactos,
+          tenantId: opciones.tenantId,
+          store: opciones.contactsStore
+        });
         resultadoTool = res.ok ? `Ficha guardada, David: ${res.contacto.nombre}${res.contacto.telefono ? ` (${res.contacto.telefono})` : ''}.` : res.error;
       } else if (nombreFuncion === 'buscar_contacto') {
         const res = buscarContacto(args.criterio, {
           rutaArchivo: opciones.rutaArchivoContactos,
           tenantId: opciones.tenantId,
+          store: opciones.contactsStore,
           knowledgeGraphStore: opciones.knowledgeGraphStore,
           memoryStore: opciones.memoryRepository || opciones.memoryStore
         });
@@ -1521,12 +1534,20 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
         const res = await recomendarSeriePelicula({ genero: args.genero, tipo: args.tipo }, { rutaArchivo: opciones.rutaArchivoRecomendador, chatCompletion: opciones.chatCompletion, obtenerMemorias: opciones.obtenerMemorias });
         resultadoTool = res.ok ? res.recomendacion : res.error;
       } else if (nombreFuncion === 'crear_quedada') {
-        const res = crearQuedada({ titulo: args.titulo, fecha: args.fecha, hora: args.hora, lugar: args.lugar, participantes: args.participantes }, { rutaArchivo: opciones.rutaArchivoQuedadas });
+        const res = crearQuedada({ titulo: args.titulo, fecha: args.fecha, hora: args.hora, lugar: args.lugar, participantes: args.participantes }, {
+          rutaArchivo: opciones.rutaArchivoQuedadas,
+          tenantId: opciones.tenantId,
+          store: opciones.quedadasStore
+        });
         resultadoTool = res.ok
           ? `Quedada registrada, David: "${res.quedada.titulo}"${res.quedada.fecha ? ` el ${res.quedada.fecha}` : ''}${res.quedada.hora ? ` a las ${res.quedada.hora}` : ''}${res.quedada.lugar ? ` en ${res.quedada.lugar}` : ''}. Si quieres, te redacto la invitacion para que la revises y la mandes tu.`
           : res.error;
       } else if (nombreFuncion === 'listar_quedadas') {
-        const lista = listarQuedadas({ rutaArchivo: opciones.rutaArchivoQuedadas });
+        const lista = listarQuedadas({
+          rutaArchivo: opciones.rutaArchivoQuedadas,
+          tenantId: opciones.tenantId,
+          store: opciones.quedadasStore
+        });
         resultadoTool = lista.length === 0
           ? 'No tienes quedadas registradas. Dime por ejemplo: "apunta una quedada: cena con la uni el viernes a las 21:00".'
           : 'Tus quedadas:\n' + lista.map((q) => `- ${q.titulo}${q.fecha ? `, ${q.fecha}` : ''}${q.hora ? ` ${q.hora}` : ''}${q.lugar ? `, en ${q.lugar}` : ''}${q.participantes.length ? ` (con ${q.participantes.join(', ')})` : ''}`).join('\n');
@@ -1851,7 +1872,7 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
           ? 'No hay presupuestos configurados. Fija uno con "configurar_presupuesto".'
           : 'Presupuestos del mes:\n' + filas.map((f) => `- ${f.categoria}: ${f.gastado.toFixed(2)} de ${f.limite.toFixed(2)} EUR (${f.porcentaje}%)${f.alerta ? ' - OJO: por encima del 80%' : ''}`).join('\n');
       } else if (nombreFuncion === 'crear_flashcard') {
-        const depsFlash = { rutaArchivo: opciones.rutaArchivoFlashcards };
+        const depsFlash = { rutaArchivo: opciones.rutaArchivoFlashcards, tenantId: opciones.tenantId, store: opciones.flashcardsStore };
         const res = agregarFlashcard({ asignatura: args.asignatura, pregunta: args.pregunta, respuesta: args.respuesta }, depsFlash);
         if (res.ok) {
           const resumen = resumenFlashcards(depsFlash);
@@ -1864,7 +1885,7 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
         const quiereActivarF = args.activo === true;
         const mensajePideActivarF = /(activa(r|s|do)?|enciend(e|er)|pon\s+en\s+marcha)\s+.{0,30}(repaso|flashcard)/i.test(opciones.mensajeUsuario || '');
         const activoAplicarF = quiereActivarF ? (mensajePideActivarF ? true : null) : (args.activo ?? null);
-        const depsFlash = { rutaArchivo: opciones.rutaArchivoFlashcards, rutaConfig: opciones.rutaConfigFlashcards };
+        const depsFlash = { rutaArchivo: opciones.rutaArchivoFlashcards, rutaConfig: opciones.rutaConfigFlashcards, tenantId: opciones.tenantId, store: opciones.flashcardsStore };
         const res = configurarRepaso({
           activo: activoAplicarF,
           cadenciaHoras: args.cadenciaHoras ?? null,
@@ -1884,9 +1905,10 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
           resultadoTool = `No se pudo configurar el repaso: ${res.error}`;
         }
       } else if (nombreFuncion === 'repasar_flashcards') {
-        const pendientes = pendientesDeRepaso({ limite: args.limite || 3 }, { rutaArchivo: opciones.rutaArchivoFlashcards });
+        const depsRepaso = { rutaArchivo: opciones.rutaArchivoFlashcards, tenantId: opciones.tenantId, store: opciones.flashcardsStore };
+        const pendientes = pendientesDeRepaso({ limite: args.limite || 3 }, depsRepaso);
         if (pendientes.length === 0) {
-          const resumen = resumenFlashcards({ rutaArchivo: opciones.rutaArchivoFlashcards });
+          const resumen = resumenFlashcards(depsRepaso);
           resultadoTool = resumen.total === 0
             ? 'Aun no hay tarjetas creadas.'
             : `Nada que repasar ahora. Llevas ${resumen.total} tarjetas; vuelve cuando toque revision.`;
@@ -1894,7 +1916,7 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
           resultadoTool = 'Tocan estas tarjetas (responde mentalmente y luego dame tu nota del 0 al 5 con responder_flashcard):\n' + pendientes.map((t, i) => `${i + 1}. [${t.asignatura}] ${t.pregunta} (ID: ${t.id})`).join('\n');
         }
       } else if (nombreFuncion === 'responder_flashcard') {
-        const res = registrarRespuesta(args.id, args.calidad, { rutaArchivo: opciones.rutaArchivoFlashcards });
+        const res = registrarRespuesta(args.id, args.calidad, { rutaArchivo: opciones.rutaArchivoFlashcards, tenantId: opciones.tenantId, store: opciones.flashcardsStore });
         if (res.ok) {
           const dias = res.tarjeta.repaso.intervaloDias;
           const cuando = dias < 1 ? 'en 12 horas' : `en ${dias} dia(s)`;

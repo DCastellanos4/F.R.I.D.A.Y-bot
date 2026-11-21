@@ -145,9 +145,13 @@ export function buscarNombresEnMemorias(parentesco, deps = {}) {
   let memorias = [];
   const memoryStore = deps.memoryStore || deps.storeMemorias;
 
-  if (memoryStore && typeof memoryStore.leer === 'function') {
+  if (memoryStore) {
     try {
-      memorias = memoryStore.leer(deps.tenantId);
+      if (typeof memoryStore.leer === 'function') {
+        memorias = memoryStore.leer(deps.tenantId);
+      } else if (typeof memoryStore.listar === 'function') {
+        memorias = memoryStore.listar(deps.tenantId);
+      }
     } catch {}
   }
 

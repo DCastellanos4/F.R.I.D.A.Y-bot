@@ -313,7 +313,7 @@ function esDe(m, tenantId) {
   return duenoDe(m) === (tenantId || 'propietario');
 }
 
-export function programarMensaje({ numero, mensaje, minutosEnElFuturo = null, hora = null, fecha = null, inmediato = false, tenantId = undefined }) {
+export function programarMensaje({ numero, mensaje, minutosEnElFuturo = null, hora = null, fecha = null, inmediato = false, tenantId = undefined }, deps = {}) {
   if (!mensaje || !String(mensaje).trim()) {
     return { ok: false, error: 'Debe especificar el texto del mensaje a enviar.' };
   }
@@ -322,7 +322,7 @@ export function programarMensaje({ numero, mensaje, minutosEnElFuturo = null, ho
   let normTel = normalizarNumeroTelefono(telEfectivo);
   if (!normTel.ok && typeof numero === 'string' && !/\d/.test(numero)) {
     try {
-      const resInt = resolverContactoInteligente(numero, { tenantId });
+      const resInt = resolverContactoInteligente(numero, { tenantId, ...deps });
       if (resInt && resInt.ok && resInt.telefono) {
         telEfectivo = resInt.telefono;
         normTel = normalizarNumeroTelefono(telEfectivo);
@@ -384,9 +384,9 @@ export function programarMensaje({ numero, mensaje, minutosEnElFuturo = null, ho
     ...(tenantId && tenantId !== 'propietario' ? { tenantId: String(tenantId) } : {})
   };
 
-  const lista = leerMensajesProgramados();
+  const lista = leerMensajesProgramados(deps);
   lista.push(nuevo);
-  guardarMensajesProgramados(lista);
+  guardarMensajesProgramados(lista, deps);
 
   console.log(`[Mensaje ${esInmediato ? 'Inmediato' : 'Programado'} Guardado] Para +${nuevo.numero} ("${nuevo.mensaje}") [${esInmediato ? 'AHORA' : nuevo.fechaHoraLocal}]`);
 
@@ -429,6 +429,14 @@ export function cancelarMensajeProgramado(criterio, deps = {}) {
 
   if (crit === '*' || crit === 'todos' || crit === 'todas' || crit.includes('todo') || crit.includes('toda')) {
     const pendientes = lista.filter(m => !m.enviado).length;
+    const store = storeDe(deps);
+    if (store && typeof store.cancelar === 'function') {
+      for (const m of lista) {
+        if (!m.enviado) {
+          try { store.cancelar(m.id, deps.tenantId); } catch {}
+        }
+      }
+    }
     guardar([]);
     return {
       ok: true,
@@ -449,6 +457,10 @@ export function cancelarMensajeProgramado(criterio, deps = {}) {
   }
 
   const [eliminado] = lista.splice(index, 1);
+  const store = storeDe(deps);
+  if (store && typeof store.cancelar === 'function') {
+    try { store.cancelar(eliminado.id, deps.tenantId); } catch {}
+  }
   guardar(lista);
 
   return {

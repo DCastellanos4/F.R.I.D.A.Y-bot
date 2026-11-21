@@ -180,9 +180,13 @@ function extraerTelefonoDeTexto(texto) {
 export function sincronizarContactosDesdeSegundoCerebro(deps = {}) {
   const memoryStore = deps.memoryStore || storeMemoriasPorDefecto;
   let memorias = null;
-  if (memoryStore && typeof memoryStore.leer === 'function') {
+  if (memoryStore) {
     try {
-      memorias = memoryStore.leer(deps.tenantId);
+      if (typeof memoryStore.leer === 'function') {
+        memorias = memoryStore.leer(deps.tenantId);
+      } else if (typeof memoryStore.listar === 'function') {
+        memorias = memoryStore.listar(deps.tenantId);
+      }
     } catch {
       memorias = null;
     }

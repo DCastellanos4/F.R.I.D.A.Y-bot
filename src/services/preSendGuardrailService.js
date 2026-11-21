@@ -595,12 +595,28 @@ export function guardCodeSyntax(texto) {
  */
 function extraerLlamadasExitosas(contexto) {
   const traza = contexto?.traza;
-  const llamadas = Array.isArray(traza?.llamadas) ? traza.llamadas : [];
+  const llamadas = Array.isArray(traza?.llamadas) ? [...traza.llamadas] : [];
+
+  if (Array.isArray(traza?.reactSteps)) {
+    for (const paso of traza.reactSteps) {
+      if (Array.isArray(paso?.toolCalls)) {
+        for (let i = 0; i < paso.toolCalls.length; i++) {
+          const tc = paso.toolCalls[i];
+          const res = paso.toolResults && paso.toolResults[i];
+          const nombre = tc.nombre || tc.name || tc.funcion || (typeof tc === 'string' ? tc : '');
+          const resultado = res?.result !== undefined ? res.result : (res?.resultado !== undefined ? res.resultado : res);
+          const ok = res?.ok !== false && !(typeof resultado === 'string' && /error|fall[oó]|no se pudo|failed/i.test(resultado));
+          llamadas.push({ nombre, ok, resultado });
+        }
+      }
+    }
+  }
 
   return llamadas.map((item) => {
     const nombre = item.nombre || item.name || item.herramienta || item.funcion || '';
     const resultado = item.resultado !== undefined ? item.resultado : item.result;
-    const ok = item.ok === true || item.exito === true || resultado === 'ok' || resultado === 'success';
+    const ok = item.ok === true || item.exito === true || resultado === 'ok' || resultado === 'success' ||
+      (item.ok !== false && (typeof resultado === 'string' ? !/error|fall[oó]|failed/i.test(resultado) : Boolean(resultado)));
     return { nombre, ok };
   });
 }
@@ -663,12 +679,19 @@ function recopilarDestinatariosAutorizados(contexto = {}) {
   // Tool calls arguments / results
   if (Array.isArray(contexto.traza?.llamadas)) {
     for (const call of contexto.traza.llamadas) {
-      const args = call.args || call.arguments || call.parametros;
+      const args = call.args || call.arguments || call.parametros || call.datos || call.input;
       if (args && typeof args === 'object') {
         if (args.numero) registrar(args.numero);
         if (args.telefono) registrar(args.telefono);
         if (args.jid) registrar(args.jid);
         if (args.destinatario) registrar(args.destinatario);
+      }
+      if (call.resultado || call.res || call.efecto) {
+        const txtRes = typeof call.resultado === 'string'
+          ? call.resultado
+          : (call.resultado ? JSON.stringify(call.resultado) : (typeof call.efecto === 'string' ? call.efecto : ''));
+        const encontrados = txtRes.match(/(?:\+?\d[\d\s-]{6,16}\d|\+?\d{8,15})/g);
+        if (encontrados) encontrados.forEach(registrar);
       }
     }
   }
@@ -678,13 +701,25 @@ function recopilarDestinatariosAutorizados(contexto = {}) {
   // verificado, no una alucinacion del modelo, y no debe censurarse.
   if (Array.isArray(contexto.traza?.reactSteps)) {
     for (const paso of contexto.traza.reactSteps) {
-      if (!Array.isArray(paso?.toolResults)) continue;
-      for (const res of paso.toolResults) {
-        const texto = typeof res?.result === 'string' ? res.result : '';
-        if (!texto) continue;
-        const encontrados = texto.match(/(?:\+?\d[\d\s-]{6,16}\d|\+?\d{8,15})/g);
-        if (encontrados) {
-          encontrados.forEach(registrar);
+      if (Array.isArray(paso?.toolCalls)) {
+        for (const tc of paso.toolCalls) {
+          const args = tc.args || tc.arguments || tc.parametros || tc.datos;
+          if (args && typeof args === 'object') {
+            if (args.numero) registrar(args.numero);
+            if (args.telefono) registrar(args.telefono);
+            if (args.jid) registrar(args.jid);
+            if (args.destinatario) registrar(args.destinatario);
+          }
+        }
+      }
+      if (Array.isArray(paso?.toolResults)) {
+        for (const res of paso.toolResults) {
+          const texto = typeof res?.result === 'string' ? res.result : (res?.result ? JSON.stringify(res.result) : '');
+          if (!texto) continue;
+          const encontrados = texto.match(/(?:\+?\d[\d\s-]{6,16}\d|\+?\d{8,15})/g);
+          if (encontrados) {
+            encontrados.forEach(registrar);
+          }
         }
       }
     }
@@ -736,7 +771,7 @@ export function guardHallucinations(texto, contexto = {}) {
     {
       nombre: 'pull_request_git',
       patron: /(?:he\s+(?:creado|abierto)\s+el\s+(?:pull request|pr)|(?:pull request|pr)\s+(?:creado|abierto)\s+con\s+[eé]xito)/i,
-      herramientas: ['abrir_pull_request', 'crear_pull_request'],
+      herramientas: ['abrir_pull_request', 'crear_pull_request', 'ejecutar_tarea_programacion'],
       enmienda: 'no se ha abierto ningun pull request ya que no consta ejecucion exitosa de la herramienta correspondiente'
     },
     {
@@ -747,8 +782,28 @@ export function guardHallucinations(texto, contexto = {}) {
     },
     {
       nombre: 'borrado_elementos',
-      patron: /(?:(?<!no\s+)he\s+(?:borrado|eliminado)\s+(?:el\s+archivo|la\s+memoria|la\s+base\s+de\s+datos|los\s+datos|el\s+directorio|la\s+tabla|el\s+registro)|(?:archivo|base\s+de\s+datos|memoria|registro)\s+(?:eliminado|borrado|eliminada|borrada)\s+con\s+[eé]xito)/i,
-      herramientas: ['olvidar_memoria', 'eliminar_archivo', 'borrar_conversacion', 'limpiar_historial'],
+      patron: /(?:(?<!no\s+)he\s+(?:borrado|eliminado|cancelado)\s+(?:el\s+archivo|la\s+memoria|la\s+base\s+de\s+datos|los\s+datos|el\s+directorio|la\s+tabla|el\s+registro|el\s+contacto|el\s+recordatorio|el\s+mensaje|la\s+entrega|la\s+fecha|el\s+gasto|la\s+cita)|(?:archivo|base\s+de\s+datos|memoria|registro|contacto|recordatorio|mensaje|entrega|fecha|gasto|cita)\s+(?:eliminado|borrado|cancelado|eliminada|borrada|cancelada)\s+con\s+[eé]xito)/i,
+      herramientas: [
+        'olvidar_memoria',
+        'eliminar_archivo',
+        'borrar_conversacion',
+        'limpiar_historial',
+        'eliminar_contacto',
+        'cancelar_recordatorio',
+        'cancelar_mensaje_programado',
+        'eliminar_entrega',
+        'eliminar_fecha_senalada',
+        'tachar_compra',
+        'vaciar_compra',
+        'eliminar_gasto',
+        'cancelar_vigilancia',
+        'cancelar_vigilancia_ruta',
+        'cancelar_snooze',
+        'cancelar_aviso_llegada',
+        'cancelar_cita',
+        'cancelar_evento',
+        'dejar_vigilar_proceso'
+      ],
       enmienda: 'no se ha eliminado ningun elemento dado que no consta ejecucion confirmada de borrado'
     },
     {
@@ -766,7 +821,26 @@ export function guardHallucinations(texto, contexto = {}) {
       // (contacto, nota, idea) tambien sirven de respaldo.
       nombre: 'guardado_memoria',
       patron: /(^|(?<=[.!?])\s+)(?:(?:guardado|anotado|apuntado|memorizado)\b(?:\s+en\s+(?:tu\s+)?(?:memoria|el\s+second\s+brain|tu\s+segundo\s+cerebro))?[^\n.!?:;]*|[^\n.!?]*?(?:(?<!no\s)(?<!no lo\s)(?<!no la\s)\bhe\s+(?:guardado|anotado|apuntado|memorizado)\b[^\n.!?]*?\ben\s+(?:tu\s+|la\s+)?(?:memoria|second\s+brain|segundo\s+cerebro)\b|(?<!no\s)\bqueda(?:do)?\s+guardado\s+en\s+(?:tu\s+)?(?:memoria|second\s+brain|segundo\s+cerebro)\b|(?<!no\s)\blo\s+recordar[eé]\b|\bme\s+lo\s+apunto\b)[^\n.!?]*)(?:[.!?]|$)/gi,
-      herramientas: ['guardar_memoria', 'guardar_nota_personal'],
+      herramientas: [
+        'guardar_memoria',
+        'guardar_nota_personal',
+        'registrar_contacto',
+        'anadir_compra',
+        'registrar_gasto',
+        'registrar_suscripcion',
+        'crear_recordatorio',
+        'registrar_habito',
+        'crear_evento',
+        'crear_quedada',
+        'registrar_fecha_senalada',
+        'registrar_candidatura',
+        'crear_flashcard',
+        'agregar_flashcard',
+        'registrar_entrega',
+        'escribir_diario',
+        'programar_mensaje_whatsapp',
+        'anotar_idea'
+      ],
       enmienda: (m, sep) => /recordar[eé]|apunto/i.test(m)
         ? sep // promesa futura falsa ("lo recordare"): se elimina la frase
         : `${sep}No he podido guardarlo en el Second Brain: la herramienta de guardado no se ejecuto con exito.`
@@ -793,7 +867,7 @@ export function guardHallucinations(texto, contexto = {}) {
   // 2. Validate phone numbers / JIDs
   const autorizados = recopilarDestinatariosAutorizados(contexto);
   // Match candidate phone numbers (9 to 15 digits, optional + prefix, optional @s.whatsapp.net)
-  const regexTelefonos = /(?:\+?[1-9]\d{8,14}(?:@s\.whatsapp\.net)?|\b[1-9]\d{12,20}@lid\b)/g;
+  const regexTelefonos = /(?<![\w@])\+?[1-9]\d{8,14}(?:@s\.whatsapp\.net)?(?!\w)|\b[1-9]\d{12,20}@lid\b/g;
 
   textoModificado = textoModificado.replace(regexTelefonos, (coincidencia) => {
     const rawDigitos = coincidencia.replace(/\D/g, '');
