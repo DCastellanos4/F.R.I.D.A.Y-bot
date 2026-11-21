@@ -42,7 +42,9 @@ export const HERRAMIENTAS_DEFECTO_TENANT = Object.freeze([
   'anotar_idea',
   'listar_ideas',
   'crear_quedada',
-  'listar_quedadas'
+  'listar_quedadas',
+  'consultar_cuota_tenant',
+  'solicitar_upgrade_tenant'
 ]);
 
 /**

@@ -82,7 +82,7 @@ export const CLASIFICACION_HERRAMIENTAS = Object.freeze({
     'listar_habitos', 'anadir_compra', 'listar_compra', 'tachar_compra', 'vaciar_compra', 'anotar_idea',
     'listar_ideas', 'poner_menu', 'ver_menu', 'crear_quedada', 'listar_quedadas', 'registrar_entrega',
     'listar_entregas', 'eliminar_entrega', 'registrar_fecha_senalada', 'listar_fechas_senaladas',
-    'eliminar_fecha_senalada'
+    'eliminar_fecha_senalada', 'consultar_cuota_tenant', 'solicitar_upgrade_tenant'
   ],
   sin_estado: [
     'obtener_noticias_actuales', 'resumen_deportivo', 'buscar_producto', 'guiar_depuracion'

@@ -82,6 +82,7 @@ import { resumirApuntes } from '../services/notesSummarizerService.js';
 import { anotarIdea, listarIdeas, priorizarIdeas, generarEntradaChangelog, guiarDepuracion, revisarPullRequest } from '../services/devToolsService.js';
 import { auditarDependencias, configurarVigilanciaDependencias, informeMetricas, configurarInformeMetricas, actividadRepos, configurarAlertasRepos, crearBackupSesion, verificarBackupSesion } from '../services/opsService.js';
 import { encenderPc, listarDispositivosRed, configurarVigilanciaRed, controlarDomotica, estadoDescargas, configurarAvisoDescargas, estimarFacturaOracle } from '../services/hogarService.js';
+import { consultarCuotaTexto, procesarUpgradePlan } from '../services/tenantSelfService.js';
 import { vigilarRuta, listarRutasVigiladas, cancelarVigilanciaRuta, registrarPrecioRuta } from '../services/viajesService.js';
 import { registrarEntrega, listarEntregas, eliminarEntrega } from '../services/deadlinesService.js';
 import { buscarProducto, verificarOferta } from '../services/productSearchService.js';
@@ -373,7 +374,10 @@ export function analizarIntencion(mensaje) {
     calendario: /(crea(r)?\s+(un\s+)?evento|a[nñ]ad(ir|e)\s+(un\s+)?evento|modifica(r)?\s+(el\s+|un\s+)?evento|cancela(r)?\s+(el\s+|un\s+)?evento|elimina(r)?\s+(el\s+|un\s+)?evento|evento\s+(en\s+el\s+)?(calendario|agenda)|agenda(r)?\s+(una?\s+)?(cita|reunion|evento)|(nuevo|nueva|crear|modificar|cancelar|borrar)\s+(evento|cita)\b)/i,
 
     // Agente GitHub autonomo
-    github: /(crea(r)?\s+(una?\s+)?rama|crea(r)?\s+(un\s+)?commit|haz\s+commit|hacer\s+commit|empuja(r)?\s+(la\s+)?rama|git\s+push|abre\s+(una\s+)?pr|abrir\s+(una\s+)?(pull\s+request|pr)|ejecuta(r)?\s+(la\s+)?tarea\s+(de\s+)?programaci[oó]n|pull\s+request|git\s+(branch|checkout|commit|push))/i
+    github: /(crea(r)?\s+(una?\s+)?rama|crea(r)?\s+(un\s+)?commit|haz\s+commit|hacer\s+commit|empuja(r)?\s+(la\s+)?rama|git\s+push|abre\s+(una\s+)?pr|abrir\s+(una\s+)?(pull\s+request|pr)|ejecuta(r)?\s+(la\s+)?tarea\s+(de\s+)?programaci[oó]n|pull\s+request|git\s+(branch|checkout|commit|push))/i,
+
+    // Cuotas y planes tenant
+    cuota: /(cuota|tokens?|limite\s+(de\s+)?(tokens|peticiones|uso)|plan(es)?\s+(de\s+)?(davis|suscripci[oó]n)|upgrade\s+(de\s+)?plan|cambiar\s+(de\s+)?plan|subir\s+(de\s+)?plan|mi\s+plan|suscripci[oó]n)/i
   };
 
   let matchClima = intents.clima.test(sinNombre);
@@ -425,6 +429,7 @@ export function analizarIntencion(mensaje) {
   let matchSkills = intents.skills.test(sinNombre);
   let matchCalendario = intents.calendario.test(sinNombre);
   let matchGithub = intents.github.test(sinNombre);
+  let matchCuota = intents.cuota.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
   if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro && !matchBienestar && !matchCarrera && !matchCompras && !matchDevtools && !matchOps && !matchHogar && !matchViajes && !matchGenerativo) {
@@ -560,6 +565,9 @@ export function analizarIntencion(mensaje) {
   }
   if (matchGithub) {
     tools.push(...herramientasJarvis.filter(h => ['crear_rama_trabajo', 'crear_commit', 'abrir_pull_request', 'empujar_rama', 'ejecutar_tarea_programacion'].includes(h.function.name)));
+  }
+  if (matchCuota) {
+    tools.push(...herramientasJarvis.filter(h => ['consultar_cuota_tenant', 'solicitar_upgrade_tenant'].includes(h.function.name)));
   }
 
   // Safety Net: si no encajó en ninguna categoría pero tampoco es chit-chat, pasar todas las herramientas.
@@ -1816,6 +1824,12 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
           fetchFn: opciones.fetchFnGitHub
         });
         resultadoTool = !res.ok ? res.error : `Tarea completada en rama ${res.rama}. PR: ${res.pr || 'sin PR'}`;
+      } else if (nombreFuncion === 'consultar_cuota_tenant') {
+        const tid = opciones.tenantId || 'propietario';
+        resultadoTool = consultarCuotaTexto(tid, opciones);
+      } else if (nombreFuncion === 'solicitar_upgrade_tenant') {
+        const tid = opciones.tenantId || 'propietario';
+        resultadoTool = procesarUpgradePlan(tid, args.plan, opciones);
       } else if (nombreFuncion === 'estado_presupuestos') {
         const filas = estadoPresupuestos({ mes: args.mes }, depsFinanzasDe(opciones));
         resultadoTool = filas.length === 0

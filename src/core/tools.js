@@ -2231,6 +2231,36 @@ export const herramientasJarvis = [
         required: ['tarea']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'consultar_cuota_tenant',
+      description: 'Consulta el estado actual de la suscripcion, tokens consumidos, tokens restantes y limites del tenant o usuario activo.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: []
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'solicitar_upgrade_tenant',
+      description: 'Actualiza o solicita el cambio de plan y cuota de consumo (demo, cliente o staff) para el tenant o usuario activo.',
+      parameters: {
+        type: 'object',
+        properties: {
+          plan: {
+            type: 'string',
+            description: 'Nombre del nuevo plan deseado: demo, cliente o staff.',
+            enum: ['demo', 'cliente', 'staff']
+          }
+        },
+        required: ['plan']
+      }
+    }
   }
 ];
 
@@ -2318,6 +2348,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   skills: ['proponer_skill', 'listar_skills', 'ejecutar_skill'],
   calendario: ['crear_evento', 'modificar_evento', 'cancelar_evento'],
   github: ['crear_rama_trabajo', 'crear_commit', 'abrir_pull_request', 'empujar_rama', 'ejecutar_tarea_programacion'],
+  cuota: ['consultar_cuota_tenant', 'solicitar_upgrade_tenant'],
   conversacion: []
 };
 

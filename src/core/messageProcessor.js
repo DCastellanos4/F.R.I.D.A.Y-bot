@@ -16,6 +16,8 @@ import { afirmarMemoryRepository } from '../ports/outbound/MemoryRepositoryPort.
 import { conSpan, hashSesion } from '../observability/telemetry.js';
 import { clasificarIntencionConModelo } from './intentRouterService.js';
 import { verificarCuotaTenant, tenantsHabilitados } from './tenancy.js';
+import { procesarComandoAutoservicio } from '../services/tenantSelfService.js';
+import { dispararExtraccionGrafoAsincrona } from '../services/knowledgeGraphAutoExtractor.js';
 
 // Confirmaciones desnudas: mismo vocabulario que la guardia historica
 // (specialistRouterService); estos mensajes SIEMPRE llegan al agente.
@@ -75,6 +77,13 @@ export function crearMessageProcessor({ llmProvider, memoryRepository, metricasC
       const opcionesConPuertos = { ...opciones, ...(acceso || {}) };
 
       const tid = opcionesConPuertos.tenantId;
+
+      const respAutoservicio = procesarComandoAutoservicio(inbound.text, {
+        tenantId: tid || 'propietario',
+        quotaService: opcionesConPuertos.controlUso || opcionesConPuertos.quotaService
+      });
+      if (respAutoservicio) return respAutoservicio;
+
       if (tid && tid !== 'propietario') {
         if (!enAmbito && !tenantsHabilitados()) {
           return 'Acceso no disponible para este usuario.';
@@ -177,7 +186,14 @@ export function crearMessageProcessor({ llmProvider, memoryRepository, metricasC
             console.warn('[RF-02] Conversacion nivel 1 no disponible; camino historico:', errConv && errConv.message);
           }
         }
-        return (enAmbito ? consultarJarvisEnAmbito : consultarJarvis)(inbound.text, historial, opcionesConPuertos);
+        const respuestaFinal = await (enAmbito ? consultarJarvisEnAmbito : consultarJarvis)(inbound.text, historial, opcionesConPuertos);
+        if (typeof respuestaFinal === 'string' && respuestaFinal.trim()) {
+          dispararExtraccionGrafoAsincrona(inbound.text, respuestaFinal, {
+            store: opcionesConPuertos.knowledgeGraphStore,
+            tenantId: tid || 'propietario'
+          });
+        }
+        return respuestaFinal;
       });
   }
   return Object.freeze({

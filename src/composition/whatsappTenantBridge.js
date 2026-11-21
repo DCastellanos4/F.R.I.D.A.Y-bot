@@ -9,6 +9,8 @@ import { crearAccesoTenants } from './tenantAccess.js';
 import { crearMessageProcessor } from '../core/messageProcessor.js';
 import { tenantsHabilitados } from '../core/tenancy.js';
 import { normalizarMarkdownWhatsApp } from '../services/textFormatService.js';
+import { procesarComandoAutoservicio } from '../services/tenantSelfService.js';
+import { dispararExtraccionGrafoAsincrona } from '../services/knowledgeGraphAutoExtractor.js';
 
 export function crearPuenteWhatsAppTenants({ tenantRepository, limitesStore, quotaService, llmProvider, esPropietario, mcpRegistry, qdrantSecondBrain, memoryRepository } = {}) {
   const storeUso = quotaService || limitesStore;
@@ -42,11 +44,29 @@ export function crearPuenteWhatsAppTenants({ tenantRepository, limitesStore, quo
     const texto = typeof m?.conversation === 'string' ? m.conversation.trim()
       : typeof m?.extendedTextMessage?.text === 'string' ? m.extendedTextMessage.text.trim() : null;
     if (!texto) return handled; // primera version: solo texto, sin audio/media/grupos
+
+    const respuestaAutoservicio = procesarComandoAutoservicio(texto, {
+      tenantId: tid,
+      quotaService: storeUso,
+      tenantRepository
+    });
+    if (respuestaAutoservicio) {
+      try {
+        await crearWhatsAppChannelAdapter(sock).enviarTexto(jid, normalizarMarkdownWhatsApp(respuestaAutoservicio));
+      } catch {
+        console.error('[WhatsApp Tenant] No se pudo entregar la respuesta de autoservicio.');
+      }
+      return handled;
+    }
+
     const inbound = crearInboundDesdeWhatsApp({ msg, texto, remoteJid: jid });
     identidades.set(inbound,Object.freeze({canal:'whatsapp',identificador:jid}));
     let respuesta;
     try {
       respuesta = await (ensayo ? processor.procesarMensajeEnAmbito : processor.procesarMensajeEntrante)(inbound, { historial: [] });
+      if (typeof respuesta === 'string' && respuesta.trim()) {
+        dispararExtraccionGrafoAsincrona(texto, respuesta, { tenantId: tid });
+      }
     } catch {
       // Nunca exponer al tenant errores con detalles de proveedor/host.
       respuesta = 'No he podido completar la consulta ahora mismo.';
