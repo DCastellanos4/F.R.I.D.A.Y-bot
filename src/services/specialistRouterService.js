@@ -287,6 +287,7 @@ const PATRONES_ESPECIALISTAS = {
   personal: {
     frases: [
       'nota personal', 'notas personales', 'guardar nota', 'crear nota', 'leer nota', 'mis notas',
+      'listar contactos', 'mis contactos', 'contactos guardados', 'contactos que tengo', 'ver contactos', 'buscar contacto', 'guardar contacto', 'registrar contacto',
       'segundo cerebro', 'second brain', 'memoria personal', 'recuerdo personal',
       'diario nocturno', 'escribir en el diario', 'hitos del dia', 'bitacora diaria', 'reflexion del dia',
       'tracker de habitos', 'racha de habitos', 'marcar habito', 'registrar habito', 'habito diario',
@@ -301,7 +302,7 @@ const PATRONES_ESPECIALISTAS = {
       'fecha senalada', 'cumpleanos de', 'aniversario de'
     ],
     palabrasClave: [
-      'agenda', 'calendario', 'recordatorio', 'recordatorios', 'recuerdame', 'avisame',
+      'agenda', 'calendario', 'contacto', 'contactos', 'recordatorio', 'recordatorios', 'recuerdame', 'avisame',
       'gasto', 'gastos', 'gaste', 'factura', 'facturas', 'ticket', 'tickets', 'presupuesto', 'presupuestos', 'suscripcion', 'suscripciones',
       'habito', 'habitos', 'racha', 'rachas', 'diario', 'flashcard', 'flashcards', 'apuntes', 'examen',
       'quedada', 'quedadas'

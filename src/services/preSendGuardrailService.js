@@ -682,7 +682,7 @@ function recopilarDestinatariosAutorizados(contexto = {}) {
       for (const res of paso.toolResults) {
         const texto = typeof res?.result === 'string' ? res.result : '';
         if (!texto) continue;
-        const encontrados = texto.match(/\+?\d{8,15}/g);
+        const encontrados = texto.match(/(?:\+?\d[\d\s-]{6,16}\d|\+?\d{8,15})/g);
         if (encontrados) {
           encontrados.forEach(registrar);
         }
