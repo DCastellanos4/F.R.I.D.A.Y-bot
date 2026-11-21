@@ -59,6 +59,7 @@ test('Entrada real: planificar_estudio persiste el plan y crea recordatorios via
   const recordatorios = [];
   const captura = {};
   const rutaPlanes = path.join(dirEntorno, 'plans.json');
+  const fechaExamen = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10);
 
   await bot.procesarMensajesEntrantes(sockSimulado(enviados), {
     type: 'notify',
@@ -66,7 +67,7 @@ test('Entrada real: planificar_estudio persiste el plan y crea recordatorios via
   }, {
     chatCompletion: crearChatFalso('planificar_estudio', {
       asignatura: 'Redes',
-      fechaExamen: '2026-11-20',
+      fechaExamen,
       temas: ['TCP', 'UDP', 'DNS'],
       horaEstudio: '17:30'
     }, captura),
@@ -78,7 +79,7 @@ test('Entrada real: planificar_estudio persiste el plan y crea recordatorios via
   const planes = JSON.parse(fs.readFileSync(rutaPlanes, 'utf-8'));
   assert.equal(planes.length, 1, 'plan persistido');
   assert.equal(planes[0].asignatura, 'Redes');
-  assert.equal(planes[0].fechaExamen, '2026-11-20');
+  assert.equal(planes[0].fechaExamen, fechaExamen);
   assert.ok(recordatorios.length >= 1, 'recordatorios creados por la via inyectada');
   assert.ok(captura.resultadoHerramienta.includes('Plan de estudio creado'), 'respuesta del ejecutor llega al LLM');
 });
