@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { DATA_DIR } from '../config/paths.js';
+import { resolverContactoInteligente } from './contactRelationResolver.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CARPETA_DATA = DATA_DIR;
@@ -317,7 +318,17 @@ export function programarMensaje({ numero, mensaje, minutosEnElFuturo = null, ho
     return { ok: false, error: 'Debe especificar el texto del mensaje a enviar.' };
   }
 
-  const normTel = normalizarNumeroTelefono(numero);
+  let telEfectivo = numero;
+  let normTel = normalizarNumeroTelefono(telEfectivo);
+  if (!normTel.ok && typeof numero === 'string' && !/\d/.test(numero)) {
+    try {
+      const resInt = resolverContactoInteligente(numero, { tenantId });
+      if (resInt && resInt.ok && resInt.telefono) {
+        telEfectivo = resInt.telefono;
+        normTel = normalizarNumeroTelefono(telEfectivo);
+      }
+    } catch {}
+  }
   if (!normTel.ok) {
     return { ok: false, error: normTel.error };
   }

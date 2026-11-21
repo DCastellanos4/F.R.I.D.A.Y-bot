@@ -18,7 +18,8 @@ Politica de estilo: Cero emojis, castellano tecnico, respuestas estructuradas pa
 9. [Sesion 9: Respaldo Cifrado Atomico y Politica de Retencion Unica](#sesion-9-respaldo-cifrado-atomico-y-politica-de-retencion-unica)
 10. [Sesion 10: Inferencia Resiliente, Destierro de Latencia y Multimodalidad Nativa](#sesion-10-inferencia-resiliente-destierro-de-latencia-y-multimodalidad-nativa)
 11. [Sesion 11: Operaciones Autonomas Externas (Calendar, Renfe y Agente GitHub)](#sesion-11-operaciones-autonomas-externas-calendar-renfe-y-agente-github)
-12. [Bateria de Preguntas y Respuestas para Entrevistas Tecnicas](#bateria-de-preguntas-y-respuestas-para-entrevistas-tecnicas)
+12. [Sesion 12: Interaccion WhatsApp Avanzada, Botones Nativos y Enlace Semantico de Parentescos](#sesion-12-interaccion-whatsapp-avanzada-botones-nativos-y-enlace-semantico-de-parentescos)
+13. [Bateria de Preguntas y Respuestas para Entrevistas Tecnicas](#bateria-de-preguntas-y-respuestas-para-entrevistas-tecnicas)
 
 ---
 
@@ -266,6 +267,41 @@ Si un bot ejecuta una tarea y envia el mensaje directamente por red:
 
 ---
 
+## Sesion 12: Interaccion WhatsApp Avanzada, Botones Nativos y Enlace Semantico de Parentescos
+
+### 12.1 Flujo en Grupos de WhatsApp (`@g.us`) y Politica Fail-Closed
+- **Fichero**: `src/services/groupInteractionService.js`.
+- **Deteccion de menciones**: Expresion regular `@DAVIS`, prefijo `davis:` o metadato `contextInfo.mentionedJid` que apunte al bot.
+- **Politica de silencio**: Si el mensaje dentro del grupo no va dirigido expresamente a D.A.V.I.S., se descarta silenciosamente (`ignorado: true`), registrando el mensaje en buffer historico para resumenes pero sin emitir trafico ni gastar tokens.
+- **Resumen bajo demanda**: Al invocar `davis resume el grupo`, sintetiza los ultimos intercambios y responde citado dentro del hilo.
+
+### 12.2 Botones Interactivos y Confirmacion Fuera del Modelo
+- **Fichero**: `src/services/interactiveActionHandler.js`.
+- **Componentes Nativos Baileys**: Sustituye respuestas de texto ambiguas ("si", "confirmo", "1") por botones interactivos estructurados (`sendButtons`).
+- **Casos de Uso**:
+  - Autorizacion 2FA de consola bash: pulsacion de boton que ejecuta directamente `confirmAndExecute(otp)`.
+  - Confirmacion de borrado destructivo: boton con ID efimero de un solo uso.
+  - Registro de gastos de tickets: botones "Confirmar gasto" / "Descartar".
+  - Autoservicio de tenants: botones de upgrade rapido de plan.
+
+### 12.3 Audio Duplex Continuo y Normalizacion de Voz
+- **Fichero**: `src/services/textFormatService.js` (`limpiarTextoParaVoz`).
+- **Directiva Duplex**: Al recibir una nota de voz (`esAudio = true`), se inyecta en el prompt una directiva estricta que exige al modelo una respuesta conversacional fluida sin markdown ni tablas.
+- **Saneamiento para Edge-TTS**: Eliminacion de asteriscos, corchetes, vinetas, URLs y caracteres especiales antes de enviar el buffer a sintesis de voz en OGG Opus PTT.
+
+### 12.4 Resolutor Semantico de Parentescos y Agenda
+- **Fichero**: `src/services/contactRelationResolver.js`.
+- **El problema de la ambiguedad**: Evitar que al decir "escribe a mi madre", si la agenda no tiene un contacto llamado "madre", el agente resuelva a un contacto arbitrario (caso real observado: escribir a Paula).
+- **Cascada de Resolucion**:
+  1. Normalizacion de posesivos y sinonimos de parentesco ("mi madre", "mama" -> "madre").
+  2. Coincidencia por nombre exacto en contactos.
+  3. Coincidencia por campo `relacion` en fichas SQLite de contactos.
+  4. Enlace relacional via Knowledge Graph (`usuario -> madre -> Carmen`).
+  5. Extraccion en memorias semanticas del Second Brain.
+  6. Si no existe evidencia verificada de parentesco, el envio se bloquea por seguridad (*fail-closed*).
+
+---
+
 ## Bateria de Preguntas y Respuestas para Entrevistas Tecnicas
 
 ### Pregunta 1: "¿Cual fue el reto arquitectonico mas complejo del proyecto?"
@@ -303,3 +339,8 @@ Si un bot ejecuta una tarea y envia el mensaje directamente por red:
 ### Pregunta 9: "¿Cual es la estrategia de respaldo y recuperacion ante desastres en D.A.V.I.S.?"
 **Respuesta recomendada**:  
 "Disene un servicio programado de respaldo atomico con cifrado AES-256-GCM. El servicio genera un snapshot consistente de SQLite mediante su mecanismo de backup en caliente para evitar bloqueos del Outbox WAL, empaqueta los directorios de los tenants y valida la integridad y el hash criptografico del nuevo archivo (`.davbak`). Solo tras confirmar que la nueva copia de seguridad es valida y autosuficiente en disco secundario, purga la version anterior, manteniendo estrictamente el respaldo mas reciente sin saturar el almacenamiento."
+
+### Pregunta 10: "¿Como resolviste la ambiguedad en referencias indirectas de contactos, como 'escribe a mi madre'?"
+**Respuesta recomendada**:  
+"Es un fallo critico comun en agentes conversacionales: al pedir escribir a 'mi madre', si la agenda no tiene un contacto llamado literalmente 'madre', el modelo suele asociar erroneamente a otro contacto reciente o alucinar el destinatario. Lo resolvi implementando un resolutor semantico en cascada (`contactRelationResolver`): primero normaliza el parentesco eliminando posesivos ('mi madre' -> 'madre'); segundo, busca en el campo 'relacion' de la agenda; tercero, consulta el Knowledge Graph en SQLite buscando tripletas relacionales (`usuario -> madre -> Carmen`); y cuarto, inspecciona las memorias persistidas del Second Brain. Si tras esta cascada no existe evidencia verificada de parentesco, el sistema aplica fallo cerrado y pide aclaracion, impidiendo terminantemente enviar mensajes a destinatarios equivocados."
+

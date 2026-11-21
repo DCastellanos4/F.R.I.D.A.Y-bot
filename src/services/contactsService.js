@@ -12,6 +12,7 @@ import fs from '../security/tenantFileSystem.js';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { DATA_DIR } from '../config/paths.js';
+import { resolverContactoInteligente } from './contactRelationResolver.js';
 
 export const ARCHIVO_DEFECTO = path.join(DATA_DIR, 'contactos.json');
 
@@ -107,15 +108,36 @@ export function buscarContacto(criterio, deps = {}) {
   if (!c) return { ok: false, error: 'Dime a quien busco.' };
 
   const store = storeDe(deps);
+  let encontrados = [];
   if (store) {
-    const encontrados = store.buscar(c, deps.tenantId);
-    return { ok: true, contactos: encontrados };
+    encontrados = store.buscar(c, deps.tenantId);
+    if (encontrados.length === 0 && /^mi\s+/i.test(c)) {
+      encontrados = store.buscar(c.replace(/^mi\s+/i, '').trim(), deps.tenantId);
+    }
+  } else {
+    encontrados = leer(deps).contactos.filter((ct) =>
+      ct.nombre.toLowerCase().includes(c) ||
+      (ct.relacion || '').toLowerCase().includes(c) ||
+      (ct.notas || '').toLowerCase().includes(c));
+    if (encontrados.length === 0 && /^mi\s+/i.test(c)) {
+      const cLimpio = c.replace(/^mi\s+/i, '').trim();
+      encontrados = leer(deps).contactos.filter((ct) =>
+        ct.nombre.toLowerCase().includes(cLimpio) ||
+        (ct.relacion || '').toLowerCase().includes(cLimpio) ||
+        (ct.notas || '').toLowerCase().includes(cLimpio));
+    }
   }
 
-  const encontrados = leer(deps).contactos.filter((ct) =>
-    ct.nombre.toLowerCase().includes(c) ||
-    (ct.relacion || '').toLowerCase().includes(c) ||
-    (ct.notas || '').toLowerCase().includes(c));
+  // Si no hay resultado por busqueda textual, intentar resolver mediante parentesco y Knowledge Graph
+  if (encontrados.length === 0) {
+    try {
+      const resInt = resolverContactoInteligente(criterio, deps);
+      if (resInt && resInt.ok && resInt.contacto) {
+        encontrados = [resInt.contacto];
+      }
+    } catch { /* fallback silencioso */ }
+  }
+
   return { ok: true, contactos: encontrados };
 }
 
