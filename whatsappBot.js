@@ -19,7 +19,9 @@ import { procesarMensajeEntrante, crearPuenteWhatsAppTenantsCompuesto, contenedo
 import { chatCompletion as chatCompletionPorDefecto } from './src/core/llmService.js';
 import { crearInboundDesdeWhatsApp } from './src/adapters/inbound/whatsapp/whatsappInboundAdapter.js';
 import { crearWhatsAppChannelAdapter } from './src/adapters/outbound/channels/whatsappChannelAdapter.js';
-import { normalizarMarkdownWhatsApp } from './src/services/textFormatService.js';
+import { normalizarMarkdownWhatsApp, limpiarTextoParaVoz } from './src/services/textFormatService.js';
+import { procesarMensajeGrupo } from './src/services/groupInteractionService.js';
+import { manejarRespuestaInteractiva, enviarConfirmacionInteractiva } from './src/services/interactiveActionHandler.js';
 import { confirmAndExecute } from './src/system/bashConsoleService.js';
 import { iniciarMonitorRecordatorios } from './src/services/reminderService.js';
 import { iniciarMonitorMensajesProgramados, registrarIdWhatsApp, procesarActualizacionEntrega } from './src/services/scheduledMessageService.js';
@@ -762,14 +764,34 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
       const remoteJid = msg.key.remoteJid;
       if (!remoteJid) continue;
 
-      // 1. Buffer de mensajes de grupo para el Resumidor Inteligente
+      // 1. Mensajes de grupos (@g.us): interaccion avanzada con menciones y resumen
       if (remoteJid.endsWith('@g.us')) {
-        recordGroupMessage(msg);
+        const fnProcesarGrupo = deps.procesarMensajeGrupo || procesarMensajeGrupo;
+        const textoGrupo = extraerTextoMensaje(msg);
+        const resGrupo = await fnProcesarGrupo(sock, msg, textoGrupo, {
+          botJid: sock?.user?.id,
+          esMensajeDeDavid: (jid) => esMensajeDeDavid(jid),
+          procesarMensajeAgente: async (textoAgente, meta = {}) => {
+            const inbound = crearInboundDesdeWhatsApp({ msg, texto: textoAgente, remoteJid });
+            return await procesarMensajeEntrante(inbound, {
+              historial: obtenerHistorial(remoteJid),
+              opciones: {
+                ...crearOpcionesRuntimeWhatsapp(sock, remoteJid, deps),
+                esGrupo: true,
+                remitenteJid: meta.remitenteJid
+              }
+            });
+          },
+          ...deps
+        });
+        if (resGrupo && (resGrupo.gestionado || resGrupo.ignorado)) {
+          continue;
+        }
+        continue;
       }
 
       // 2. Filtro de seguridad con Buzon VIP y Respuestas de Terceros
       if (!esMensajeDeDavid(remoteJid)) {
-        if (remoteJid.endsWith('@g.us')) continue;
 
         // Solo el carril tenant registrado/habilitado puede consumir aqui el
         // mensaje. Gate cerrado/desconocidos conservan el buzon/VIP historico.
@@ -853,6 +875,11 @@ Prueba a decirme:
           console.log(`[WhatsApp Interactivo] Voto en encuesta registrado (${interactive.pollId}) de ${interactive.voterJid}.`);
           continue;
         }
+        const fnManejarInteractiva = deps.manejarRespuestaInteractiva || manejarRespuestaInteractiva;
+        const resInteractiva = await fnManejarInteractiva(sock, remoteJid, interactive, deps);
+        if (resInteractiva && resInteractiva.gestionado) {
+          continue;
+        }
         if (interactive.type === 'button' || interactive.type === 'list') {
           texto = interactive.id || interactive.text || interactive.title;
           console.log(`[WhatsApp Interactivo] Seleccion de usuario recibida: "${texto}"`);
@@ -890,6 +917,8 @@ Prueba a decirme:
               console.log(`[WhatsApp Urgencia Audio] Nivel: ${urg.level} (${urg.reason})`);
             }
             urgencyDirective = getUrgencyPromptDirective(urg);
+            const directivaVozDuplex = '[DIRECTIVA DE VOZ DUPLEX]: El usuario se esta comunicando mediante nota de voz. Responde de forma concisa, fluida y directa en espanol conversacional, disenada para ser sintetizada por voz TTS. No uses tablas markdown, listas con vinetas complejas, asteriscos dobles ni bloques de codigo a menos que se pidan explicitamente.';
+            urgencyDirective = urgencyDirective ? `${urgencyDirective}\n${directivaVozDuplex}` : directivaVozDuplex;
           } else {
             console.warn('Aviso: Audio no pudo ser transcrito con claridad.');
             await sock.sendMessage(remoteJid, {
@@ -926,9 +955,18 @@ Prueba a decirme:
             const fotoBuffer = await descargarFoto(msg);
             const lectura = await analizarTicket(fotoBuffer, { chatId: remoteJid, caption: captionFoto });
             const resBorrador = crearBorradorDesdeTicket(lectura || {}, { rutaArchivo: deps.rutaArchivoFinanzas, chatId: remoteJid });
-            await sock.sendMessage(remoteJid, {
-              text: resBorrador.ok ? resBorrador.resumen : resBorrador.error
-            }, { quoted: msg });
+            if (resBorrador.ok) {
+              const fnEnviarConfirmacion = deps.enviarConfirmacionInteractiva || enviarConfirmacionInteractiva;
+              await fnEnviarConfirmacion(sock, remoteJid, resBorrador.resumen, {
+                idConfirmar: 'btn_gasto_confirmar',
+                idCancelar: 'btn_gasto_descartar',
+                textoConfirmar: 'Confirmar gasto',
+                textoCancelar: 'Descartar',
+                footer: 'D.A.V.I.S. Finanzas'
+              });
+            } else {
+              await sock.sendMessage(remoteJid, { text: resBorrador.error }, { quoted: msg });
+            }
           } catch (errTicket) {
             console.error('Error procesando foto de ticket:', errTicket.message);
             await sock.sendMessage(remoteJid, {
@@ -1244,9 +1282,15 @@ Prueba a decirme:
       // flujo (olvidar_memoria con comodin).
       if (esPeticionBorradoConversacion(texto)) {
         const idBorradoConv = registrarBorradoConversacionPendiente(remoteJid);
-        await sock.sendMessage(remoteJid, {
-          text: `Entendido. Esto borrara el historial de esta conversacion, sus episodios archivados y las trazas del recorrido. Tus recuerdos guardados (Second Brain) NO se tocan. Para ejecutarlo, responde: "confirmar borrado ${idBorradoConv}". Para cancelarlo: "cancelar borrado".`
-        }, { quoted: msg });
+        const avisoBorrado = `Entendido. Esto borrara el historial de esta conversacion, sus episodios archivados y las trazas del recorrido. Tus recuerdos guardados (Second Brain) NO se tocan. Para ejecutarlo, responde: "confirmar borrado ${idBorradoConv}". Para cancelarlo: "cancelar borrado".`;
+        const fnEnviarConfirmacion = deps.enviarConfirmacionInteractiva || enviarConfirmacionInteractiva;
+        await fnEnviarConfirmacion(sock, remoteJid, avisoBorrado, {
+          idConfirmar: `btn_borrado_confirm_${idBorradoConv}`,
+          idCancelar: `btn_borrado_cancel_${idBorradoConv}`,
+          textoConfirmar: 'Confirmar borrado',
+          textoCancelar: 'Cancelar',
+          footer: 'D.A.V.I.S. Seguridad'
+        });
         continue;
       }
 
@@ -1357,9 +1401,11 @@ Prueba a decirme:
           console.log('[WhatsApp Voz PTT] Sintetizando respuesta de voz con Edge-TTS en OGG Opus...');
           try {
             const sintetizar = deps.sintetizarVoz || synthesizeSpeech;
-            const oggBuffer = await sintetizar(respuesta, { voice: 'es-ES-AlvaroNeural' });
+            const fnLimpiarVoz = deps.limpiarTextoParaVoz || limpiarTextoParaVoz;
+            const textoVoz = fnLimpiarVoz(respuesta);
+            const oggBuffer = await sintetizar(textoVoz, { voice: 'es-ES-AlvaroNeural' });
             await sendVoiceNote(sock, remoteJid, oggBuffer, msg);
-            console.log(`[J.A.R.V.I.S. a David]: [Nota de voz PTT enviada con éxito]\n`);
+            console.log(`[J.A.R.V.I.S. a David]: [Nota de voz PTT enviada con exito]\n`);
           } catch (errTts) {
             console.error('Error generando nota de voz PTT, recurriendo a texto:', errTts.message);
             await canalWhatsapp.enviarTexto(remoteJid, respuesta, { quoted: msg });
