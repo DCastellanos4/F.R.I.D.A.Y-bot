@@ -152,7 +152,11 @@ function guardarMemorias(lista, deps = {}) {
       console.error('Error invalidando indice semantico:', errInv.message);
     }
   } catch (err) {
+    // Un fallo de escritura NUNCA se traga: se registra y se propaga para
+    // que el llamador devuelva ok:false. Tragarlo aqui hacia que el bot
+    // respondiera "guardado" sin haber persistido nada.
     console.error('Error guardando memorias:', err.message);
+    throw err;
   }
 }
 
@@ -283,13 +287,21 @@ function guardarMemoriaImpl({ sujeto, dato, categoria = 'general', tags = [] }, 
   if (idxExistente !== -1) {
     const idAnterior = lista[idxExistente].id;
     lista[idxExistente] = { ...memoriaAlmacenada, id: idAnterior };
-    guardarMemorias(lista, deps);
+    try {
+      guardarMemorias(lista, deps);
+    } catch (err) {
+      return { ok: false, error: `No se pudo actualizar la memoria: ${err.message}` };
+    }
     console.log(`[Memoria] [Memoria Actualizada] "${nuevaMemoria.sujeto}": ${datoParaLog}`);
     return { ok: true, accion: 'actualizada', memoria: descifrarMemoria(lista[idxExistente]) };
   }
 
   lista.push(memoriaAlmacenada);
-  guardarMemorias(lista, deps);
+  try {
+    guardarMemorias(lista, deps);
+  } catch (err) {
+    return { ok: false, error: `No se pudo guardar la memoria: ${err.message}` };
+  }
   console.log(`[Memoria] [Memoria Guardada] "${nuevaMemoria.sujeto}": ${datoParaLog}`);
 
   return { ok: true, accion: 'creada', memoria: nuevaMemoria };
@@ -410,7 +422,11 @@ function olvidarMemoriaImpl(criterio, opciones, deps) {
       };
     }
     const total = lista.length;
-    guardarMemorias([], deps);
+    try {
+      guardarMemorias([], deps);
+    } catch (err) {
+      return { ok: false, error: `No se pudo vaciar la memoria: ${err.message}` };
+    }
     console.log(`[Memoria] [Memoria Vaciada] Se eliminaron todos los recuerdos (${total}) tras confirmacion explicita.`);
     return { ok: true, mensaje: `Se han eliminado todos los recuerdos del Second Brain (${total} registros).` };
   }
@@ -427,7 +443,11 @@ function olvidarMemoriaImpl(criterio, opciones, deps) {
   }
 
   const [eliminada] = lista.splice(idx, 1);
-  guardarMemorias(lista, deps);
+  try {
+    guardarMemorias(lista, deps);
+  } catch (err) {
+    return { ok: false, error: `No se pudo olvidar el recuerdo: ${err.message}` };
+  }
   const datoLog = esCifrada(eliminada) ? '[cifrado]' : eliminada.dato;
   console.log(`[Memoria] [Memoria Olvidada] "${eliminada.sujeto}": ${datoLog}`);
   return { ok: true, memoria: descifrarMemoria(eliminada), mensaje: `Recuerdo olvidado con éxito: "${eliminada.sujeto}".` };
