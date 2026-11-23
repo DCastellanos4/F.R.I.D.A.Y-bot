@@ -92,3 +92,31 @@ test('Respuesta vacia tras agotar rondas: fallback honesto que declara si hubo e
   assert.match(respuesta, /No tienes recordatorios/, 'solo lecturas: los datos ya disponibles se entregan directos');
   assert.doesNotMatch(respuesta, /SI se ejecuto|una sola vez/i, 'ninguna insinuacion de escritura por una consulta');
 });
+
+const ERR_TC_NONE = '400 Tool choice is none, but model called a tool';
+
+test('400 tool choice none: un reintento solo texto sin herramientas recupera la respuesta', async () => {
+  let llamadas = 0;
+  let herramientasReintento = 'n/a';
+  let pistaVista = false;
+  const chatFalso = async ({ messages, tools }) => {
+    llamadas++;
+    if (llamadas === 1) throw new Error(ERR_TC_NONE);
+    herramientasReintento = tools === undefined ? 'sin-herramientas' : 'con-herramientas';
+    pistaVista = messages.some((m) => m.role === 'system' && /NO invoques ninguna/.test(m.content || ''));
+    return { message: { role: 'assistant', content: 'No he podido guardarlo ahora; reintentalo en un momento.' } };
+  };
+  const respuesta = await consultarJarvis('hola, que tal estas', [], { chatCompletion: chatFalso });
+  assert.equal(llamadas, 2, 'original + un reintento');
+  assert.equal(herramientasReintento, 'sin-herramientas');
+  assert.ok(pistaVista, 'el reintento pide solo texto');
+  assert.match(respuesta, /No he podido guardarlo/);
+});
+
+test('400 tool choice none persistente: fallback fijo honesto, sin tercera llamada', async () => {
+  let llamadas = 0;
+  const chatFalso = async () => { llamadas++; throw new Error(ERR_TC_NONE); };
+  const respuesta = await consultarJarvis('hola, que tal estas', [], { chatCompletion: chatFalso });
+  assert.equal(llamadas, 2, 'original + un reintento');
+  assert.match(respuesta, /NO se ha realizado ninguna accion/i);
+});
