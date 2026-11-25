@@ -152,6 +152,9 @@ export function explicarUltimoRecorrido(chatId, deps = {}) {
   if (Array.isArray(traza.intenciones) && traza.intenciones.length > 0) {
     partes.push(`- Areas detectadas: ${traza.intenciones.join(', ')}.`);
   }
+  if (traza.complejidad && typeof traza.complejidad.nivel === 'number') {
+    partes.push(`- Nivel cognitivo: ${traza.complejidad.categoria} (${traza.complejidad.razon}).`);
+  }
   partes.push(`- Herramientas candidatas ofrecidas al modelo: ${traza.herramientasOfrecidas}.`);
   if (!Array.isArray(traza.llamadas) || traza.llamadas.length === 0) {
     partes.push('- No use ninguna herramienta; respondi directamente.');
