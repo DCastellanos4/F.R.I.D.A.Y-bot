@@ -62,6 +62,7 @@ export const HERRAMIENTAS_IDEMPOTENTES_SET = new Set([
   'buscar_contacto',
   'listar_contactos',
   'listar_reglas_procedurales',
+  'consultar_rutinas_aprendidas',
   'generar_digest_cerebro',
   'generar_wiki',
   'preguntar_documentos',

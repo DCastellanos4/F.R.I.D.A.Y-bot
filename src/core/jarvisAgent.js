@@ -148,6 +148,10 @@ import {
   estimarDuracionMs,
   crearMonitorProgresoTactico
 } from '../services/asyncProgressFeedbackService.js';
+import {
+  registrarActividadRutina,
+  formatearRutinasAprendidas
+} from '../services/habitPatternPredictorService.js';
 
 /**
  * Detecta si David pide poner más tabaco a la cachimba (Easter Egg Iron Man)
@@ -411,7 +415,10 @@ export function analizarIntencion(mensaje) {
     cuota: /(cuota|tokens?|limite\s+(de\s+)?(tokens|peticiones|uso)|plan(es)?\s+(de\s+)?(davis|suscripci[oó]n)|upgrade\s+(de\s+)?plan|cambiar\s+(de\s+)?plan|subir\s+(de\s+)?plan|mi\s+plan|suscripci[oó]n)/i,
 
     // Memoria procedural y reglas operativas del usuario
-    procedural: /(reglas?\s+procedural(es)?|preferencias?\s+(?:aprendidas|operativas)|(?:dime|ver|lista(?:r)?|mostrar|muestra|qu[eé]|cu[aá]les)\s+(?:las\s+|mis\s+)?reglas|a\s+partir\s+de\s+ahora|de\s+ahora\s+en\s+adelante|siempre\s+que\s+(?:te\s+)?pida|(?:borra|elimina|quita|olvida)\s+(?:la\s+)?regla)/i
+    procedural: /(reglas?\s+procedural(es)?|preferencias?\s+(?:aprendidas|operativas)|(?:dime|ver|lista(?:r)?|mostrar|muestra|qu[eé]|cu[aá]les)\s+(?:las\s+|mis\s+)?reglas|a\s+partir\s+de\s+ahora|de\s+ahora\s+en\s+adelante|siempre\s+que\s+(?:te\s+)?pida|(?:borra|elimina|quita|olvida)\s+(?:la\s+)?regla)/i,
+
+    // Proactividad predictiva basada en rutinas horarias aprendidas
+    rutinas: /(rutinas?\s+(?:aprendidas?|detectadas?|horarias?|habituales?)|(?:mis|las)\s+rutinas(?:\s+aprendidas?)?|patrones?\s+(?:de\s+(?:uso|actividad|rutina)|aprendidos?|horarios?)|qu[eé]\s+suelo\s+hacer|qu[eé]\s+rutinas\s+(?:tengo|has\s+aprendido|conoces)|consultar\s+rutinas)/i
   };
 
   let matchClima = intents.clima.test(sinNombre);
@@ -466,9 +473,10 @@ export function analizarIntencion(mensaje) {
   let matchGithub = intents.github.test(sinNombre);
   let matchCuota = intents.cuota.test(sinNombre);
   let matchProcedural = intents.procedural.test(sinNombre);
+  let matchRutinas = intents.rutinas.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
-  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchContactos && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro && !matchBienestar && !matchCarrera && !matchCompras && !matchDevtools && !matchOps && !matchHogar && !matchViajes && !matchGenerativo && !matchCalendario && !matchGithub && !matchCuota && !matchFinanzas && !matchProcesos && !matchComunicacion && !matchSkills && !matchProcedural) {
+  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchContactos && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro && !matchBienestar && !matchCarrera && !matchCompras && !matchDevtools && !matchOps && !matchHogar && !matchViajes && !matchGenerativo && !matchCalendario && !matchGithub && !matchCuota && !matchFinanzas && !matchProcesos && !matchComunicacion && !matchSkills && !matchProcedural && !matchRutinas) {
     return { herramientas: [], intenciones: ['conversacion'], safetyNet: false, esChitChat: true };
   }
 
@@ -612,6 +620,9 @@ export function analizarIntencion(mensaje) {
   if (matchProcedural) {
     tools.push(...herramientasJarvis.filter(h => ['guardar_regla_procedural', 'listar_reglas_procedurales', 'eliminar_regla_procedural'].includes(h.function.name)));
   }
+  if (matchRutinas) {
+    tools.push(...herramientasJarvis.filter(h => h.function.name === 'consultar_rutinas_aprendidas'));
+  }
 
   // Safety Net: si no encajó en ninguna categoría pero tampoco es chit-chat, pasar todas las herramientas.
   // Excepcion: 'generativo' se reconoce SIN herramientas a proposito (no hay
@@ -663,6 +674,7 @@ export function analizarIntencion(mensaje) {
   if (matchGithub) intenciones.push('github');
   if (matchCuota) intenciones.push('cuota');
   if (matchProcedural) intenciones.push('procedural');
+  if (matchRutinas) intenciones.push('rutinas');
   if (matchGenerativo) intenciones.push('generativo');
 
   // Eliminar duplicados
@@ -702,7 +714,8 @@ const HERRAMIENTAS_IDEMPOTENTES = new Set([
   'listar_notas_recientes',
   'get_infrastructure_status',
   'explicar_recorrido',
-  'listar_reglas_procedurales'
+  'listar_reglas_procedurales',
+  'consultar_rutinas_aprendidas'
 ]);
 
 // Resultado parcial del router: solo se declara un EFECTO cuando la
@@ -1958,6 +1971,13 @@ async function ejecutarHerramientaJarvisInterna(nombreFuncion, args, opciones = 
           store: opciones.proceduralStore
         });
         resultadoTool = res.ok ? `Regla operativa eliminada (${res.eliminadas} actualizada(s)).` : res.error;
+      } else if (nombreFuncion === 'consultar_rutinas_aprendidas') {
+        resultadoTool = formatearRutinasAprendidas({
+          rutaArchivo: opciones.rutaArchivoRutinas,
+          tenantId: opciones.tenantId,
+          store: opciones.routineStore,
+          umbralMinimo: args?.umbralMinimo
+        });
       } else if (nombreFuncion === 'estado_presupuestos') {
         const filas = estadoPresupuestos({ mes: args.mes }, depsFinanzasDe(opciones));
         resultadoTool = filas.length === 0
@@ -3769,6 +3789,22 @@ function obtenerContactosConocidosParaGuardrail(opciones = {}) {
         }
       }
     } catch { /* auto-aprendizaje opcional nunca rompe respuesta */ }
+  }
+  if (!analisis.esChitChat && !errCuotaAgotada && Array.isArray(analisis.intenciones) && analisis.intenciones.length > 0) {
+    try {
+      const primeraLlamadaOk = traza.llamadas.find((l) => l.resultado === 'ok');
+      const resRutina = registrarActividadRutina({
+        intencion: analisis.intenciones[0],
+        herramienta: primeraLlamadaOk ? primeraLlamadaOk.nombre : ''
+      }, {
+        rutaArchivo: opciones.rutaArchivoRutinas,
+        tenantId: opciones.tenantId,
+        store: opciones.routineStore
+      });
+      if (resRutina && resRutina.registrada) {
+        traza.rutinaRegistrada = true;
+      }
+    } catch { /* registro de rutinas opcional nunca rompe respuesta */ }
   }
   const duracionSeg = ((Date.now() - tiempoInicio) / 1000).toFixed(2);
   registrarFinConsulta({ via: traza.via || 'regex', duracionSeg: Number(duracionSeg) });

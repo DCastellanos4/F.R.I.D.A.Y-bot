@@ -79,6 +79,7 @@ export const CLASIFICACION_HERRAMIENTAS = Object.freeze({
   datos_tenant: [
     'guardar_memoria', 'buscar_memoria', 'listar_memorias', 'olvidar_memoria', 'buscar_recuerdo_semantico',
     'guardar_regla_procedural', 'listar_reglas_procedurales', 'eliminar_regla_procedural',
+    'consultar_rutinas_aprendidas',
     'registrar_contacto', 'buscar_contacto', 'listar_contactos', 'registrar_habito', 'marcar_habito',
     'listar_habitos', 'anadir_compra', 'listar_compra', 'tachar_compra', 'vaciar_compra', 'anotar_idea',
     'listar_ideas', 'poner_menu', 'ver_menu', 'crear_quedada', 'listar_quedadas', 'registrar_entrega',

@@ -2308,6 +2308,23 @@ export const herramientasJarvis = [
         required: ['criterio']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'consultar_rutinas_aprendidas',
+      description: 'Consulta los patrones y rutinas horarias aprendidas a partir de la actividad del usuario (solo metadatos estadisticos por dia y franja horaria).',
+      parameters: {
+        type: 'object',
+        properties: {
+          umbralMinimo: {
+            type: 'number',
+            description: 'Frecuencia minima de repeticiones para filtrar rutinas (por defecto 1).'
+          }
+        },
+        required: []
+      }
+    }
   }
 ];
 
@@ -2360,6 +2377,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   clima: ['consultar_clima'],
   memoria: ['guardar_memoria', 'buscar_memoria', 'listar_memorias', 'olvidar_memoria', 'guardar_regla_procedural', 'listar_reglas_procedurales', 'eliminar_regla_procedural'],
   procedural: ['guardar_regla_procedural', 'listar_reglas_procedurales', 'eliminar_regla_procedural'],
+  rutinas: ['consultar_rutinas_aprendidas'],
   mensajeProgramado: ['programar_mensaje_whatsapp', 'listar_mensajes_programados', 'cancelar_mensaje_programado', 'buscar_contacto', 'listar_contactos'],
   recordatorio: ['crear_recordatorio', 'listar_recordatorios', 'cancelar_recordatorio'],
   sniper: ['vigilar_producto', 'listar_productos_vigilados', 'cancelar_vigilancia'],
