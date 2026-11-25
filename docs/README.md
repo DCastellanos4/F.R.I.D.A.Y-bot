@@ -8,6 +8,7 @@ Documentacion tecnica del proyecto D.A.V.I.S., escrita contra el codigo fuente e
 - [Vision general](vision-general.md): Principios de diseno, procesos y descomposicion funcional.
 - [Arquitectura hexagonal](arquitectura-hexagonal.md): Puertos de entrada/salida, adaptadores desacoplados y raiz de composicion.
 - [Agente y LLM](agente-y-llm.md): Bucle reactivo, seleccion dinamica de herramientas, enrutamiento especialista y guardarrailes.
+- [Evolucion Cognitiva v4.0](ers-cognitivo-v4.md): Especificacion de memoria procedural, enrutado en cascada, GraphRAG 2-hop, planificador, reflexion, feedback de latencia y rutinas predictivas.
 - [Arquitectura MCP Modular](ers-arquitectura-mcp.md): Micro-servidores MCP desacoplados via JSON-RPC 2.0 stdio (Booking, DevOps, Finance, Lifestyle, Media).
 
 ### Recuperacion y Memoria (RAG Industrial)
