@@ -15,7 +15,9 @@ import { afirmarLLMProvider } from '../ports/outbound/LLMProviderPort.js';
 import { afirmarMemoryRepository } from '../ports/outbound/MemoryRepositoryPort.js';
 import { conSpan, hashSesion } from '../observability/telemetry.js';
 import { clasificarIntencionConModelo } from './intentRouterService.js';
-import { verificarCuotaTenant, tenantsHabilitados } from './tenancy.js';
+import { verificarCuotaTenant, tenantsHabilitados, rutaDatosTenant } from './tenancy.js';
+import { DATA_DIR } from '../config/paths.js';
+import { obtenerStoreGrafoPorDefecto } from '../services/graphMemoryService.js';
 import { procesarComandoAutoservicio } from '../services/tenantSelfService.js';
 import { dispararExtraccionGrafoAsincrona } from '../services/knowledgeGraphAutoExtractor.js';
 
@@ -188,8 +190,12 @@ export function crearMessageProcessor({ llmProvider, memoryRepository, metricasC
         }
         const respuestaFinal = await (enAmbito ? consultarJarvisEnAmbito : consultarJarvis)(inbound.text, historial, opcionesConPuertos);
         if (typeof respuestaFinal === 'string' && respuestaFinal.trim()) {
+          const esTenantAjeno = Boolean(tid && tid !== 'propietario');
           dispararExtraccionGrafoAsincrona(inbound.text, respuestaFinal, {
-            store: opcionesConPuertos.knowledgeGraphStore,
+            store: esTenantAjeno ? null : (opcionesConPuertos.knowledgeGraphStore || obtenerStoreGrafoPorDefecto()),
+            rutaArchivo: esTenantAjeno
+              ? (opcionesConPuertos.rutaArchivoGrafo || rutaDatosTenant(DATA_DIR, tid, 'knowledge_graph.json'))
+              : opcionesConPuertos.rutaArchivoGrafo,
             tenantId: tid || 'propietario'
           });
         }

@@ -235,27 +235,53 @@ export function obtenerStoreGrafoPorDefecto() {
 }
 
 /**
- * Extrae entidades de una consulta y devuelve un resumen contextual para inyectar al LLM.
+ * Recupera un subgrafo contextual acotado hasta `maxHops` saltos combinando
+ * entidades heuristicas del texto y coincidencia directa con nodos existentes.
  */
-export function obtenerContextoGrafo(consulta, deps = {}) {
+export function recuperarSubgrafoContextual(consulta, deps = {}) {
+  if (!consulta || typeof consulta !== 'string') {
+    return { texto: '', conexiones: [] };
+  }
+
   const store = deps.knowledgeGraphStore || deps.store || storeGrafoPorDefecto;
   const tenantId = deps.tenantId || 'propietario';
+  const maxHops = Number.isInteger(deps.maxHops) && deps.maxHops > 0 ? deps.maxHops : 2;
+  const maxAristas = Number.isInteger(deps.maxAristas) && deps.maxAristas > 0 ? deps.maxAristas : 15;
 
-  if (store && typeof store.buscarVecinos === 'function' && !deps.rutaArchivo) {
+  let grafo = null;
+  if (store && typeof store.obtenerGrafo === 'function' && !deps.rutaArchivo) {
+    try {
+      grafo = store.obtenerGrafo(tenantId);
+    } catch {
+      grafo = null;
+    }
+  } else if (deps.rutaArchivo || process.env.NODE_ENV !== 'test' || process.env.DAVIS_DATA_DIR) {
+    grafo = cargarGrafo(deps);
+  }
+
+  // Fallback si solo hay store con buscarVecinos sin obtenerGrafo
+  if (!grafo && store && typeof store.buscarVecinos === 'function' && !deps.rutaArchivo) {
     const entidades = extraerEntidadesDeTexto(consulta);
-    if (entidades.length === 0) return '';
+    if (entidades.length === 0) return { texto: '', conexiones: [] };
 
     const lineas = [];
+    const conexiones = [];
+    const aristasVistas = new Set();
     const entidadesProcesadas = new Set();
 
     for (const ent of entidades) {
       const idNorm = normalizarId(ent.nombre);
-      if (entidadesProcesadas.has(idNorm)) continue;
+      if (!idNorm || entidadesProcesadas.has(idNorm)) continue;
       entidadesProcesadas.add(idNorm);
 
-      const vecindad = store.buscarVecinos(idNorm, 1, tenantId);
-      if (vecindad && vecindad.conexiones && vecindad.conexiones.length > 0) {
+      const vecindad = store.buscarVecinos(idNorm, maxHops, tenantId);
+      if (vecindad && Array.isArray(vecindad.conexiones)) {
         for (const con of vecindad.conexiones) {
+          if (lineas.length >= maxAristas) break;
+          const clave = `${con.desde.id}|${con.relacion}|${con.hacia.id}`;
+          if (aristasVistas.has(clave)) continue;
+          aristasVistas.add(clave);
+          conexiones.push(con);
           if (con.direccion === 'saliente') {
             lineas.push(`- Entidad [${con.desde.nombre}] -> (${con.relacion}) -> [${con.hacia.nombre}] (${con.hacia.tipo})`);
           } else {
@@ -265,34 +291,78 @@ export function obtenerContextoGrafo(consulta, deps = {}) {
       }
     }
 
-    if (lineas.length === 0) return '';
-    return `Conocimiento Relacional en Grafo:\n${lineas.join('\n')}`;
+    return {
+      texto: lineas.length > 0 ? `Conocimiento Relacional en Grafo:\n${lineas.join('\n')}` : '',
+      conexiones
+    };
   }
 
-  const grafo = cargarGrafo(deps);
-  const entidades = extraerEntidadesDeTexto(consulta);
-  if (entidades.length === 0) return '';
+  if (!grafo || !grafo.nodos || Object.keys(grafo.nodos).length === 0) {
+    return { texto: '', conexiones: [] };
+  }
 
-  const lineas = [];
-  const entidadesProcesadas = new Set();
-
-  for (const ent of entidades) {
+  const seeds = new Set();
+  for (const ent of extraerEntidadesDeTexto(consulta)) {
     const idNorm = normalizarId(ent.nombre);
-    if (entidadesProcesadas.has(idNorm)) continue;
-    entidadesProcesadas.add(idNorm);
+    if (idNorm && grafo.nodos[idNorm]) seeds.add(idNorm);
+  }
 
-    const vecindad = buscarVecindadGrafo(grafo, idNorm, 1);
-    if (vecindad.conexiones.length > 0) {
-      for (const con of vecindad.conexiones) {
-        if (con.direccion === 'saliente') {
-          lineas.push(`- Entidad [${con.desde.nombre}] -> (${con.relacion}) -> [${con.hacia.nombre}] (${con.hacia.tipo})`);
-        } else {
-          lineas.push(`- Entidad [${con.hacia.nombre}] <- (${con.relacion}) <- [${con.desde.nombre}] (${con.desde.tipo})`);
-        }
+  const consultaNorm = consulta
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9_\-\s]/g, ' ');
+  const tokensConsulta = new Set(consultaNorm.split(/\s+/).filter((w) => w.length >= 3));
+
+  for (const nodo of Object.values(grafo.nodos)) {
+    const idStr = String(nodo.id || '');
+    const nombreNorm = normalizarId(nodo.nombre || idStr);
+    if (idStr.length >= 3 && (tokensConsulta.has(idStr) || tokensConsulta.has(nombreNorm))) {
+      seeds.add(idStr);
+    } else if (nombreNorm.includes('_')) {
+      const frase = nombreNorm.replace(/_/g, ' ');
+      if (frase.length >= 5 && consultaNorm.includes(frase)) {
+        seeds.add(idStr);
       }
     }
   }
 
-  if (lineas.length === 0) return '';
-  return `Conocimiento Relacional en Grafo:\n${lineas.join('\n')}`;
+  if (seeds.size === 0 && grafo.nodos.usuario && /\b(mi|mis|tengo|estudio|trabajo|candidatura|entrevista|suscrito)\b/i.test(consultaNorm)) {
+    seeds.add('usuario');
+  }
+
+  if (seeds.size === 0) return { texto: '', conexiones: [] };
+
+  const lineas = [];
+  const conexiones = [];
+  const aristasVistas = new Set();
+
+  for (const seedId of seeds) {
+    if (lineas.length >= maxAristas) break;
+    const vecindad = buscarVecindadGrafo(grafo, seedId, maxHops);
+    for (const con of vecindad.conexiones) {
+      if (lineas.length >= maxAristas) break;
+      const clave = `${con.desde.id}|${con.relacion}|${con.hacia.id}`;
+      if (aristasVistas.has(clave)) continue;
+      aristasVistas.add(clave);
+      conexiones.push(con);
+      if (con.direccion === 'saliente') {
+        lineas.push(`- Entidad [${con.desde.nombre}] -> (${con.relacion}) -> [${con.hacia.nombre}] (${con.hacia.tipo})`);
+      } else {
+        lineas.push(`- Entidad [${con.hacia.nombre}] <- (${con.relacion}) <- [${con.desde.nombre}] (${con.desde.tipo})`);
+      }
+    }
+  }
+
+  return {
+    texto: lineas.length > 0 ? `Conocimiento Relacional en Grafo:\n${lineas.join('\n')}` : '',
+    conexiones
+  };
+}
+
+/**
+ * Extrae entidades de una consulta y devuelve un resumen contextual para inyectar al LLM.
+ */
+export function obtenerContextoGrafo(consulta, deps = {}) {
+  return recuperarSubgrafoContextual(consulta, deps).texto;
 }
