@@ -302,6 +302,20 @@ Si un bot ejecuta una tarea y envia el mensaje directamente por red:
 
 ---
 
+## 13. Evolucion Cognitiva v4.0 (Planificacion, Reflexion y Aprendizaje Adaptativo)
+
+Especificacion completa en [`docs/ers-cognitivo-v4.md`](ers-cognitivo-v4.md). Siete pilares construidos sobre el nucleo hexagonal y SQLite WAL:
+
+1. **Memoria Procedural (`proceduralMemoryService.js`)**: Registra directrices operativas y correcciones del usuario (tabla `memoria_procedural`, migracion 016), inyectadas selectivamente sin poder anular reglas de seguridad ni OTP.
+2. **Enrutado por Complejidad (`complexityCascadeRouter.js`)**: Clasifica cada turno en Nivel 0 (determinista), Nivel 1 (rapido) o Nivel 2 (razonamiento profundo) para optimizar latencia y cuota.
+3. **GraphRAG 2-Hop (`knowledgeGraphAutoExtractor.js`, `graphMemoryService.js`)**: Extraccion automatica de proyectos, estudios, examenes, empleo y suscripciones con traversal BFS acotado de 2 saltos.
+4. **Planificacion Compuesta (`taskPlannerService.js`)**: Descomposicion Plan-and-Solve de peticiones multi-paso y seguimiento de sub-objetivos durante el bucle ReAct.
+5. **Metacognicion y Reflexion (`cognitiveReflectionService.js`)**: Evaluacion post-ronda para replanificacion segura de lecturas idempotentes fallidas y critica acotada pre-envio (max 1 pasada, sin re-ejecutar mutaciones).
+6. **Feedback de Progreso Asincrono (`asyncProgressFeedbackService.js`)**: Estimacion de duracion y acuse tactico unico si supera umbral de 4 segundos, respetando modo silencioso y voz.
+7. **Proactividad Predictiva (`habitPatternPredictorService.js`)**: Aprendizaje de rutinas por dia y franja horaria (solo metadatos, tabla `rutinas_actividad`), integrado en `dailyBriefing.js`.
+
+---
+
 ## Bateria de Preguntas y Respuestas para Entrevistas Tecnicas
 
 ### Pregunta 1: "¿Cual fue el reto arquitectonico mas complejo del proyecto?"
