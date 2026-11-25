@@ -8,7 +8,7 @@
  * Strict Policy: Zero Emojis.
  */
 
-import { normalizarId } from './graphMemoryService.js';
+import { normalizarId, cargarGrafo, guardarGrafo, agregarNodo, agregarArista } from './graphMemoryService.js';
 import { TENANT_PROPIETARIO, afirmarTenantId } from '../core/tenancy.js';
 
 export const PATRONES_RELACION = Object.freeze([
@@ -96,6 +96,70 @@ export const PATRONES_RELACION = Object.freeze([
       destino: m[2].replace(/\s+/g, ''),
       tipoDestino: 'concepto'
     })
+  },
+  // Proyectos y Tecnologia
+  {
+    regex: /\b(?:trabajo|trabajando|desarrollo|programo)\s+en\s+(?:el\s+)?(?:proyecto|repo|repositorio|bot)\s+([A-Za-zÁ-ÿ0-9_\-\.]+)(?=[.,;]|\s+y\b|\s+pero\b|$)/gi,
+    mapear: (m) => ({
+      origen: 'usuario',
+      tipoOrigen: 'persona',
+      relacion: 'trabaja_en_proyecto',
+      destino: m[1].trim(),
+      tipoDestino: 'proyecto'
+    })
+  },
+  {
+    regex: /\b(?:el\s+)?(?:proyecto|repo|repositorio|bot)\s+([A-Za-zÁ-ÿ0-9_\-\.]+)\s+usa\s+([A-Za-zÁ-ÿ0-9_\-\.\s]+?)(?=[.,;]|\s+y\b|\s+pero\b|$)/gi,
+    mapear: (m) => ({
+      origen: m[1].trim(),
+      tipoOrigen: 'proyecto',
+      relacion: 'usa_tecnologia',
+      destino: m[2].trim(),
+      tipoDestino: 'concepto'
+    })
+  },
+  // Estudios, Examenes y Entregas
+  {
+    regex: /\b(?:estudio|cursando|tengo\s+la\s+asignatura)\s+([A-Za-zÁ-ÿ0-9\s\-]+?)(?=[.,;]|\s+y\b|\s+pero\b|$)/gi,
+    mapear: (m) => ({
+      origen: 'usuario',
+      tipoOrigen: 'persona',
+      relacion: 'estudia',
+      destino: m[1].trim(),
+      tipoDestino: 'concepto'
+    })
+  },
+  {
+    regex: /\b(?:el\s+)?(examen|entrega|practica)\s+de\s+([A-Za-zÁ-ÿ0-9\s\-]+?)\s+(?:es\s+el|el\s+dia)\s+([0-9]{1,2}\s+de\s+[A-Za-zÁ-ÿ]+|[0-9]{4}-[0-9]{2}-[0-9]{2})/gi,
+    mapear: (m) => ({
+      origen: m[2].trim(),
+      tipoOrigen: 'concepto',
+      relacion: `tiene_${m[1].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')}`,
+      destino: m[3].trim(),
+      tipoDestino: 'fecha'
+    })
+  },
+  // Empleo y Candidaturas
+  {
+    regex: /\b(?:tengo\s+)?(?:una\s+)?(entrevista|candidatura|oferta)\s+(?:en|con|de)\s+([A-Za-zÁ-ÿ0-9_\-\.]+)(?=[.,;]|\s+y\b|\s+pero\b|$)/gi,
+    mapear: (m) => ({
+      origen: 'usuario',
+      tipoOrigen: 'persona',
+      relacion: `${m[1].toLowerCase()}_en`,
+      destino: m[2].trim(),
+      tipoDestino: 'concepto'
+    })
+  },
+  // Suscripciones y Finanzas
+  {
+    regex: /\b(?:estoy\s+)?suscrito\s+a\s+([A-Za-zÁ-ÿ0-9_\-\.\s]+?)(?=[.,;]|\s+y\b|\s+pero\b|$)/gi,
+    mapear: (m) => ({
+      origen: 'usuario',
+      tipoOrigen: 'persona',
+      relacion: 'suscrito_a',
+      destino: m[1].trim(),
+      tipoDestino: 'gasto'
+    })
   }
 ]);
 
@@ -159,15 +223,14 @@ export function extraerRelacionesDeTexto(texto, { sujetoDefecto = 'usuario' } = 
  * @param {object} [deps]
  * @returns {number} cantidad de relaciones guardadas
  */
-export function persistirTripletasEnGrafo(tripletas, { store = null, tenantId = TENANT_PROPIETARIO } = {}) {
+export function persistirTripletasEnGrafo(tripletas, { store = null, rutaArchivo = null, tenantId = TENANT_PROPIETARIO } = {}) {
   if (!Array.isArray(tripletas) || tripletas.length === 0) return 0;
   afirmarTenantId(tenantId);
 
   let guardadas = 0;
-  for (const t of tripletas) {
-    if (!t.origen?.id || !t.destino?.id || !t.relacion) continue;
-
-    if (store && typeof store.guardarRelacion === 'function') {
+  if (store && typeof store.guardarRelacion === 'function') {
+    for (const t of tripletas) {
+      if (!t.origen?.id || !t.destino?.id || !t.relacion) continue;
       try {
         store.guardarEntidad({
           id: t.origen.id,
@@ -193,6 +256,31 @@ export function persistirTripletasEnGrafo(tripletas, { store = null, tenantId = 
       } catch (err) {
         console.warn('[KnowledgeGraphAutoExtractor] Fallo guardando en store SQLite:', err.message);
       }
+    }
+    return guardadas;
+  }
+
+  if (rutaArchivo) {
+    try {
+      const grafo = cargarGrafo({ rutaArchivo });
+      for (const t of tripletas) {
+        if (!t.origen?.id || !t.destino?.id || !t.relacion) continue;
+        agregarNodo(grafo, { id: t.origen.id, nombre: t.origen.nombre, tipo: t.origen.tipo });
+        agregarNodo(grafo, { id: t.destino.id, nombre: t.destino.nombre, tipo: t.destino.tipo });
+        agregarArista(grafo, {
+          origen: t.origen.id,
+          destino: t.destino.id,
+          relacion: t.relacion,
+          peso: t.peso || 1.0,
+          metadata: t.metadata || {}
+        });
+        guardadas++;
+      }
+      if (guardadas > 0) {
+        guardarGrafo(grafo, { rutaArchivo });
+      }
+    } catch (err) {
+      console.warn('[KnowledgeGraphAutoExtractor] Fallo guardando en JSON:', err.message);
     }
   }
 
