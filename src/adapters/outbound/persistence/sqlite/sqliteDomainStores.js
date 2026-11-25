@@ -727,3 +727,135 @@ export function crearSqliteKnowledgeGraphStore(db) {
 }
 
 export const knowledgeGraphStore = crearSqliteKnowledgeGraphStore;
+
+export function crearSqliteProceduralStore(db) {
+  const ins = db.prepare(`
+    INSERT INTO memoria_procedural (id, tenant_id, dominio, disparador, regla, origen, confianza, usos, activa, creado_en, actualizado_en)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(tenant_id, id) DO UPDATE SET
+      dominio = excluded.dominio,
+      disparador = excluded.disparador,
+      regla = excluded.regla,
+      confianza = excluded.confianza,
+      activa = excluded.activa,
+      actualizado_en = excluded.actualizado_en
+  `);
+  const selActivas = db.prepare(`
+    SELECT id, tenant_id, dominio, disparador, regla, origen, confianza, usos, activa, creado_en, actualizado_en
+    FROM memoria_procedural
+    WHERE tenant_id = ? AND activa = 1
+    ORDER BY usos DESC, actualizado_en DESC
+  `);
+  const selPorDominio = db.prepare(`
+    SELECT id, tenant_id, dominio, disparador, regla, origen, confianza, usos, activa, creado_en, actualizado_en
+    FROM memoria_procedural
+    WHERE tenant_id = ? AND activa = 1 AND (dominio = ? OR dominio = 'general')
+    ORDER BY usos DESC, actualizado_en DESC
+  `);
+  const incUso = db.prepare(`
+    UPDATE memoria_procedural SET usos = usos + 1, actualizado_en = ?
+    WHERE tenant_id = ? AND id = ?
+  `);
+  const desactivar = db.prepare(`
+    UPDATE memoria_procedural SET activa = 0, actualizado_en = ?
+    WHERE tenant_id = ? AND (id = ? OR lower(regla) LIKE ?)
+  `);
+
+  return Object.freeze({
+    guardar({ id, dominio = 'general', disparador = '', regla, origen = 'auto', confianza = 0.9 }, tenantId = TENANT_PROPIETARIO) {
+      afirmarTenantId(tenantId);
+      const pid = id || `proc_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+      const ahora = new Date().toISOString();
+      ins.run(
+        pid,
+        tenantId,
+        String(dominio || 'general').toLowerCase().slice(0, 40),
+        String(disparador || '').slice(0, 120),
+        String(regla || '').slice(0, 500),
+        String(origen || 'auto').slice(0, 30),
+        Number.isFinite(Number(confianza)) ? Number(confianza) : 0.9,
+        0,
+        1,
+        ahora,
+        ahora
+      );
+      return { id: pid, tenantId, dominio, disparador, regla, origen, confianza, usos: 0, activa: true, creadoEn: ahora, actualizadoEn: ahora };
+    },
+    listar(tenantId = TENANT_PROPIETARIO, dominio = null) {
+      afirmarTenantId(tenantId);
+      const filas = dominio ? selPorDominio.all(tenantId, String(dominio).toLowerCase()) : selActivas.all(tenantId);
+      return filas.map((r) => ({
+        id: r.id,
+        tenantId: r.tenant_id,
+        dominio: r.dominio,
+        disparador: r.disparador,
+        regla: r.regla,
+        origen: r.origen,
+        confianza: r.confianza,
+        usos: r.usos,
+        activa: Boolean(r.activa),
+        creadoEn: r.creado_en,
+        actualizadoEn: r.actualizado_en
+      }));
+    },
+    incrementarUso(id, tenantId = TENANT_PROPIETARIO) {
+      afirmarTenantId(tenantId);
+      if (!id) return false;
+      const info = incUso.run(new Date().toISOString(), tenantId, id);
+      return info.changes > 0;
+    },
+    eliminar(criterio, tenantId = TENANT_PROPIETARIO) {
+      afirmarTenantId(tenantId);
+      const c = String(criterio || '').trim();
+      if (!c) return { ok: false, eliminadas: 0 };
+      const info = desactivar.run(new Date().toISOString(), tenantId, c, `%${c.toLowerCase()}%`);
+      return { ok: info.changes > 0, eliminadas: info.changes };
+    }
+  });
+}
+
+export function crearSqliteRoutineStore(db) {
+  const upsert = db.prepare(`
+    INSERT INTO rutinas_actividad (tenant_id, dia_semana, franja_horaria, intencion, herramienta, conteo, ultima_vez)
+    VALUES (?, ?, ?, ?, ?, 1, ?)
+    ON CONFLICT(tenant_id, dia_semana, franja_horaria, intencion, herramienta) DO UPDATE SET
+      conteo = conteo + 1,
+      ultima_vez = excluded.ultima_vez
+  `);
+  const selPorDia = db.prepare(`
+    SELECT tenant_id, dia_semana, franja_horaria, intencion, herramienta, conteo, ultima_vez
+    FROM rutinas_actividad
+    WHERE tenant_id = ? AND dia_semana = ?
+    ORDER BY conteo DESC, ultima_vez DESC
+  `);
+  const selTodas = db.prepare(`
+    SELECT tenant_id, dia_semana, franja_horaria, intencion, herramienta, conteo, ultima_vez
+    FROM rutinas_actividad
+    WHERE tenant_id = ?
+    ORDER BY conteo DESC, ultima_vez DESC
+  `);
+
+  return Object.freeze({
+    registrar({ diaSemana, franjaHoraria, intencion, herramienta = '' }, tenantId = TENANT_PROPIETARIO) {
+      afirmarTenantId(tenantId);
+      const ahora = new Date().toISOString();
+      upsert.run(
+        tenantId,
+        Number(diaSemana),
+        String(franjaHoraria || '08-10'),
+        String(intencion || 'general').slice(0, 60),
+        String(herramienta || '').slice(0, 80),
+        ahora
+      );
+      return true;
+    },
+    listarPorDia(diaSemana, tenantId = TENANT_PROPIETARIO) {
+      afirmarTenantId(tenantId);
+      return selPorDia.all(tenantId, Number(diaSemana));
+    },
+    listarTodas(tenantId = TENANT_PROPIETARIO) {
+      afirmarTenantId(tenantId);
+      return selTodas.all(tenantId);
+    }
+  });
+}

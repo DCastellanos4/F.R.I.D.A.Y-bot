@@ -61,6 +61,7 @@ export const HERRAMIENTAS_IDEMPOTENTES_SET = new Set([
   'proximas_llegadas_transporte',
   'buscar_contacto',
   'listar_contactos',
+  'listar_reglas_procedurales',
   'generar_digest_cerebro',
   'generar_wiki',
   'preguntar_documentos',
@@ -788,6 +789,7 @@ export function guardHallucinations(texto, contexto = {}) {
         'eliminar_archivo',
         'borrar_conversacion',
         'limpiar_historial',
+        'eliminar_regla_procedural',
         'eliminar_contacto',
         'cancelar_recordatorio',
         'cancelar_mensaje_programado',
@@ -824,6 +826,7 @@ export function guardHallucinations(texto, contexto = {}) {
       herramientas: [
         'guardar_memoria',
         'guardar_nota_personal',
+        'guardar_regla_procedural',
         'registrar_contacto',
         'anadir_compra',
         'registrar_gasto',

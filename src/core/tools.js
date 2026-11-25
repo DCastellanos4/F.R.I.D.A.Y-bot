@@ -2261,6 +2261,53 @@ export const herramientasJarvis = [
         required: ['plan']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'guardar_regla_procedural',
+      description: 'Guarda una preferencia operativa o regla de comportamiento duradera indicada por el usuario (ej: formato de respuestas, estilo de resumen, preferencia de transporte). No permite anular reglas de seguridad ni OTP.',
+      parameters: {
+        type: 'object',
+        properties: {
+          regla: { type: 'string', description: 'Instruccion operativa clara a recordar para futuros turnos.' },
+          dominio: {
+            type: 'string',
+            enum: ['general', 'transporte', 'devtools', 'finanzas', 'estudio', 'agenda', 'comunicacion'],
+            description: 'Area donde aplica la regla. Por defecto se infiere automaticamente.'
+          }
+        },
+        required: ['regla']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_reglas_procedurales',
+      description: 'Lista las reglas y preferencias operativas aprendidas para este usuario.',
+      parameters: {
+        type: 'object',
+        properties: {
+          dominio: { type: 'string', description: 'Filtro opcional por dominio (general, transporte, devtools, finanzas, estudio, agenda, comunicacion).' }
+        },
+        required: []
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'eliminar_regla_procedural',
+      description: 'Elimina o desactiva una regla procedural aprendida por su ID o texto parcial.',
+      parameters: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string', description: 'ID o texto parcial de la regla a eliminar.' }
+        },
+        required: ['criterio']
+      }
+    }
   }
 ];
 
@@ -2311,7 +2358,8 @@ export function limitarHerramientasParaProveedor(tools, mensajes = [], limite = 
 
 export const MAPA_INTENCION_HERRAMIENTAS = {
   clima: ['consultar_clima'],
-  memoria: ['guardar_memoria', 'buscar_memoria', 'listar_memorias', 'olvidar_memoria'],
+  memoria: ['guardar_memoria', 'buscar_memoria', 'listar_memorias', 'olvidar_memoria', 'guardar_regla_procedural', 'listar_reglas_procedurales', 'eliminar_regla_procedural'],
+  procedural: ['guardar_regla_procedural', 'listar_reglas_procedurales', 'eliminar_regla_procedural'],
   mensajeProgramado: ['programar_mensaje_whatsapp', 'listar_mensajes_programados', 'cancelar_mensaje_programado', 'buscar_contacto', 'listar_contactos'],
   recordatorio: ['crear_recordatorio', 'listar_recordatorios', 'cancelar_recordatorio'],
   sniper: ['vigilar_producto', 'listar_productos_vigilados', 'cancelar_vigilancia'],
