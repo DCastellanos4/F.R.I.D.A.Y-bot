@@ -512,6 +512,39 @@ export const MIGRACIONES = [
       CREATE INDEX IF NOT EXISTS idx_kg_relaciones_destino ON knowledge_graph_relaciones(tenant_id, destino);
       CREATE INDEX IF NOT EXISTS idx_kg_relaciones_rel ON knowledge_graph_relaciones(tenant_id, origen, destino, relacion);
     `
+  },
+  {
+    version: 16,
+    nombre: '016_memoria_procedural_y_rutinas',
+    sql: `
+      CREATE TABLE IF NOT EXISTS memoria_procedural (
+        id TEXT NOT NULL,
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        dominio TEXT NOT NULL DEFAULT 'general',
+        disparador TEXT NOT NULL DEFAULT '',
+        regla TEXT NOT NULL,
+        origen TEXT NOT NULL DEFAULT 'auto',
+        confianza REAL NOT NULL DEFAULT 0.9,
+        usos INTEGER NOT NULL DEFAULT 0,
+        activa INTEGER NOT NULL DEFAULT 1,
+        creado_en TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_procedural_tenant_activa ON memoria_procedural(tenant_id, activa, dominio);
+
+      CREATE TABLE IF NOT EXISTS rutinas_actividad (
+        tenant_id TEXT NOT NULL DEFAULT 'propietario',
+        dia_semana INTEGER NOT NULL CHECK (dia_semana BETWEEN 0 AND 6),
+        franja_horaria TEXT NOT NULL,
+        intencion TEXT NOT NULL,
+        herramienta TEXT NOT NULL DEFAULT '',
+        conteo INTEGER NOT NULL DEFAULT 1,
+        ultima_vez TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, dia_semana, franja_horaria, intencion, herramienta)
+      );
+      CREATE INDEX IF NOT EXISTS idx_rutinas_tenant_dia ON rutinas_actividad(tenant_id, dia_semana, franja_horaria);
+    `
   }
 ];
 

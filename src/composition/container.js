@@ -36,6 +36,7 @@ import { registrarStoreMensajesProgramadosPorDefecto } from '../services/schedul
 import { registrarStoreHistorialPorDefecto } from '../services/conversationHistoryService.js';
 import { registrarStoreHistorialPorDefecto as registrarStoreHistorialBusquedaPorDefecto } from '../services/historySearchService.js';
 import { registrarStoreKnowledgeGraphPorDefecto } from '../services/graphMemoryService.js';
+import { registrarStoreProceduralPorDefecto } from '../services/proceduralMemoryService.js';
 import { crearPersistenciaSqlite } from '../adapters/outbound/persistence/sqlite/persistenciaSqlite.js';
 import { crearSqliteMemoryRepository } from '../adapters/outbound/persistence/sqlite/sqliteMemoryRepository.js';
 import { crearSqliteMemoryStore } from '../adapters/outbound/persistence/sqlite/sqliteMemoryStore.js';
@@ -98,6 +99,7 @@ function crearPersistenciaActiva(overrides) {
   registrarStoreHistorialBusquedaPorDefecto(persistencia.historyStore);
   registrarStoreMemoriasContactosPorDefecto(persistencia.memoryStore);
   registrarStoreKnowledgeGraphPorDefecto(persistencia.knowledgeGraphStore);
+  registrarStoreProceduralPorDefecto(persistencia.proceduralStore);
   try {
     const rutaContactos = path.join(DATA_DIR, 'contactos.json');
     importarContactosDesdeJson(rutaContactos);
@@ -374,6 +376,8 @@ export function crearContenedor(overrides = {}) {
     pipelineAsincrono: pipeline,
     persistencia: persistenciaActiva.persistencia || null,
     knowledgeGraphStore: persistenciaActiva.persistencia?.knowledgeGraphStore || overrides.knowledgeGraphStore || null,
+    proceduralStore: persistenciaActiva.persistencia?.proceduralStore || overrides.proceduralStore || null,
+    routineStore: persistenciaActiva.persistencia?.routineStore || overrides.routineStore || null,
     quotaService,
     /** Alta en caliente del adaptador de entrega (canal con sesion abierta). */
     registrarRuntimePipeline(resolver) {if(typeof resolver!=='function')throw new TypeError('RF01_RUNTIME_REQUIRED');resolverRuntime=resolver;},

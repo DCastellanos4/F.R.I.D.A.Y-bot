@@ -193,7 +193,9 @@ export const RUTAS_DATOS_TENANT = Object.freeze({
   rutaArchivoNocturno: 'modo_nocturno.json',
   rutaArchivoEntrevistas: 'entrevistas.json',
   rutaArchivoDigest: 'digest_cerebro.json',
-  rutaArchivoCalendario: 'calendar_events.json'
+  rutaArchivoCalendario: 'calendar_events.json',
+  rutaArchivoProcedural: 'procedural_memory.json',
+  rutaArchivoRutinas: 'routines_activity.json'
 });
 
 export function aislarOpcionesTenant(opciones, dataDir) {
