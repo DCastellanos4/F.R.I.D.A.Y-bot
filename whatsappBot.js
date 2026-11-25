@@ -1370,9 +1370,33 @@ Prueba a decirme:
         let respuesta;
         try {
           const inbound = crearInboundDesdeWhatsApp({ msg, texto, remoteJid });
+          const estaEnModoNocturno = () => {
+            if (typeof deps.estaEnModoNocturno === 'function') {
+              return Boolean(deps.estaEnModoNocturno(deps.quietDeps || {}));
+            }
+            const fnSilencio = typeof deps.enHorarioSilencio === 'function' ? deps.enHorarioSilencio : enHorarioSilencio;
+            return Boolean(fnSilencio({
+              ...(deps.quietDeps || {}),
+              ...(deps.rutaArchivoNocturno ? { rutaArchivo: deps.rutaArchivoNocturno } : {})
+            }));
+          };
+          const onProgresoTactico = !esAudio && process.env.DAVIS_ASYNC_PIPELINE !== '1' && !estaEnModoNocturno()
+            ? async (msgProgreso) => {
+                if (!msgProgreso || typeof msgProgreso !== 'string') return;
+                try {
+                  await canalWhatsapp.enviarTexto(remoteJid, msgProgreso);
+                } catch (errProgreso) {
+                  console.warn('[WhatsApp Progreso Tactico] Error enviando feedback de progreso:', errProgreso?.message || errProgreso);
+                }
+              }
+            : undefined;
           respuesta = await procesarMensajeEntrante(inbound, {
             historial: historialPrevio,
-            opciones: {...crearOpcionesRuntimeWhatsapp(sock,remoteJid,deps,urgencyDirective),respuestaVoz:esAudio || /responde(me)?\s+(en|con)?\s*(audio|nota de voz|voz)/i.test(texto)}
+            opciones: {
+              ...crearOpcionesRuntimeWhatsapp(sock, remoteJid, deps, urgencyDirective),
+              respuestaVoz: esAudio || /responde(me)?\s+(en|con)?\s*(audio|nota de voz|voz)/i.test(texto),
+              ...(onProgresoTactico ? { onProgresoTactico } : {})
+            }
           });
           registrarEventoMetrica({ tipo: 'comando', nombre: 'consulta_jarvis', duracionMs: Date.now() - inicioJarvis }, { rutaArchivo: deps.rutaArchivoMetricas });
         } catch (errJarvis) {
