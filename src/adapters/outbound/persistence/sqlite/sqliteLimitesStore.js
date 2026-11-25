@@ -39,16 +39,30 @@ export function crearSqliteLimitesStore(db) {
   `);
   const limpiarVentanas = db.prepare('DELETE FROM tenant_peticiones WHERE tenant_id = ? AND ventana < ?');
 
-  const pendiente = db.prepare('SELECT ticket FROM tenant_medicion_pendiente WHERE tenant_id = ?');
+  const pendiente = db.prepare('SELECT ticket, iniciada_en FROM tenant_medicion_pendiente WHERE tenant_id = ?');
   const anotarPendiente = db.prepare('INSERT INTO tenant_medicion_pendiente (tenant_id,ticket,iniciada_en) VALUES (?,?,?)');
   const finalizarPendiente = db.prepare('DELETE FROM tenant_medicion_pendiente WHERE tenant_id = ? AND ticket = ?');
   const exigeMedicion = (id) => { const f = leerFila.get(id); return !!f && (f.tokens_dia !== null || f.tokens_mes !== null); };
+  // TTL de una medicion pendiente: una llamada LLM no deberia durar mas.
+  // Sin caducidad, una peticion interrumpida (crash, corte, usage ausente)
+  // dejaba al tenant bloqueado para siempre (observado en produccion el
+  // 22 nov 2026). Si la peticion original sigue viva y confirma tarde, su
+  // confirmarMedicion falla cerrado (ticket ya borrado), nunca al reves.
+  const TTL_MEDICION_MS = 10 * 60 * 1000;
   const decidir = db.transaction((tenantId, ahora, consumirPeticion) => {
     const fila = leerFila.get(tenantId);
     if (!fila || (fila.tokens_dia === null && fila.tokens_mes === null && fila.peticiones_minuto === null)) {
       return { permitido: true, motivo: 'sin_limites' };
     }
-    if (exigeMedicion(tenantId) && pendiente.get(tenantId)) return { permitido: false, motivo: 'medicion_pendiente' };
+    if (exigeMedicion(tenantId)) {
+      const pend = pendiente.get(tenantId);
+      if (pend) {
+        const iniciada = Date.parse(pend.iniciada_en);
+        const caducada = !Number.isFinite(iniciada) || (ahora.getTime() - iniciada) > TTL_MEDICION_MS;
+        if (!caducada) return { permitido: false, motivo: 'medicion_pendiente' };
+        finalizarPendiente.run(tenantId, pend.ticket);
+      }
+    }
     const dia = diaLocal(ahora);
     const mes = dia.slice(0, 7);
     if (fila.tokens_dia !== null) {
