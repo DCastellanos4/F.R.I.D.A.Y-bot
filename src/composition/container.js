@@ -37,6 +37,7 @@ import { registrarStoreHistorialPorDefecto } from '../services/conversationHisto
 import { registrarStoreHistorialPorDefecto as registrarStoreHistorialBusquedaPorDefecto } from '../services/historySearchService.js';
 import { registrarStoreKnowledgeGraphPorDefecto } from '../services/graphMemoryService.js';
 import { registrarStoreProceduralPorDefecto } from '../services/proceduralMemoryService.js';
+import { registrarStoreRutinasPorDefecto } from '../services/habitPatternPredictorService.js';
 import { crearPersistenciaSqlite } from '../adapters/outbound/persistence/sqlite/persistenciaSqlite.js';
 import { crearSqliteMemoryRepository } from '../adapters/outbound/persistence/sqlite/sqliteMemoryRepository.js';
 import { crearSqliteMemoryStore } from '../adapters/outbound/persistence/sqlite/sqliteMemoryStore.js';
@@ -100,6 +101,7 @@ function crearPersistenciaActiva(overrides) {
   registrarStoreMemoriasContactosPorDefecto(persistencia.memoryStore);
   registrarStoreKnowledgeGraphPorDefecto(persistencia.knowledgeGraphStore);
   registrarStoreProceduralPorDefecto(persistencia.proceduralStore);
+  registrarStoreRutinasPorDefecto(persistencia.routineStore);
   try {
     const rutaContactos = path.join(DATA_DIR, 'contactos.json');
     importarContactosDesdeJson(rutaContactos);

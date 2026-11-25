@@ -18,6 +18,7 @@ import { consultarSaludServidor } from '../monitors/proactiveAlerts.js';
 import { consultarEventos } from './calendarService.js';
 import { emtConfigurado } from './emtAdapter.js';
 import { abrirBaseDatos } from '../adapters/outbound/persistence/sqlite/connection.js';
+import { predecirNecesidades } from './habitPatternPredictorService.js';
 
 export const CRON_HORA_MATUTINA = '55 6 * * *'; // 06:55 Europe/Madrid
 
@@ -177,6 +178,35 @@ export async function generarBriefingCompleto(ciudad, deps = {}) {
     }
   } catch (errSalud) {
     secciones.push('Sistemas centrales activos.');
+  }
+
+  // 6. Sugerencias Predictivas de Rutina (opcional: solo si existen predicciones para esa fecha)
+  try {
+    const fnPredecir = typeof opts.predecirNecesidades === 'function'
+      ? opts.predecirNecesidades
+      : predecirNecesidades;
+    const rutinasDeps = opts.rutinasDeps || {
+      ...(opts.routineStore ? { store: opts.routineStore } : {}),
+      ...(opts.rutaArchivoRutinas ? { rutaArchivo: opts.rutaArchivoRutinas } : {}),
+      ...(opts.tenantId ? { tenantId: opts.tenantId } : {})
+    };
+    const predicciones = await fnPredecir(
+      {
+        fecha: ref,
+        umbralMinimo: opts.umbralMinimoRutina ?? 3,
+        tenantId: opts.tenantId
+      },
+      rutinasDeps
+    );
+    if (Array.isArray(predicciones) && predicciones.length > 0) {
+      secciones.push('\n[SUGERENCIAS PREDICTIVAS DE RUTINA]');
+      predicciones.slice(0, 5).forEach((p, idx) => {
+        const textoSugerencia = p.sugerencia || `[${p.franjaHoraria || p.franja_horaria || '--'}] ${p.intencion}${p.herramienta ? ` (${p.herramienta})` : ''} - frecuencia: ${p.conteo}`;
+        secciones.push(`${idx + 1}. ${eliminarEmojis(textoSugerencia)}`);
+      });
+    }
+  } catch {
+    // Fallback silencioso si el predictor de rutinas no esta disponible
   }
 
   secciones.push('\n========================================');

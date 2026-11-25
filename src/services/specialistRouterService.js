@@ -156,6 +156,7 @@ export const HERRAMIENTAS_PERSONAL = Object.freeze([
   'guardar_regla_procedural',
   'listar_reglas_procedurales',
   'eliminar_regla_procedural',
+  'consultar_rutinas_aprendidas',
   'buscar_recuerdo_semantico',
   'generar_digest_cerebro',
   'configurar_digest_semanal',
