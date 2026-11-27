@@ -18,6 +18,7 @@ Documentacion tecnica del proyecto D.A.V.I.S., escrita contra el codigo fuente e
 ### Multitenancy y Seguridad SaaS
 - [Tenancy: Aislamiento Completo y Cuotas](tenancy.md): Planes (`demo`, `cliente`, `staff`, `propietario`), rate limits por minuto, cuota diaria de tokens y `AISLAMIENTO_COMPLETO = true`.
 - [Matriz local del minimo multiusuario](tenancy-auditoria-minima-local.md): Verificacion de aislamiento y pruebas de no regresion.
+- [Guia de Tokens y Configuracion por Tenant](guia-tokens-tenants.md): Modelo de accesos servidor vs tenant, obtencion paso a paso de credenciales (Google OAuth2, LLMs, GitHub, EMT, cifrado, hogar) y checklist operativo.
 - [Seguridad](seguridad.md): Control de acceso, guardarrailes, aislamiento de red (anti-SSRF safeFetch con pinning DNS) y cifrado GCM.
 
 ### Canales, Operacion y Monitores

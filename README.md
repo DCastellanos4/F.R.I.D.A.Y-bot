@@ -116,6 +116,27 @@ pm2 save
 
 ---
 
+## Configuracion de Tokens y Accesos por Tenant
+
+D.A.V.I.S. opera con aislamiento multi-tenant (`DAVIS_TENANTS_ENABLED=1`, definido en `src/core/tenancy.js`): el `propietario` conserva las rutas historicas en `data/` y cada tenant adicional aisla sus datos en `data/tenants/<tenant_id>/`, mientras que las credenciales de integracion se configuran en el entorno del servidor (`.env` / `DAVIS_ENV_FILE`, nunca por chat).
+
+Resumen de variables principales en `.env`:
+
+| Integracion | Variables principales | Uso |
+| :--- | :--- | :--- |
+| **Google Calendar y Gmail (OAuth2)** | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` (fallback: `GOOGLE_CALENDAR_ACCESS_TOKEN`, `GOOGLE_CALENDAR_ID`, `GOOGLE_GMAIL_ACCESS_TOKEN` / `GMAIL_ACCESS_TOKEN`) | Lectura/escritura de agenda y correo con renovacion automatica de token |
+| **LLMs y Voz** | `LLM_PROVIDER`, `GROQ_API_KEY` / `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OLLAMA_HOST`, `OLLAMA_MODEL` | Razonamiento, tool calling, vision y transcripcion fallback |
+| **Transporte Madrid (EMT)** | `DAVIS_EMT_CLIENT_ID`, `DAVIS_EMT_PASS_KEY` | Tiempos de bus en vivo via MobilityLabs |
+| **GitHub** | `DAVIS_GITHUB_TOKEN` (o `GITHUB_TOKEN`), `GITHUB_WEBHOOK_SECRET` | Agente GitHub autonomo, repos privados y webhook `/api/webhook/github` |
+| **API y Cifrado** | `API_TOKEN`, `MEMORY_ENCRYPTION_KEY`, `BACKUP_PASSPHRASE` / `DAVIS_BACKUP_KEY` | Autenticacion REST, cifrado de credenciales en memoria y backups AES-256-GCM |
+| **Hogar y Red (Opcional)** | `DAVIS_HA_URL`, `DAVIS_HA_TOKEN`, `DAVIS_WOL_MAC`, `DAVIS_WOL_BROADCAST`, `DAVIS_QBIT_URL`, `DAVIS_QBIT_USER`, `DAVIS_QBIT_PASS` | Home Assistant, Wake-on-LAN y qBittorrent |
+
+Guias detalladas paso a paso:
+- [Guia completa de tokens y accesos por tenant](docs/guia-tokens-tenants.md)
+- [Guia rapida de despliegue, GitHub Actions Secrets y configuracion por entorno](.github/TENANT_SETUP.md)
+
+---
+
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
