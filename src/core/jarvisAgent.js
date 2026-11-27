@@ -37,6 +37,11 @@ import {
 } from '../monitors/sniperService.js';
 import { consultarClima } from '../services/weatherService.js';
 import { chatCompletion, esRespuestaTruncada } from './llmService.js';
+import {
+  esError400ValidacionHerramientas,
+  esError400ToolChoiceNone,
+  chatConRecuperacion400
+} from './agent/llmRecovery.js';
 import { NUCLEO_PERSONALIDAD, CAPACIDADES_MINIMAS, corregirInventarioInventado, esConsultaPuraCapacidades, RESUMEN_CAPACIDADES_FACTUAL, instruccionesParaHerramientas } from './selectiveContext.js';
 import { estimarTokensPeticion } from './groqBudget.js';
 import { NOMBRE_DESCUBRIR, HERRAMIENTA_DESCUBRIR, buscarEsquemas, buscarEsquemasRelevantes, prepararHerramientasProgresivas } from './toolDiscovery.js';
@@ -889,71 +894,7 @@ function argsParaLog(args) {
   return limpio;
 }
 
-function esError400ValidacionHerramientas(err) {
-  const txt = String((err && err.message) || err || '');
-  return /\b400\b/.test(txt) && /tool.?call validation|did not match schema/i.test(txt);
-}
-
-// Groq/gpt-oss: peticion sin herramientas (clasificada como conversacional)
-// y el modelo emite igualmente una llamada a herramienta -> 400 "Tool choice
-// is none, but model called a tool". El provider rechaza antes de ejecutar
-// nada, asi que reintentar es seguro. El reintento va sin herramientas y con
-// una instruccion de solo texto; no se ofrecen herramientas que el
-// clasificador (o los permisos del tenant) dejaron fuera.
-function esError400ToolChoiceNone(err) {
-  const txt = String((err && err.message) || err || '');
-  return /\b400\b/.test(txt) && /tool choice is none/i.test(txt);
-}
-
-// Un 400 de validacion de tool-call significa que el provider RECHAZO la
-// peticion antes de ejecutar nada: reintentar es seguro (no hay efectos que
-// duplicar). Un unico reintento con pista de esquema; si el provider vuelve
-// a rechazar, una ultima llamada degradada SIN herramientas para no dejar a
-// David sin respuesta. Nunca se reintentan 2xx ambiguos ni timeouts
-// posteriores a una posible ejecucion.
-async function chatConRecuperacion400(chatImpl, peticion, etiqueta) {
-  try {
-    return await chatImpl(peticion);
-  } catch (err) {
-    if (esError400ToolChoiceNone(err)) {
-      console.warn(`[J.A.R.V.I.S.] 400 tool choice none en ${etiqueta}: el modelo intento llamar a una herramienta no ofrecida; 1 reintento solo texto.`);
-      const soloTexto = {
-        role: 'system',
-        content: 'En este turno no hay herramientas disponibles: NO invoques ninguna. Responde solo con texto. Si la peticion exige una accion (guardar, enviar, programar, etc.), di con claridad que no la has realizado y que puede reintentarse; nunca afirmes haberla hecho.'
-      };
-      try {
-        return await chatImpl({ ...peticion, tools: undefined, messages: [...peticion.messages, soloTexto] });
-      } catch (errTc) {
-        if (!esError400ToolChoiceNone(errTc) && !esError400ValidacionHerramientas(errTc)) throw errTc;
-        console.error(`[J.A.R.V.I.S.] El reintento solo texto tambien fallo en ${etiqueta}:`, String((errTc && errTc.message) || errTc).slice(0, 200));
-        return { message: { role: 'assistant', content: 'No he podido completar tu peticion, senor: el servicio del modelo ha rechazado la consulta y NO se ha realizado ninguna accion. Puedes reintentarlo en unos minutos.' } };
-      }
-    }
-    if (!esError400ValidacionHerramientas(err)) throw err;
-    console.warn(`[J.A.R.V.I.S.] 400 de validacion de tool-call en ${etiqueta}: ${err?.message || err}; el provider no ejecuto nada, 1 reintento con pista de esquema.`);
-    const pista = {
-      role: 'system',
-      content: `Tu llamada a herramienta anterior fue rechazada por argumentos invalidos (${String((err && err.message) || err).slice(0, 300)}). Si necesitas una herramienta, genera argumentos que cumplan exactamente su esquema (tipos correctos y campos requeridos sin null). Si no tienes datos para argumentos validos, responde en texto pidiendo a David lo que falte, sin llamar a la herramienta.`
-    };
-    try {
-      return await chatImpl({ ...peticion, messages: [...peticion.messages, pista] });
-    } catch (err2) {
-      if (!esError400ValidacionHerramientas(err2)) throw err2;
-      console.warn(`[J.A.R.V.I.S.] Segundo 400 de validacion en ${etiqueta}; respuesta degradada sin herramientas.`);
-      const soloTexto = {
-        role: 'system',
-        content: 'Responde SOLO con texto plano para David: NO invoques ninguna herramienta. Explica que no puedes completar la accion ahora mismo y que NO se ha realizado ninguna accion, e indica el siguiente paso util y concreto (por ejemplo, que te pase el enlace o el dato que falta, o que repita la peticion en unos minutos).'
-      };
-      try {
-        return await chatImpl({ messages: [...peticion.messages, soloTexto], options: peticion.options });
-      } catch (err3) {
-        // Sin mas llamadas: fallback fijo y honesto (no afirma accion alguna).
-        console.error(`[J.A.R.V.I.S.] La degradada tambien fallo en ${etiqueta}:`, String((err3 && err3.message) || err3).slice(0, 200));
-        return { message: { role: 'assistant', content: 'No he podido completar tu peticion, senor: el servicio del modelo ha rechazado la consulta y NO se ha realizado ninguna accion. Puedes reintentarlo en unos minutos.' } };
-      }
-    }
-  }
-}
+export { esError400ValidacionHerramientas, esError400ToolChoiceNone, chatConRecuperacion400 };
 
 function destinatarioVerificado(numero, mensajeUsuario, historial, opciones = {}) {
   if (!numero) return false;
@@ -1135,7 +1076,41 @@ export function combinarCatalogosSinColisiones(catalogoLocal = [], mcpTools = []
   return [...mapa.values()];
 }
 
-export function fusionarHerramientasMcp(herramientasActivas = [], mcpTools = [], mensajeUsuario = '', especialista = 'general') {
+export const MAPA_INTENCION_SERVIDOR_MCP = Object.freeze({
+  finanzas: 'finance',
+  ops: 'devops',
+  servidor: 'devops',
+  docker: 'devops',
+  disco: 'devops',
+  bash: 'devops',
+  infraestructura: 'devops',
+  backup: 'devops',
+  crypto: 'devops',
+  calendario: 'booking',
+  bienestar: 'lifestyle',
+  transporte: 'lifestyle',
+  viajes: 'lifestyle',
+  multimedia: 'media'
+});
+
+export const MAPA_SERVIDOR_HERRAMIENTAS_MCP = Object.freeze({
+  booking: ['consultar_disponibilidad', 'reservar_cita', 'cancelar_cita', 'listar_citas'],
+  devops: ['ejecutar_comando_bash', 'consultar_estado_servidor', 'inspeccionar_docker', 'verificar_almacenamiento', 'comprobar_certificados_ssl'],
+  finance: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'extraer_ticket_vision', 'exportar_resumen_trimestral'],
+  lifestyle: ['gestionar_habitos', 'gestionar_lista_compra', 'consultar_trenes_renfe', 'consultar_radar_vuelos'],
+  media: ['descargar_multimedia', 'transcribir_audio', 'sintetizar_voz']
+});
+
+export const MAPA_INTENCION_HERRAMIENTAS_MCP = Object.freeze(
+  Object.fromEntries(
+    Object.entries(MAPA_INTENCION_SERVIDOR_MCP).map(([intencion, servidor]) => [
+      intencion,
+      MAPA_SERVIDOR_HERRAMIENTAS_MCP[servidor] || []
+    ])
+  )
+);
+
+export function fusionarHerramientasMcp(herramientasActivas = [], mcpTools = [], mensajeUsuario = '', especialista = 'general', intenciones = []) {
   if (!Array.isArray(mcpTools) || mcpTools.length === 0) {
     return Array.isArray(herramientasActivas) ? [...herramientasActivas] : [];
   }
@@ -1143,6 +1118,19 @@ export function fusionarHerramientasMcp(herramientasActivas = [], mcpTools = [],
   for (const h of herramientasActivas) {
     const nombre = h?.function?.name || h?.name;
     if (nombre) mapa.set(nombre, h);
+  }
+
+  const listaIntenciones = Array.isArray(intenciones) ? intenciones : [];
+  const servidoresActivos = new Set();
+  const toolsPorIntencion = new Set();
+  for (const intencion of listaIntenciones) {
+    const srv = MAPA_INTENCION_SERVIDOR_MCP[intencion];
+    if (srv) {
+      servidoresActivos.add(srv);
+      for (const nombreTool of MAPA_SERVIDOR_HERRAMIENTAS_MCP[srv] || []) {
+        toolsPorIntencion.add(nombreTool);
+      }
+    }
   }
 
   const esCita = /(cita|reserva|reservar|disponib|booking|agend|cancelar|liberar)/i.test(mensajeUsuario);
@@ -1160,13 +1148,14 @@ export function fusionarHerramientasMcp(herramientasActivas = [], mcpTools = [],
     const matchFin = /^(registrar_gasto|listar_gastos|resumen_gastos_mes|extraer_ticket_vision|exportar_resumen_trimestral)$/.test(tName) || /ticket|gasto|trimestral/i.test(`${tName} ${tDesc}`);
     const matchEstilo = /habito|compra|renfe|tren|vuelo/i.test(`${tName} ${tDesc}`);
     const matchMed = /multimedia|audio|voz|transcribir|sintetizar/i.test(`${tName} ${tDesc}`);
+    const matchIntencion = toolsPorIntencion.has(tName) || (tool?.server && servidoresActivos.has(tool.server));
 
-    const esRelevante = (esCita && matchCita)
+    const esRelevante = matchIntencion
+      || (esCita && matchCita)
       || (esDevops && matchDev)
       || (esFinanzas && matchFin)
       || (esEstilo && matchEstilo)
       || (esMedia && matchMed)
-      || mapa.size === 0
       || mapa.has(tName);
 
     if (esRelevante) {
@@ -1623,7 +1612,8 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
         herramientasActivas,
         mcpTools,
         mensajeUsuario,
-        enrutamientoEspecialista.especialista
+        enrutamientoEspecialista.especialista,
+        analisis.intenciones
       );
     } catch {
       // Ignora error al obtener herramientas de MCP
@@ -1640,11 +1630,14 @@ async function consultarJarvisInterna(mensajeUsuario, historial = [], opciones =
       ...(Array.isArray(opciones.permitidasUsuario) ? { permitidasUsuario: opciones.permitidasUsuario } : {})
     }).permitido);
   }
-  const descubrimientoActivo = (!opciones.tenantId || opciones.tenantId === 'propietario') && !analisis.intenciones.includes('generativo') && (!analisis.esChitChat || herramientasActivas.length > 0);
-  if (descubrimientoActivo) {
+  const aplicarProgresivas = !analisis.intenciones.includes('generativo') && (!analisis.esChitChat || herramientasActivas.length > 0);
+  const descubrimientoActivo = (!opciones.tenantId || opciones.tenantId === 'propietario') && aplicarProgresivas;
+  if (aplicarProgresivas) {
     herramientasActivas = prepararHerramientasProgresivas(herramientasActivas, mensajeUsuario);
     herramientasActivas = limitarHerramientasParaProveedor(herramientasActivas);
-    herramientasActivas.push(HERRAMIENTA_DESCUBRIR);
+    if (descubrimientoActivo) {
+      herramientasActivas.push(HERRAMIENTA_DESCUBRIR);
+    }
   } else {
     herramientasActivas = limitarHerramientasParaProveedor(herramientasActivas);
   }

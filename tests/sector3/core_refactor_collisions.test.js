@@ -20,7 +20,8 @@ import {
   consultarJarvis,
   analizarIntencion,
   fusionarHerramientasMcp,
-  combinarCatalogosSinColisiones
+  combinarCatalogosSinColisiones,
+  MAPA_SERVIDOR_HERRAMIENTAS_MCP
 } from '../../src/core/jarvisAgent.js';
 import { despacharHerramienta } from '../../src/core/toolDispatcher.js';
 import {
@@ -159,4 +160,78 @@ test('aplicarGuardarrailesFinales limpia emojis y preserva respuesta valida', as
     opciones: { chatId: 'test-guard' }
   });
   assert.equal(res.textoFinal, 'Todo listo, David.');
+});
+
+function construirCatalogo21Mcp() {
+  return Object.entries(MAPA_SERVIDOR_HERRAMIENTAS_MCP).flatMap(([servidor, nombres]) =>
+    nombres.map((name) => ({
+      type: 'function',
+      server: servidor,
+      function: {
+        name,
+        description: `MCP_${servidor}_${name}`,
+        parameters: { type: 'object', properties: {} }
+      }
+    }))
+  );
+}
+
+test('chitchat con mapa.size === 0 NO carga las 21 herramientas MCP', async () => {
+  const mcp21 = construirCatalogo21Mcp();
+  assert.equal(mcp21.length, 21);
+
+  const sinMatch = fusionarHerramientasMcp([], mcp21, 'hola, que tal estas hoy?', 'general', ['conversacion']);
+  assert.equal(sinMatch.length, 0, 'fusionarHerramientasMcp no debe volcar las 21 MCP en chitchat');
+
+  let toolsRecibidas = null;
+  const resp = await consultarJarvis('hola, que tal?', [], {
+    mcpRegistry: { toolsList: async () => mcp21 },
+    chatCompletion: async (payload) => {
+      toolsRecibidas = payload.tools || [];
+      return { message: { content: 'Todo bien por aqui, David.' } };
+    },
+    chatId: 'test-mcp-chitchat-' + Date.now()
+  });
+
+  assert.equal(resp, 'Todo bien por aqui, David.');
+  assert.equal(toolsRecibidas.length, 0, 'chitchat con mcpRegistry activo no envia herramientas MCP');
+});
+
+test('intencion finanzas carga solo MCP de finanzas', () => {
+  const mcp21 = construirCatalogo21Mcp();
+  const resultado = fusionarHerramientasMcp([], mcp21, 'como voy este mes?', 'general', ['finanzas']);
+  const nombres = resultado.map((h) => h.function.name).sort();
+  const esperadas = [...MAPA_SERVIDOR_HERRAMIENTAS_MCP.finance].sort();
+  assert.deepEqual(nombres, esperadas);
+});
+
+test('tenant no-propietario tambien aplica recorte progresivo tras RBAC (<=13 tools)', async () => {
+  const prevTenants = process.env.DAVIS_TENANTS_ENABLED;
+  process.env.DAVIS_TENANTS_ENABLED = '1';
+  let toolsEnviadas = [];
+  try {
+    const resp = await consultarJarvis(
+      'recuerda mi memoria, busca noticias actuales, busca un producto, resumen deportivo y consulta mi cuota',
+      [],
+      {
+        tenantId: 'sint-tenant-prog',
+        rolDeTenant: () => 'usuario',
+        controlUso: { autorizar: () => ({ permitido: true }), registrar: () => {} },
+        permitidasUsuario: [...NOMBRES_HERRAMIENTAS_JARVIS],
+        mcpRegistry: { toolsList: async () => construirCatalogo21Mcp() },
+        chatCompletion: async (payload) => {
+          toolsEnviadas = payload.tools || [];
+          return { message: { content: 'Resumen listo.' } };
+        },
+        chatId: 'test-tenant-prog-' + Date.now()
+      }
+    );
+
+    assert.equal(resp, 'Resumen listo.');
+    assert.ok(toolsEnviadas.length > 0, 'el tenant con permisos recibe herramientas');
+    assert.ok(toolsEnviadas.length <= 13, `el tenant no debe superar 13 tools (recibidas: ${toolsEnviadas.length})`);
+  } finally {
+    if (prevTenants === undefined) delete process.env.DAVIS_TENANTS_ENABLED;
+    else process.env.DAVIS_TENANTS_ENABLED = prevTenants;
+  }
 });
