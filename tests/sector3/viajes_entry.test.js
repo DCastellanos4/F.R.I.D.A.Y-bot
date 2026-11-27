@@ -38,10 +38,13 @@ function mensajeEntrante(texto, id) {
 }
 
 function chatConHerramienta(nombre, argumentos = {}) {
+  let yaEmitio = false;
   return async ({ messages }) => {
     const ultimo = messages[messages.length - 1];
     if (ultimo.role === 'tool') return { message: { content: ultimo.content } };
-    return { message: { content: '', tool_calls: [{ id: 'c1', function: { name: nombre, arguments: argumentos } } ] } };
+    if (yaEmitio) return { message: { content: ultimo.content || '' } };
+    yaEmitio = true;
+    return { message: { content: '', tool_calls: [{ id: 'c1', function: { name: nombre, arguments: argumentos } }] } };
   };
 }
 

@@ -258,17 +258,22 @@ export function necesitaCriticaFinal({
   if (typeof textoBorrador !== 'string' || textoBorrador.trim().length === 0) return false;
 
   const lista = Array.isArray(llamadas) ? llamadas : [];
-  return lista.length >= 2 || lista.some(esLlamadaConError);
+  // Ignorar llamadas a descubrir_herramientas: son overhead de descubrimiento,
+  // no llamadas sustantivas que indiquen complejidad real del turno.
+  const llamadasSustantivas = lista.filter((l) => (l.nombre || l.name) !== 'descubrir_herramientas');
+  return llamadasSustantivas.length >= 2 || llamadasSustantivas.some(esLlamadaConError);
 }
 
 function esBorradorTruncadoOVacio(texto, totalLlamadas) {
   const limpio = texto.trim();
   if (limpio.length === 0) return true;
-  if (totalLlamadas >= 2 && limpio.length < 12) return true;
-
+  // Termina abruptamente con '...' o ':' -> truncado
+  if (/(?:\.\.\.|:)\s*$/.test(limpio)) return true;
+  // Bloque de codigo sin cerrar
   const bloquesCodigo = (limpio.match(/```/g) || []).length;
   if (bloquesCodigo % 2 === 1) return true;
-
+  // Con >= 2 llamadas sustantivas: borrador demasiado corto (< 12 chars) indica truncado/omision.
+  if (totalLlamadas >= 2 && limpio.length < 12) return true;
   if (limpio.length >= 200 && !/[.!?"')\]|:\u2026]$/.test(limpio)) {
     return true;
   }
@@ -290,10 +295,11 @@ export function detectarDefectosBorrador({
   void mensajeUsuario;
   const texto = typeof textoBorrador === 'string' ? textoBorrador.trim() : '';
   const lista = Array.isArray(llamadas) ? llamadas : [];
+  const listaSustantiva = lista.filter((l) => (l.nombre || l.name) !== 'descubrir_herramientas');
   const defectos = [];
   const erroresOmitidos = [];
 
-  const truncadoOVacio = esBorradorTruncadoOVacio(texto, lista.length);
+  const truncadoOVacio = esBorradorTruncadoOVacio(texto, listaSustantiva.length);
   if (truncadoOVacio) {
     defectos.push(texto.length === 0 ? 'borrador_vacio' : 'borrador_truncado_o_insuficiente');
   }

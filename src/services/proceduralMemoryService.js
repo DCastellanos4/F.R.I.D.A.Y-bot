@@ -205,7 +205,8 @@ export function listarReglasProcedurales(deps = {}) {
 }
 
 /**
- * Elimina (desactiva) una regla procedural por ID o texto parcial.
+ * Elimina (fisicamente) una regla procedural por ID o texto parcial.
+ * Se elimina del array para que el archivo no conserve el marker del tenant.
  */
 export function eliminarReglaProcedural(criterio, deps = {}) {
   const crit = String(criterio || '').trim();
@@ -224,20 +225,20 @@ export function eliminarReglaProcedural(criterio, deps = {}) {
   const todas = leerJson(deps);
   const critLow = crit.toLowerCase();
   let eliminadas = 0;
-  const actualizadas = todas.map((r) => {
+  const restantes = todas.filter((r) => {
     if (r.activa !== false && (r.tenantId || TENANT_PROPIETARIO) === tenantId) {
       if (r.id === crit || r.regla.toLowerCase().includes(critLow)) {
         eliminadas++;
-        return { ...r, activa: false, actualizadoEn: new Date().toISOString() };
+        return false; // eliminar del array (hard delete)
       }
     }
-    return r;
+    return true;
   });
 
   if (eliminadas === 0) {
     return { ok: false, error: 'No se encontro ninguna regla procedural con ese criterio.' };
   }
-  guardarJson(actualizadas, deps);
+  guardarJson(restantes, deps);
   return { ok: true, eliminadas };
 }
 
