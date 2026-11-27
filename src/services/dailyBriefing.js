@@ -19,6 +19,7 @@ import { consultarEventos } from './calendarService.js';
 import { emtConfigurado } from './emtAdapter.js';
 import { abrirBaseDatos } from '../adapters/outbound/persistence/sqlite/connection.js';
 import { predecirNecesidades } from './habitPatternPredictorService.js';
+import { synthesizeSpeech, sendVoiceNote } from './ttsService.js';
 
 export const CRON_HORA_MATUTINA = '55 6 * * *'; // 06:55 Europe/Madrid
 
@@ -217,24 +218,77 @@ export async function generarBriefingCompleto(ciudad, deps = {}) {
 }
 
 /**
+ * Extrae un resumen breve y limpio apto para sintesis de voz PTT a partir del briefing completo.
+ *
+ * @param {string} textoBriefing
+ * @returns {string}
+ */
+export function generarResumenBriefingAudio(textoBriefing) {
+  if (!textoBriefing || typeof textoBriefing !== 'string') return '';
+  const limpio = eliminarEmojis(textoBriefing)
+    .replace(/^=+$/gm, '')
+    .replace(/\[([A-Z0-9 _-]+)\]/g, '$1:')
+    .replace(/\n{2,}/g, '. ')
+    .replace(/\n/g, '. ')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\.\s*\./g, '.')
+    .trim();
+
+  if (limpio.length <= 700) return limpio;
+  const corte = limpio.slice(0, 700);
+  const ultimoPunto = corte.lastIndexOf('.');
+  return (ultimoPunto > 200 ? corte.slice(0, ultimoPunto + 1) : corte).trim();
+}
+
+/**
  * Entrega del briefing por el objetivo configurado: callback inyectado,
  * puerto de canal (MessageChannelPort con enviarTexto) o consola local.
+ * Si `enviarEnAudio` (o `DAVIS_BRIEFING_AUDIO=1`) esta activo, sintetiza
+ * un resumen breve en nota de voz PTT via `ttsService` cuando este disponible.
  * Extraida del cron para ser probada en aislamiento: sin cron, sin envios.
  * @returns {Promise<string>} Modo usado: 'callback' | 'puerto' | 'local'.
  */
-export async function entregarBriefing(target, targetJid, textoBriefing) {
+export async function entregarBriefing(target, targetJid, textoBriefing, opts = {}) {
+  let modo = 'local';
   if (typeof target === 'function') {
     await target(textoBriefing);
-    return 'callback';
-  }
-  if (target && typeof target.enviarTexto === 'function' && targetJid) {
+    modo = 'callback';
+  } else if (target && typeof target.enviarTexto === 'function' && targetJid) {
     // Puerto de canal: el servicio no conoce el socket de Baileys.
     await target.enviarTexto(targetJid, textoBriefing);
-    return 'puerto';
+    modo = 'puerto';
+  } else {
+    console.log('[DailyBriefing] Briefing generado satisfactoriamente (modo local):');
+    console.log(textoBriefing);
   }
-  console.log('[DailyBriefing] Briefing generado satisfactoriamente (modo local):');
-  console.log(textoBriefing);
-  return 'local';
+
+  const enviarEnAudio = opts.enviarEnAudio !== undefined
+    ? Boolean(opts.enviarEnAudio)
+    : process.env.DAVIS_BRIEFING_AUDIO === '1';
+
+  if (enviarEnAudio) {
+    try {
+      const resumenAudio = generarResumenBriefingAudio(textoBriefing);
+      if (resumenAudio) {
+        const fnSintetizar = typeof opts.synthesizeSpeech === 'function' ? opts.synthesizeSpeech : synthesizeSpeech;
+        const fnEnviarVoz = typeof opts.sendVoiceNote === 'function' ? opts.sendVoiceNote : sendVoiceNote;
+        const oggBuffer = await fnSintetizar(resumenAudio, {
+          voice: opts.voice || 'es-ES-AlvaroNeural'
+        });
+        if (target && typeof target.enviarAudio === 'function' && targetJid) {
+          await target.enviarAudio(targetJid, oggBuffer);
+        } else if (opts.sock && targetJid) {
+          await fnEnviarVoz(opts.sock, targetJid, oggBuffer);
+        } else if (typeof opts.onAudio === 'function') {
+          await opts.onAudio(oggBuffer, resumenAudio);
+        }
+      }
+    } catch (errAudio) {
+      console.warn('[DailyBriefing] No se pudo sintetizar o enviar briefing en audio PTT:', errAudio.message);
+    }
+  }
+
+  return modo;
 }
 
 /**
@@ -242,14 +296,15 @@ export async function entregarBriefing(target, targetJid, textoBriefing) {
  * @param {Function|object} target Callback de recepcion o MessageChannelPort
  *                                 (puerto de canal con enviarTexto).
  * @param {string} [targetJid] JID de destino si target es un puerto de canal.
+ * @param {object} [opts={}] Opciones adicionales (p. ej. enviarEnAudio, sock, onAudio).
  * @returns {object} Tarea cron de node-cron.
  */
-export function programarEnvioMatutino(target, targetJid) {
+export function programarEnvioMatutino(target, targetJid, opts = {}) {
   const tarea = cron.schedule(CRON_HORA_MATUTINA, async () => {
     try {
       console.log('[DailyBriefing] Ejecutando envio matutino programado (06:55 Europe/Madrid)...');
-      const textoBriefing = await generarBriefingCompleto();
-      await entregarBriefing(target, targetJid, textoBriefing);
+      const textoBriefing = await generarBriefingCompleto(opts);
+      await entregarBriefing(target, targetJid, textoBriefing, opts);
     } catch (err) {
       console.error('[DailyBriefing] Error durante la ejecucion del cron:', err.message);
     }

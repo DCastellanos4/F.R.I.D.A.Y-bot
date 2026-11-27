@@ -35,9 +35,13 @@ function rutaArchivo(deps = {}) {
 function leer(deps = {}) {
   try {
     const data = JSON.parse(fs.readFileSync(rutaArchivo(deps), 'utf-8'));
-    return { habitos: Array.isArray(data.habitos) ? data.habitos : [] };
+    return {
+      habitos: Array.isArray(data.habitos) ? data.habitos : [],
+      config: data.config && typeof data.config === 'object' ? data.config : {},
+      ultimoCheckIn: typeof data.ultimoCheckIn === 'string' ? data.ultimoCheckIn : null
+    };
   } catch {
-    return { habitos: [] };
+    return { habitos: [], config: {}, ultimoCheckIn: null };
   }
 }
 
@@ -125,4 +129,88 @@ export function listarHabitos(deps = {}) {
     racha: racha(h.marcas, hoyStr),
     totalDias: h.marcas.length
   }));
+}
+
+function horaMadridDe(fecha) {
+  const str = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Madrid',
+    hour: '2-digit',
+    hourCycle: 'h23'
+  }).format(fecha);
+  const h = Number.parseInt(str, 10);
+  return Number.isFinite(h) ? h : 0;
+}
+
+export function configurarCheckInNocturno({ activo, horaDesde } = {}, deps = {}) {
+  const estado = leer(deps);
+  estado.config = {
+    ...(estado.config || {}),
+    checkInNocturno: Boolean(activo),
+    ...(typeof horaDesde === 'number' ? { horaDesde } : {})
+  };
+  guardar(estado, deps);
+  return { ok: true, config: estado.config };
+}
+
+/**
+ * Evalua si corresponde lanzar el check-in nocturno opt-in de habitos pendientes.
+ * Solo avisa si esta activado en configuracion, esta dentro del horario nocturno
+ * (por defecto >= 20:00 Europe/Madrid), no se ha notificado hoy y hay pendientes.
+ */
+export function evaluarCheckInHabitosPendientes(ahora = new Date(), deps = {}) {
+  let refAhora = ahora;
+  let opciones = deps;
+  if (ahora && typeof ahora === 'object' && !(ahora instanceof Date)) {
+    opciones = ahora;
+    refAhora = opciones.ahora ? new Date(opciones.ahora) : new Date();
+  } else {
+    refAhora = ahora ? new Date(ahora) : new Date();
+  }
+
+  const hoyStr = hoy({ ...opciones, ahora: refAhora });
+  const estado = leer(opciones);
+  const cfg = estado.config || {};
+  const activo = Boolean(
+    opciones.checkInNocturno ??
+    opciones.config?.checkInNocturno ??
+    opciones.config?.activo ??
+    cfg.checkInNocturno ??
+    (process.env.DAVIS_HABITS_CHECKIN_NOCTURNO === 'true')
+  );
+
+  if (!activo) {
+    return { ok: true, avisar: false, motivo: 'desactivado', fecha: hoyStr, pendientes: [], mensaje: null };
+  }
+
+  const horaMadrid = horaMadridDe(refAhora);
+  const horaDesde = opciones.horaDesde ?? opciones.config?.horaDesde ?? cfg.horaDesde ?? 20;
+  if (!opciones.ignorarHorario && typeof horaDesde === 'number' && horaMadrid < horaDesde) {
+    return { ok: true, avisar: false, motivo: 'fuera_de_horario', fecha: hoyStr, horaMadrid, pendientes: [], mensaje: null };
+  }
+
+  if (!opciones.forzar && estado.ultimoCheckIn === hoyStr) {
+    return { ok: true, avisar: false, motivo: 'ya_notificado_hoy', fecha: hoyStr, pendientes: [], mensaje: null };
+  }
+
+  const lista = listarHabitos({ ...opciones, ahora: refAhora });
+  const pendientes = lista.filter((h) => !h.hechoHoy);
+  if (pendientes.length === 0) {
+    return { ok: true, avisar: false, motivo: 'sin_pendientes', fecha: hoyStr, pendientes: [], mensaje: null };
+  }
+
+  if (!storeDe(opciones)) {
+    estado.ultimoCheckIn = hoyStr;
+    guardar(estado, opciones);
+  }
+
+  const nombres = pendientes.map((p) => p.nombre).join(', ');
+  const mensaje = `Check-in nocturno de habitos (${hoyStr}): tienes ${pendientes.length} pendiente(s) hoy: ${nombres}.`;
+  return {
+    ok: true,
+    avisar: true,
+    motivo: 'pendientes',
+    fecha: hoyStr,
+    pendientes,
+    mensaje
+  };
 }

@@ -467,9 +467,271 @@ export function consultarSeccionPDF(pregunta, textoOChunks, options = {}) {
 
 export const queryPdfSection = consultarSeccionPDF;
 
+/**
+ * Decodes basic XML entities into plain text.
+ *
+ * @param {string} xmlText
+ * @returns {string}
+ */
+function decodeXmlEntities(xmlText) {
+  return String(xmlText || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+/**
+ * Extracts entries from a ZIP buffer using Central Directory records (pure Node.js + zlib).
+ *
+ * @param {Buffer} buffer
+ * @param {string[]} targetPrefixes
+ * @returns {Map<string, string>} Map of entryName -> UTF-8 XML content
+ */
+function extractZipXmlEntries(buffer, targetPrefixes = []) {
+  const entries = new Map();
+  if (!Buffer.isBuffer(buffer) || buffer.length < 22) return entries;
+
+  // Locate End of Central Directory (0x06054b50)
+  let eocdPos = -1;
+  const minPos = Math.max(0, buffer.length - 65557);
+  for (let i = buffer.length - 22; i >= minPos; i--) {
+    if (buffer.readUInt32LE(i) === 0x06054b50) {
+      eocdPos = i;
+      break;
+    }
+  }
+  if (eocdPos === -1) return entries;
+
+  const cdCount = buffer.readUInt16LE(eocdPos + 10);
+  const cdOffset = buffer.readUInt32LE(eocdPos + 16);
+  if (cdOffset >= buffer.length) return entries;
+
+  let pos = cdOffset;
+  for (let i = 0; i < cdCount && pos + 46 <= buffer.length; i++) {
+    if (buffer.readUInt32LE(pos) !== 0x02014b50) break;
+
+    const compression = buffer.readUInt16LE(pos + 10);
+    const compressedSize = buffer.readUInt32LE(pos + 20);
+    const nameLen = buffer.readUInt16LE(pos + 28);
+    const extraLen = buffer.readUInt16LE(pos + 30);
+    const commentLen = buffer.readUInt16LE(pos + 32);
+    const localHeaderOffset = buffer.readUInt32LE(pos + 42);
+
+    const entryName = buffer.subarray(pos + 46, pos + 46 + nameLen).toString('utf-8');
+    pos += 46 + nameLen + extraLen + commentLen;
+
+    const matchesPrefix = targetPrefixes.length === 0 || targetPrefixes.some((p) => entryName.startsWith(p));
+    if (!matchesPrefix || localHeaderOffset + 30 > buffer.length) continue;
+    if (buffer.readUInt32LE(localHeaderOffset) !== 0x04034b50) continue;
+
+    const lNameLen = buffer.readUInt16LE(localHeaderOffset + 26);
+    const lExtraLen = buffer.readUInt16LE(localHeaderOffset + 28);
+    const dataStart = localHeaderOffset + 30 + lNameLen + lExtraLen;
+    if (dataStart + compressedSize > buffer.length) continue;
+
+    const rawData = buffer.subarray(dataStart, dataStart + compressedSize);
+    try {
+      const content = compression === 8
+        ? zlib.inflateRawSync(rawData).toString('utf-8')
+        : compression === 0
+          ? rawData.toString('utf-8')
+          : null;
+      if (content !== null) {
+        entries.set(entryName, content);
+      }
+    } catch {
+      // Ignore corrupt/unsupported entry
+    }
+  }
+
+  return entries;
+}
+
+/**
+ * Extracts plain text from a DOCX buffer (word/document.xml).
+ *
+ * @param {Buffer} buffer
+ * @returns {string}
+ */
+function extractDocxText(buffer) {
+  const entries = extractZipXmlEntries(buffer, ['word/document.xml']);
+  const docXml = entries.get('word/document.xml');
+  if (!docXml) return '';
+
+  const withBreaks = docXml
+    .replace(/<w:br\b[^>]*\/>/gi, '\n')
+    .replace(/<\/w:p>/gi, '\n')
+    .replace(/<\/w:tr>/gi, '\n')
+    .replace(/<\/w:tc>/gi, '\t');
+
+  const stripped = decodeXmlEntities(withBreaks.replace(/<[^>]+>/g, ''));
+  return normalizeWhitespace(stripped);
+}
+
+/**
+ * Extracts plain text from an XLSX buffer (sharedStrings + worksheets).
+ *
+ * @param {Buffer} buffer
+ * @returns {string}
+ */
+function extractXlsxText(buffer) {
+  const entries = extractZipXmlEntries(buffer, ['xl/sharedStrings.xml', 'xl/worksheets/']);
+  const sharedStrings = [];
+  const ssXml = entries.get('xl/sharedStrings.xml');
+  if (ssXml) {
+    for (const siMatch of ssXml.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/gi)) {
+      const parts = [...siMatch[1].matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/gi)].map((m) => decodeXmlEntities(m[1]));
+      sharedStrings.push(parts.join(''));
+    }
+  }
+
+  const sheetNames = [...entries.keys()]
+    .filter((k) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(k))
+    .sort();
+
+  const lines = [];
+  for (const sheetName of sheetNames) {
+    const sheetXml = entries.get(sheetName) || '';
+    for (const rowMatch of sheetXml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/gi)) {
+      const rowCells = [];
+      for (const cellMatch of rowMatch[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/gi)) {
+        const attrs = cellMatch[1] || '';
+        const body = cellMatch[2] || '';
+        const typeMatch = attrs.match(/\bt=["']([^"']+)["']/i);
+        const cellType = typeMatch ? typeMatch[1] : '';
+
+        if (cellType === 'inlineStr') {
+          const tParts = [...body.matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/gi)].map((m) => decodeXmlEntities(m[1]));
+          if (tParts.length > 0) rowCells.push(tParts.join('').trim());
+        } else {
+          const vMatch = body.match(/<v\b[^>]*>([\s\S]*?)<\/v>/i);
+          if (vMatch) {
+            const rawVal = vMatch[1].trim();
+            if (cellType === 's') {
+              const idx = Number(rawVal);
+              rowCells.push(Number.isInteger(idx) && sharedStrings[idx] !== undefined ? sharedStrings[idx] : rawVal);
+            } else {
+              rowCells.push(decodeXmlEntities(rawVal));
+            }
+          }
+        }
+      }
+      if (rowCells.some((c) => c.length > 0)) {
+        lines.push(rowCells.join(' | '));
+      }
+    }
+  }
+
+  return normalizeWhitespace(lines.join('\n'));
+}
+
+/**
+ * Extracts text from supported document formats: PDF, TXT, MD, CSV, DOCX, XLSX.
+ *
+ * @param {Buffer|string} bufferOrPath
+ * @param {object} [options={}]
+ * @param {string} [options.fileName='']
+ * @param {string} [options.mimetype='']
+ * @returns {{ ok: boolean, formato: string, texto: string, esEscaneado?: boolean, error?: string }}
+ */
+export function extraerTextoDocumento(bufferOrPath, options = {}) {
+  const fileName = String(options.fileName || (typeof bufferOrPath === 'string' ? path.basename(bufferOrPath) : '')).toLowerCase();
+  const mimetype = String(options.mimetype || '').toLowerCase();
+
+  let buffer;
+  if (typeof bufferOrPath === 'string') {
+    if (!fs.existsSync(bufferOrPath)) {
+      return { ok: false, formato: 'desconocido', texto: '', error: `Archivo no encontrado: ${bufferOrPath}` };
+    }
+    buffer = fs.readFileSync(bufferOrPath);
+  } else if (Buffer.isBuffer(bufferOrPath)) {
+    buffer = bufferOrPath;
+  } else {
+    return { ok: false, formato: 'desconocido', texto: '', error: 'Entrada invalida: se esperaba Buffer o ruta.' };
+  }
+
+  if (mimetype.includes('pdf') || fileName.endsWith('.pdf')) {
+    try {
+      const texto = extraerTextoPDF(buffer);
+      if (!texto || texto.trim().length < 20) {
+        return {
+          ok: false,
+          formato: 'pdf',
+          texto: texto || '',
+          esEscaneado: true,
+          error: 'El PDF no contiene texto extraible (posiblemente es un documento escaneado o basado en imagenes).'
+        };
+      }
+      return { ok: true, formato: 'pdf', texto, esEscaneado: false };
+    } catch (err) {
+      return { ok: false, formato: 'pdf', texto: '', error: `Error leyendo PDF: ${err.message}` };
+    }
+  }
+
+  if (
+    fileName.endsWith('.txt') ||
+    fileName.endsWith('.md') ||
+    fileName.endsWith('.csv') ||
+    mimetype.includes('text/plain') ||
+    mimetype.includes('text/markdown') ||
+    mimetype.includes('text/csv') ||
+    mimetype.includes('application/csv')
+  ) {
+    const formato = fileName.endsWith('.csv') || mimetype.includes('csv')
+      ? 'csv'
+      : fileName.endsWith('.md') || mimetype.includes('markdown')
+        ? 'md'
+        : 'txt';
+    const texto = normalizeWhitespace(buffer.toString('utf-8'));
+    if (!texto) {
+      return { ok: false, formato, texto: '', error: `El archivo ${formato.toUpperCase()} esta vacio.` };
+    }
+    return { ok: true, formato, texto };
+  }
+
+  if (fileName.endsWith('.docx') || mimetype.includes('wordprocessingml.document')) {
+    const texto = extractDocxText(buffer);
+    if (!texto) {
+      return {
+        ok: false,
+        formato: 'docx',
+        texto: '',
+        error: 'No se pudo extraer texto legible del archivo DOCX (puede estar vacio o cifrado).'
+      };
+    }
+    return { ok: true, formato: 'docx', texto };
+  }
+
+  if (fileName.endsWith('.xlsx') || mimetype.includes('spreadsheetml.sheet')) {
+    const texto = extractXlsxText(buffer);
+    if (!texto) {
+      return {
+        ok: false,
+        formato: 'xlsx',
+        texto: '',
+        error: 'No se pudo extraer texto legible del archivo XLSX (puede estar vacio o cifrado).'
+      };
+    }
+    return { ok: true, formato: 'xlsx', texto };
+  }
+
+  return {
+    ok: false,
+    formato: 'no_soportado',
+    texto: '',
+    error: `Formato no soportado (${fileName || mimetype || 'desconocido'}). Formatos admitidos: PDF, TXT, MD, CSV, DOCX y XLSX.`
+  };
+}
+
+export const extractDocumentText = extraerTextoDocumento;
+
 export default {
   extraerTextoPDF,
   extractPdfText,
+  extraerTextoDocumento,
+  extractDocumentText,
   dividirEnFragmentos,
   splitIntoChunks,
   resumirDocumento,

@@ -22,9 +22,12 @@ function rutaArchivo(deps = {}) {
 function leer(deps = {}) {
   try {
     const data = JSON.parse(fs.readFileSync(rutaArchivo(deps), 'utf-8'));
-    return { entregas: Array.isArray(data.entregas) ? data.entregas : [] };
+    return {
+      entregas: Array.isArray(data.entregas) ? data.entregas : [],
+      config: data.config && typeof data.config === 'object' ? data.config : {}
+    };
   } catch {
-    return { entregas: [] };
+    return { entregas: [], config: {} };
   }
 }
 
@@ -71,4 +74,87 @@ export function eliminarEntrega(criterio, deps = {}) {
   const [borrada] = estado.entregas.splice(idx, 1);
   guardar(estado, deps);
   return { ok: true, borrada };
+}
+
+export function configurarAlertasEntregas({ activo } = {}, deps = {}) {
+  const estado = leer(deps);
+  estado.config = {
+    ...(estado.config || {}),
+    alertasProactivas: Boolean(activo)
+  };
+  guardar(estado, deps);
+  return { ok: true, config: estado.config };
+}
+
+/**
+ * Evalua entregas y examenes proximos (<=48h / <=24h) aun no notificados.
+ * Opt-in: solo genera alertas si esta activado en configuracion o deps.
+ */
+export function evaluarAlertasEntregas(ahora = new Date(), deps = {}) {
+  let refAhora = ahora;
+  let opciones = deps;
+  if (ahora && typeof ahora === 'object' && !(ahora instanceof Date)) {
+    opciones = ahora;
+    refAhora = opciones.ahora ? new Date(opciones.ahora) : new Date();
+  } else {
+    refAhora = ahora ? new Date(ahora) : new Date();
+  }
+
+  const hoy = hoyMadrid({ ...opciones, ahora: refAhora });
+  const estado = leer(opciones);
+  const cfg = estado.config || {};
+  const activo = Boolean(
+    opciones.alertasProactivas ??
+    opciones.activo ??
+    opciones.config?.alertasProactivas ??
+    opciones.config?.activo ??
+    cfg.alertasProactivas ??
+    (process.env.DAVIS_DEADLINES_ALERTAS === 'true')
+  );
+
+  if (!activo) {
+    return { ok: true, avisar: false, motivo: 'desactivado', fecha: hoy, alertas: [], mensaje: null };
+  }
+
+  const alertas = [];
+  let huboCambios = false;
+
+  for (const e of estado.entregas) {
+    const dias = Math.round((new Date(e.fecha + 'T12:00:00Z') - new Date(hoy + 'T12:00:00Z')) / 86400000);
+    if (dias < 0 || dias > 2) continue;
+
+    const umbral = dias <= 1 ? '24h' : '48h';
+    const yaNotificadas = Array.isArray(e.alertasNotificadas) ? e.alertasNotificadas : [];
+    if (yaNotificadas.includes(umbral)) continue;
+
+    e.alertasNotificadas = [...yaNotificadas, umbral];
+    huboCambios = true;
+    alertas.push({
+      id: e.id,
+      titulo: e.titulo,
+      tipo: e.tipo,
+      fecha: e.fecha,
+      dias,
+      umbral
+    });
+  }
+
+  if (huboCambios) {
+    guardar(estado, opciones);
+  }
+
+  if (alertas.length === 0) {
+    return { ok: true, avisar: false, motivo: 'sin_alertas', fecha: hoy, alertas: [], mensaje: null };
+  }
+
+  const lineas = alertas.map((a) => `- ${a.titulo} (${a.tipo}) el ${a.fecha} (ventana <=${a.umbral})`);
+  const mensaje = `Alertas de entregas proximas:\n${lineas.join('\n')}`;
+  return {
+    ok: true,
+    avisar: true,
+    motivo: 'entregas_proximas',
+    fecha: hoy,
+    alertas,
+    mensaje
+  };
 }

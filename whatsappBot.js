@@ -55,7 +55,7 @@ import { normalizarTexto } from './src/services/memoryService.js';
 import { mensajeErrorParaUsuario } from './src/services/errorSanitizerService.js';
 import { transcribirAudioBuffer } from './src/services/audioTranscriberService.js';
 import { analizarImagen, procesarDocumentoPDF } from './src/services/visionService.js';
-import { extraerTextoPDF, resumirDocumento, consultarSeccionPDF } from './src/services/pdfReaderService.js';
+import { extraerTextoPDF, extraerTextoDocumento, resumirDocumento, consultarSeccionPDF } from './src/services/pdfReaderService.js';
 import { capturarPantallaWeb } from './src/services/browserService.js';
 
 function handleOutreachLeadReply(remitenteLimpio, textoExterno) {
@@ -1018,6 +1018,18 @@ Prueba a decirme:
             urgencyDirective = getUrgencyPromptDirective(urg);
             const directivaVozDuplex = '[DIRECTIVA DE VOZ DUPLEX]: El usuario se esta comunicando mediante nota de voz. Responde de forma concisa, fluida y directa en espanol conversacional, disenada para ser sintetizada por voz TTS. No uses tablas markdown, listas con vinetas complejas, asteriscos dobles ni bloques de codigo a menos que se pidan explicitamente.';
             urgencyDirective = urgencyDirective ? `${urgencyDirective}\n${directivaVozDuplex}` : directivaVozDuplex;
+
+            const esAudioLargo = duracionSeg > 60 || texto.length > 600;
+            const esAudioReenviado = Boolean(msg.message.audioMessage?.contextInfo?.isForwarded);
+            if (esAudioLargo || esAudioReenviado) {
+              const partesDirectiva = [
+                '[DIRECTIVA AUDIO LARGO/REENVIADO]: Devuelve un resumen estructurado en puntos clave y propuestas concretas de recordatorios, eventos o notas a guardar.'
+              ];
+              if (esAudioReenviado) {
+                partesDirectiva.push('Este mensaje es reenviado: NO ejecutes mutaciones (crear recordatorios, eventos, notas ni envios) sin confirmacion explicita de David.');
+              }
+              urgencyDirective = `${urgencyDirective}\n${partesDirectiva.join(' ')}`;
+            }
           } else {
             console.warn('Aviso: Audio no pudo ser transcrito con claridad.');
             await sock.sendMessage(remoteJid, {
@@ -1034,6 +1046,11 @@ Prueba a decirme:
         }
       } else if (!texto) {
         texto = extraerTextoMensaje(msg);
+      }
+
+      if (!esAudio && msg.message.extendedTextMessage?.contextInfo?.isForwarded) {
+        const directivaReenviado = '[DIRECTIVA MENSAJE REENVIADO]: Este mensaje es reenviado. Devuelve un resumen estructurado en puntos clave y propuestas concretas de recordatorios, eventos o notas a guardar. NO ejecutes mutaciones sin confirmacion explicita de David.';
+        urgencyDirective = urgencyDirective ? `${urgencyDirective}\n${directivaReenviado}` : directivaReenviado;
       }
 
       // 4b. Imagen entrante: fotos de tickets o analisis general con visionService
@@ -1063,6 +1080,10 @@ Prueba a decirme:
                 textoCancelar: 'Descartar',
                 footer: 'D.A.V.I.S. Finanzas'
               });
+              try {
+                const resumenEntrada = captionFoto ? `[Imagen de ticket recibida: ${captionFoto}]` : '[Imagen de ticket recibida]';
+                registrarIntercambio(remoteJid, resumenEntrada, resBorrador.resumen);
+              } catch {}
             } else {
               await sock.sendMessage(remoteJid, { text: resBorrador.error }, { quoted: msg });
             }
@@ -1089,6 +1110,10 @@ Prueba a decirme:
 
             if (resVision && resVision.ok && resVision.analisis) {
               await sock.sendMessage(remoteJid, { text: resVision.analisis }, { quoted: msg });
+              try {
+                const resumenEntrada = captionFoto ? `[Imagen recibida: ${captionFoto}]` : '[Imagen recibida]';
+                registrarIntercambio(remoteJid, resumenEntrada, resVision.analisis);
+              } catch {}
               continue;
             } else if (resVision && !resVision.ok && resVision.error) {
               await sock.sendMessage(remoteJid, { text: resVision.error }, { quoted: msg });
@@ -1106,7 +1131,7 @@ Prueba a decirme:
         }
       }
 
-      // 4b.3 Documentos entrantes (PDF / TXT): lectura y analisis con pdfReaderService y visionService
+      // 4b.3 Documentos entrantes (PDF / TXT / MD / CSV / DOCX / XLSX): lectura y analisis con pdfReaderService y visionService
       const docMsg = msg.message.documentMessage || msg.message.documentWithCaptionMessage?.message?.documentMessage;
       if (docMsg) {
         console.log(`[WhatsApp] Documento recibido de David: ${docMsg.fileName || 'adjunto'} (${docMsg.mimetype || 'desconocido'}).`);
@@ -1116,8 +1141,16 @@ Prueba a decirme:
             : (m) => downloadMediaMessage(m, 'buffer', {}, { logger: pino({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage });
           const docBuffer = await descargarDoc(msg);
           const captionDoc = (docMsg.caption || docMsg.title || texto || '').trim();
-          const fileName = String(docMsg.fileName || '').toLowerCase();
+          const nombreArchivo = docMsg.fileName || 'adjunto';
+          const fileName = String(nombreArchivo).toLowerCase();
           const mimetype = String(docMsg.mimetype || '').toLowerCase();
+
+          const registrarDocEnHistorial = (resumenDoc, respuestaDoc) => {
+            try {
+              const entrada = `[Documento recibido: ${nombreArchivo}${captionDoc ? ` | Consulta: ${captionDoc}` : ''}${resumenDoc ? ` | Extracto: ${resumenDoc.slice(0, 300)}` : ''}]`;
+              registrarIntercambio(remoteJid, entrada, respuestaDoc);
+            } catch {}
+          };
 
           if (mimetype.includes('pdf') || fileName.endsWith('.pdf')) {
             const fnProcesarPDF = typeof deps.procesarDocumentoPDF === 'function' ? deps.procesarDocumentoPDF : procesarDocumentoPDF;
@@ -1125,26 +1158,54 @@ Prueba a decirme:
             if (resPDF && resPDF.ok) {
               const textoRespuesta = resPDF.tipo === 'consulta' ? resPDF.respuesta : resPDF.resumen;
               await sock.sendMessage(remoteJid, { text: textoRespuesta }, { quoted: msg });
+              registrarDocEnHistorial(resPDF.resumen || textoRespuesta, textoRespuesta);
             } else {
-              await sock.sendMessage(remoteJid, { text: resPDF?.error || 'No he podido extraer texto legible del documento PDF.' }, { quoted: msg });
-            }
-            continue;
-          } else if (mimetype.includes('text') || mimetype.includes('plain') || fileName.endsWith('.txt')) {
-            const textoPlano = Buffer.isBuffer(docBuffer) ? docBuffer.toString('utf-8') : String(docBuffer || '');
-            const fnConsultar = typeof deps.consultarSeccionPDF === 'function' ? deps.consultarSeccionPDF : consultarSeccionPDF;
-            const fnResumir = typeof deps.resumirDocumento === 'function' ? deps.resumirDocumento : resumirDocumento;
-            if (captionDoc) {
-              const resConsulta = fnConsultar(captionDoc, textoPlano);
-              await sock.sendMessage(remoteJid, { text: resConsulta.answer || resConsulta.respuesta || String(resConsulta) }, { quoted: msg });
-            } else {
-              const resumen = fnResumir(textoPlano);
-              await sock.sendMessage(remoteJid, { text: resumen }, { quoted: msg });
+              // Intentar fallback con vision si hay renderizador de PDF a imagen disponible
+              let resueltoPorVision = false;
+              if (typeof deps.renderizarPdfAImagen === 'function') {
+                try {
+                  const imgBuf = await deps.renderizarPdfAImagen(docBuffer);
+                  if (imgBuf) {
+                    const fnAnalizar = typeof deps.analizarImagen === 'function' ? deps.analizarImagen : analizarImagen;
+                    const resVisionPdf = await fnAnalizar({
+                      bufferOPath: imgBuf,
+                      prompt: captionDoc || 'Extrae y resume el contenido de este documento PDF escaneado. Responde en espanol, sin emojis.',
+                      mimeType: 'image/png'
+                    }, deps);
+                    if (resVisionPdf && resVisionPdf.ok && resVisionPdf.analisis) {
+                      await sock.sendMessage(remoteJid, { text: resVisionPdf.analisis }, { quoted: msg });
+                      registrarDocEnHistorial('', resVisionPdf.analisis);
+                      resueltoPorVision = true;
+                    }
+                  }
+                } catch {}
+              }
+              if (!resueltoPorVision) {
+                const msgFallbackPdf = resPDF?.error || 'El documento PDF no contiene texto extraible (puede ser un PDF escaneado). Si quieres, enviame una captura o foto de la pagina para analizarla con vision.';
+                await sock.sendMessage(remoteJid, { text: msgFallbackPdf }, { quoted: msg });
+              }
             }
             continue;
           } else {
-            await sock.sendMessage(remoteJid, {
-              text: `He recibido el archivo "${docMsg.fileName || 'adjunto'}", pero actualmente solo proceso documentos PDF o texto plano (TXT).`
-            }, { quoted: msg });
+            const fnExtraerDoc = typeof deps.extraerTextoDocumento === 'function' ? deps.extraerTextoDocumento : extraerTextoDocumento;
+            const resDoc = fnExtraerDoc(docBuffer, { fileName, mimetype });
+            if (resDoc && resDoc.ok && resDoc.texto) {
+              const fnConsultar = typeof deps.consultarSeccionPDF === 'function' ? deps.consultarSeccionPDF : consultarSeccionPDF;
+              const fnResumir = typeof deps.resumirDocumento === 'function' ? deps.resumirDocumento : resumirDocumento;
+              let textoRespuesta;
+              if (captionDoc) {
+                const resConsulta = fnConsultar(captionDoc, resDoc.texto);
+                textoRespuesta = resConsulta.answer || resConsulta.respuesta || String(resConsulta);
+              } else {
+                textoRespuesta = fnResumir(resDoc.texto);
+              }
+              await sock.sendMessage(remoteJid, { text: textoRespuesta }, { quoted: msg });
+              registrarDocEnHistorial(resDoc.texto, textoRespuesta);
+            } else {
+              await sock.sendMessage(remoteJid, {
+                text: resDoc?.error || `He recibido el archivo "${nombreArchivo}", pero no he podido extraer texto legible. Formatos admitidos: PDF, TXT, MD, CSV, DOCX y XLSX.`
+              }, { quoted: msg });
+            }
             continue;
           }
         } catch (errDoc) {

@@ -443,9 +443,92 @@ export function getBufferedGroups() {
   return Array.from(groupMessageBuffers.keys());
 }
 
+/**
+ * Genera un digest nocturno consolidado de todos los grupos activos del dia.
+ * Funcion opt-in pensada para invocacion programada o bajo demanda.
+ *
+ * @param {object} [options={}]
+ * @param {number} [options.hours=24] - Ventana temporal en horas.
+ * @param {string[]} [options.groupJids] - Lista opcional de JIDs de grupo a resumir.
+ * @param {boolean} [options.includeEmpty=false] - Incluir grupos sin actividad.
+ * @returns {Promise<{ ok: boolean, totalGroups: number, totalMessages: number, totalMentions: number, totalTasks: number, groups: Array, digestText: string }>}
+ */
+export async function generarDigestNocturnoGrupos(options = {}) {
+  const hours = Number(options.hours) > 0 ? Number(options.hours) : 24;
+  const includeEmpty = Boolean(options.includeEmpty);
+  const targetGroups = Array.isArray(options.groupJids)
+    ? options.groupJids.map(normalizeJid).filter(Boolean)
+    : getBufferedGroups();
+
+  const summaries = [];
+  for (const groupJid of targetGroups) {
+    const summary = await generateGroupSummary(groupJid, hours);
+    if (includeEmpty || summary.messageCount > 0) {
+      summaries.push(summary);
+    }
+  }
+
+  if (summaries.length === 0) {
+    return {
+      ok: true,
+      totalGroups: 0,
+      totalMessages: 0,
+      totalMentions: 0,
+      totalTasks: 0,
+      groups: [],
+      digestText: 'DIGEST NOCTURNO DE GRUPOS: Sin actividad registrada en grupos activos hoy.'
+    };
+  }
+
+  const totalMessages = summaries.reduce((acc, g) => acc + g.messageCount, 0);
+  const totalMentions = summaries.reduce((acc, g) => acc + (g.davidMentions?.length || 0), 0);
+  const totalTasks = summaries.reduce((acc, g) => acc + (g.pendingTasks?.length || 0), 0);
+
+  const lines = [
+    '# DIGEST NOCTURNO DE GRUPOS',
+    '',
+    `- Grupos activos: ${summaries.length}`,
+    `- Mensajes totales (${hours}h): ${totalMessages}`,
+    `- Menciones a David: ${totalMentions}`,
+    `- Tareas detectadas: ${totalTasks}`,
+    ''
+  ];
+
+  for (const g of summaries) {
+    lines.push(`## Grupo: ${g.groupJid} (${g.messageCount} mensajes)`);
+    if (g.davidMentions && g.davidMentions.length > 0) {
+      lines.push(`- Menciones a David (${g.davidMentions.length}):`);
+      for (const m of g.davidMentions.slice(0, 3)) {
+        lines.push(`  - [${m.sender}]: "${m.text}"`);
+      }
+    }
+    if (g.pendingTasks && g.pendingTasks.length > 0) {
+      lines.push(`- Tareas pendientes (${g.pendingTasks.length}):`);
+      for (const t of g.pendingTasks.slice(0, 5)) {
+        lines.push(`  - [ACCION] ${t.task}`);
+      }
+    }
+    if ((!g.davidMentions || g.davidMentions.length === 0) && (!g.pendingTasks || g.pendingTasks.length === 0)) {
+      lines.push('- Actividad general sin menciones ni tareas pendientes.');
+    }
+    lines.push('');
+  }
+
+  return {
+    ok: true,
+    totalGroups: summaries.length,
+    totalMessages,
+    totalMentions,
+    totalTasks,
+    groups: summaries,
+    digestText: lines.join('\n').trim()
+  };
+}
+
 export default {
   recordGroupMessage,
   generateGroupSummary,
+  generarDigestNocturnoGrupos,
   isDavidMentioned,
   extractPendingTasks,
   getGroupMessages,

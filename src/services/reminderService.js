@@ -117,7 +117,66 @@ function calcularTimestamp(minutosEnElFuturo, horaTexto) {
   return new Date(ahora.getTime() + 15 * 60 * 1000);
 }
 
-export function crearRecordatorio({ mensaje, minutosEnElFuturo = null, hora = null }, deps = {}) {
+const RECURRENCIAS_VALIDAS = ['diario', 'semanal', 'mensual'];
+
+function normalizarRecurrencia(valor) {
+  if (valor === null || valor === undefined || valor === '') return null;
+  const norm = String(valor).trim().toLowerCase();
+  return RECURRENCIAS_VALIDAS.includes(norm) ? norm : undefined;
+}
+
+function construirFechaMadrid(year, month, day, hour, minute) {
+  const pad = n => String(n).padStart(2, '0');
+  const fechaStr = `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}:00`;
+  let objetivo = new Date(fechaStr + '+01:00');
+  if (obtenerFechaHoraMadrid(objetivo).hour !== hour) {
+    objetivo = new Date(fechaStr + '+02:00');
+  }
+  return objetivo;
+}
+
+function calcularSiguienteOcurrencia(timestampMs, recurrencia, ahoraMs = Date.now()) {
+  const base = obtenerFechaHoraMadrid(new Date(timestampMs));
+  let { year, month, day } = base;
+  const { hour, minute } = base;
+
+  for (let i = 0; i < 1000; i++) {
+    if (recurrencia === 'diario') {
+      const d = new Date(Date.UTC(year, month - 1, day + 1));
+      year = d.getUTCFullYear();
+      month = d.getUTCMonth() + 1;
+      day = d.getUTCDate();
+    } else if (recurrencia === 'semanal') {
+      const d = new Date(Date.UTC(year, month - 1, day + 7));
+      year = d.getUTCFullYear();
+      month = d.getUTCMonth() + 1;
+      day = d.getUTCDate();
+    } else if (recurrencia === 'mensual') {
+      month += 1;
+      if (month > 12) {
+        month = 1;
+        year += 1;
+      }
+      const maxDiaMes = new Date(Date.UTC(year, month, 0)).getUTCDate();
+      day = Math.min(base.day, maxDiaMes);
+    } else {
+      return null;
+    }
+
+    const candidato = construirFechaMadrid(year, month, day, hour, minute);
+    if (candidato.getTime() > ahoraMs) {
+      return candidato;
+    }
+  }
+  return null;
+}
+
+export function crearRecordatorio({ mensaje, minutosEnElFuturo = null, hora = null, recurrencia = null }, deps = {}) {
+  const recurrenciaNorm = normalizarRecurrencia(recurrencia);
+  if (recurrenciaNorm === undefined) {
+    return { ok: false, error: 'Recurrencia invalida. Usa "diario", "semanal" o "mensual".' };
+  }
+
   let minCalc = minutosEnElFuturo;
   let horaCalc = hora;
 
@@ -149,6 +208,7 @@ export function crearRecordatorio({ mensaje, minutosEnElFuturo = null, hora = nu
     timestamp: fechaObjetivo.getTime(),
     fechaHoraLocal: formatoLocal,
     completado: false,
+    recurrencia: recurrenciaNorm,
     creadoEn: new Date().toISOString()
   };
 
@@ -226,7 +286,10 @@ export function cancelarRecordatorio(criterio, deps = {}) {
     return { ok: true, mensaje: `Se han cancelado todos los recordatorios del sistema (${pendientes} pendientes eliminados), señor.` };
   }
 
-  const index = lista.findIndex(r => r.id === crit || r.mensaje.toLowerCase().includes(crit));
+  let index = lista.findIndex(r => !r.completado && (r.id === crit || r.mensaje.toLowerCase().includes(crit)));
+  if (index === -1) {
+    index = lista.findIndex(r => r.id === crit || r.mensaje.toLowerCase().includes(crit));
+  }
   if (index === -1) {
     return { ok: false, mensaje: 'No se encontró ningún recordatorio que coincida, señor.' };
   }
@@ -285,9 +348,11 @@ export async function despacharRecordatoriosPendientes(deps = {}) {
   }
 
   const lista = leerRecordatorios(deps);
-  const ahora = Date.now();
+  const ahora = deps.ahora ? new Date(deps.ahora).getTime() : Date.now();
+  const callback = typeof deps.callbackNotificacion === 'function' ? deps.callbackNotificacion : callbackNotificacionGlobal;
   let huboCambios = false;
   const disparados = [];
+  const nuevosRecurrentes = [];
 
   for (const r of lista) {
     if (!r.completado && r.timestamp <= ahora) {
@@ -306,14 +371,49 @@ export async function despacharRecordatoriosPendientes(deps = {}) {
         fs.appendFileSync(ARCHIVO_LOG_ALERTAS, entradaLog, 'utf-8');
       } catch (err) {}
 
-      if (typeof callbackNotificacionGlobal === 'function') {
+      if (typeof callback === 'function') {
         try {
-          await callbackNotificacionGlobal(r, alertaTexto);
+          await callback(r, alertaTexto);
         } catch (err) {
           console.error('Error enviando notificación WhatsApp:', err.message);
         }
       }
+
+      if (r.recurrencia && RECURRENCIAS_VALIDAS.includes(r.recurrencia)) {
+        const siguienteFecha = calcularSiguienteOcurrencia(r.timestamp, r.recurrencia, ahora);
+        if (siguienteFecha) {
+          const siguienteTs = siguienteFecha.getTime();
+          const yaExiste = lista.some(
+            (x) => !x.completado && x.padreId === r.id && x.timestamp === siguienteTs
+          );
+          if (!yaExiste) {
+            const formatoLocalSig = siguienteFecha.toLocaleString('es-ES', {
+              timeZone: 'Europe/Madrid',
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            });
+            nuevosRecurrentes.push({
+              id: `rem_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+              mensaje: r.mensaje,
+              timestamp: siguienteTs,
+              fechaHoraLocal: formatoLocalSig,
+              completado: false,
+              recurrencia: r.recurrencia,
+              padreId: r.id,
+              creadoEn: new Date().toISOString()
+            });
+          }
+        }
+      }
     }
+  }
+
+  if (nuevosRecurrentes.length > 0) {
+    lista.push(...nuevosRecurrentes);
+    huboCambios = true;
   }
 
   if (huboCambios) {

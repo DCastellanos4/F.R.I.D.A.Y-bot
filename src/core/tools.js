@@ -2137,6 +2137,62 @@ export const herramientasJarvis = [
   {
     type: 'function',
     function: {
+      name: 'listar_correos',
+      description: 'Lista correos recientes o por busqueda en Gmail (requiere OAuth2 o token configurado).',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Filtro estilo busqueda de Gmail (ej. is:unread, from:amazon).' },
+          maxResults: { type: 'integer', description: 'Numero maximo de correos a devolver (por defecto 10).' },
+          soloNoLeidos: { type: 'boolean', description: 'Si es true, filtra solo no leidos.' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'leer_correo',
+      description: 'Lee el contenido completo y cabeceras de un correo concreto de Gmail por su ID.',
+      parameters: {
+        type: 'object',
+        properties: {
+          messageId: { type: 'string', description: 'ID del mensaje de Gmail a leer.' }
+        },
+        required: ['messageId']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'resumir_correos_urgentes',
+      description: 'Resume correos recientes urgentes, facturas o entrevistas pendientes en Gmail.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'crear_borrador_correo',
+      description: 'Prepara un borrador de correo en Gmail sin enviarlo directamente.',
+      parameters: {
+        type: 'object',
+        properties: {
+          para: { type: 'string', description: 'Direccion de correo del destinatario.' },
+          asunto: { type: 'string', description: 'Asunto del correo.' },
+          cuerpo: { type: 'string', description: 'Texto del cuerpo del correo.' }
+        },
+        required: ['para', 'asunto', 'cuerpo']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'modificar_evento',
       description: 'Modifica un evento o cita existente en la agenda y Google Calendar.',
       parameters: {
@@ -2428,6 +2484,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   finanzas: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'],
   skills: ['proponer_skill', 'listar_skills', 'ejecutar_skill'],
   calendario: ['consultar_eventos', 'crear_evento', 'modificar_evento', 'cancelar_evento'],
+  correo: ['listar_correos', 'leer_correo', 'resumir_correos_urgentes', 'crear_borrador_correo'],
   github: ['crear_rama_trabajo', 'crear_commit', 'abrir_pull_request', 'empujar_rama', 'ejecutar_tarea_programacion'],
   cuota: ['consultar_cuota_tenant', 'solicitar_upgrade_tenant'],
   conversacion: []

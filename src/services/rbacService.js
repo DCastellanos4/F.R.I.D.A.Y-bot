@@ -74,7 +74,8 @@ export const CLASIFICACION_HERRAMIENTAS = Object.freeze({
     'configurar_presupuesto', 'estado_presupuestos', 'escribir_diario', 'leer_diario', 'preguntar_documentos',
     'sugerir_menu', 'recomendar_serie_pelicula', 'iniciar_simulacro_entrevista', 'analizar_cv_oferta',
     'resumir_apuntes', 'priorizar_ideas', 'consultar_clima',
-    'escanear_ofertas_empleo', 'consultar_eventos', 'crear_evento', 'modificar_evento', 'cancelar_evento'
+    'escanear_ofertas_empleo', 'consultar_eventos', 'crear_evento', 'modificar_evento', 'cancelar_evento',
+    'listar_correos', 'leer_correo', 'resumir_correos_urgentes', 'crear_borrador_correo'
   ],
   datos_tenant: [
     'guardar_memoria', 'buscar_memoria', 'listar_memorias', 'olvidar_memoria', 'buscar_recuerdo_semantico',

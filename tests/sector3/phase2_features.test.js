@@ -221,7 +221,7 @@ test('Fase 2 - documentMessage: archivo con formato no soportado informa amablem
   });
 
   assert.equal(enviados.length, 1);
-  assert.match(enviados[0].payload.text, /actualmente solo proceso documentos PDF o texto plano/);
+  assert.match(enviados[0].payload.text, /Formatos admitidos: PDF, TXT, MD, CSV, DOCX y XLSX/i);
 });
 
 // ---------------------------------------------------------------------------
