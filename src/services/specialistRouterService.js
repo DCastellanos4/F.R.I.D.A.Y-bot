@@ -14,21 +14,15 @@ export const LIMITE_HERRAMIENTAS_ESPECIALISTA = 128;
 
 export const ESPECIALISTAS = Object.freeze(['coder', 'ops', 'personal', 'general']);
 
-// Solo herramientas presentes en el catalogo real (src/core/tools.js): los
-// nombres ausentes se descartan en silencio al acotar y el modelo nunca las
-// ve, pero prometerlos en listas, prompts o ejemplos induce llamadas
-// imposibles. crear_rama_trabajo/crear_commit/abrir_pull_request/
-// empujar_rama/ejecutar_tarea_programacion (githubAgentService) se retiraron
-// de aqui por no existir en el catalogo; cablearlas es decision de producto.
+// Solo herramientas de revision y analisis del catalogo real (src/core/tools.js).
+// crear_rama_trabajo/crear_commit/abrir_pull_request/empujar_rama son operaciones
+// mutantes de git que el especialista Coder NO ejecuta directamente: si David las
+// pide, el especialista lo aclara y ofrece la alternativa disponible.
+// ejecutar_tarea_programacion se omite porque requiere github agent externo.
 export const HERRAMIENTAS_CODER = Object.freeze([
   'revisar_pr',
   'generar_changelog',
   'guiar_depuracion',
-  'crear_rama_trabajo',
-  'crear_commit',
-  'abrir_pull_request',
-  'empujar_rama',
-  'ejecutar_tarea_programacion',
   'anotar_idea',
   'listar_ideas',
   'priorizar_ideas',

@@ -444,8 +444,8 @@ function dividirClausulaPorConectores(clausula) {
         // Corte en " y <verbo_accion>" (no corta "pan y leche" ni "Madrid y Sevilla")
         const partesY = sd.split(RE_Y_VERBO_ACCION);
         for (const py of partesY) {
-          // Corte en ", <verbo_accion>"
-          const partesComa = py.split(new RegExp(`,\\s+(?=(?:${VERBOS_ACCION.join('|')})\\b)`, 'i'));
+          // Corte en ", <verbo_accion>" (no corta condiciones de alerta de la misma accion como ", avisame si...")
+          const partesComa = py.split(new RegExp(`,\\s+(?!(?:avisa|avisame|recuerda|recuerdame)\\s+(?:si|cuando)\\b)(?=(?:${VERBOS_ACCION.join('|')})\\b)`, 'i'));
           for (const pc of partesComa) {
             for (const pd of dividirSiDominiosDivergentesPorY(pc)) {
               const limpia = limpiarClausula(pd);
@@ -614,9 +614,37 @@ export function detectarPeticionCompuesta(mensaje, intenciones = []) {
     return false;
   }
 
-  // 1. Multiples intenciones activas distintas
+  // 1. Multiples intenciones activas distintas SOLO si el mensaje tiene
+  //    estructura real de tareas separadas (enumeracion o conector secuencial),
+  //    o si las clausulas detectadas cubren dominios distintos con verbos de accion.
+  //    NO disparar solo por clasificacion de intenciones sobre una frase simple.
   if (intsActivas.length >= 2) {
-    return true;
+    // Requerir evidencia estructural: conector secuencial o enumeracion
+    const tieneConector = CONECTORES_SECUENCIALES.some((rx) => rx.test(limpio));
+    if (tieneConector || tieneEnumeracion) {
+      return true;
+    }
+    // Si es una peticion abstracta/general en una sola clausula (p. ej. "Organiza mi tarde")
+    // pero el llamante aporta >= 2 dominios concretos distintos, si requiere plan multi-dominio.
+    // En cambio, si el texto ya pertenece a un dominio concreto en una sola clausula,
+    // el solapamiento lexico del router (p. ej. "viajes" + "sniper") no la vuelve compuesta.
+    const clausulasChequeo = dividirEnClausulas(limpio);
+    if (clausulasChequeo.length >= 2) {
+      const dominiosChequeo = new Set();
+      for (const c of clausulasChequeo) {
+        const inf = inferirDominioYHerramienta(c);
+        if (inf.dominio !== 'general') dominiosChequeo.add(inf.dominio);
+      }
+      if (dominiosChequeo.size >= 2) return true;
+    } else {
+      const infGlobal = inferirDominioYHerramienta(limpio);
+      const sonTodosSimples = intsActivas.every((d) => DOMINIOS_CONSULTA_SIMPLE.has(d));
+      if (infGlobal.dominio === 'general' && !sonTodosSimples) {
+        return true;
+      }
+    }
+    // Frase simple con multiples intenciones inferidas pero sin estructura real -> no es compuesta
+    return false;
   }
 
   // 2. Enumeraciones explicitas (1)... 2)..., vinetas, primero/segundo)

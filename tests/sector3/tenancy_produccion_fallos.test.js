@@ -27,12 +27,23 @@ import { abrirBaseDatos } from '../../src/adapters/outbound/persistence/sqlite/c
 import { ejecutarMigraciones } from '../../src/adapters/outbound/persistence/sqlite/migraciones.js';
 import { crearSqliteLimitesStore } from '../../src/adapters/outbound/persistence/sqlite/sqliteLimitesStore.js';
 
-test('DATA_DIR canonico: escritura y lectura de memoria de tenant via symlink', async () => {
+test('DATA_DIR canonico: escritura y lectura de memoria de tenant via symlink', async (t) => {
+  // Crear symlinks en Windows requiere privilegios de administrador o Developer Mode.
+  // Si el sistema operativo no lo soporta, el test se omite.
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'davis-symlink-'));
   const real = path.join(base, 'estado', 'data');
   fs.mkdirSync(path.join(real, 'tenants', 't1'), { recursive: true });
   const enlace = path.join(base, 'release-data');
-  fs.symlinkSync(real, enlace);
+  try {
+    fs.symlinkSync(real, enlace);
+  } catch (errSym) {
+    if (errSym.code === 'EPERM' || errSym.code === 'EACCES') {
+      fs.rmSync(base, { recursive: true, force: true });
+      t.skip('Symlinks no permitidos en este sistema sin privilegios de administrador');
+      return;
+    }
+    throw errSym;
+  }
 
   const previa = process.env.DAVIS_DATA_DIR;
   process.env.DAVIS_DATA_DIR = enlace;

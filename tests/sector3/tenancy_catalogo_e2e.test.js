@@ -29,8 +29,10 @@ const families=[
  {file:'menus.json',create:'poner_menu',args:m=>({dia:'lunes',comida:m,cena:m}),read:'ver_menu'},
  {file:'quedadas.json',create:'crear_quedada',args:m=>({titulo:m,fecha:'2027-01-01',hora:'20:00',lugar:m,participantes:[m]}),read:'listar_quedadas'},
  {file:'entregas.json',create:'registrar_entrega',args:m=>({titulo:m,fecha:'2027-01-01',tipo:'entrega'}),read:'listar_entregas',deletes:[['eliminar_entrega',m=>({criterio:m})]]},
- {file:'fechas_senaladas.json',create:'registrar_fecha_senalada',args:m=>({nombre:m,dia:1,mes:1}),read:'listar_fechas_senaladas',deletes:[['eliminar_fecha_senalada',m=>({criterio:m})]]}
+ {file:'fechas_senaladas.json',create:'registrar_fecha_senalada',args:m=>({nombre:m,dia:1,mes:1}),read:'listar_fechas_senaladas',deletes:[['eliminar_fecha_senalada',m=>({criterio:m})]]},
+ {file:'procedural_memory.json',create:'guardar_regla_procedural',args:m=>({regla:'Preferencia operativa '+m}),read:'listar_reglas_procedurales',deletes:[['eliminar_regla_procedural',m=>({criterio:m})]]}
 ];
+const readonlyTenant=['consultar_rutinas_aprendidas'];
 for(const f of families) test('E2E A/B/owner '+f.file+': alta/lectura/operaciones y borrado disponibles no mezclan',async()=>{
  const markerA='marca-a-'+f.file.split('.')[0],markerB='marca-b-'+f.file.split('.')[0],markerO='marca-owner-'+f.file.split('.')[0];
  for(const [tid,m]of [['propietario',markerO],['sint-b',markerB],['sint-a',markerA]]){
@@ -47,8 +49,14 @@ for(const f of families) test('E2E A/B/owner '+f.file+': alta/lectura/operacione
  if(f.deletes?.length) assert.ok(!fs.readFileSync(aFile,'utf8').includes(markerA),'borra A realmente');
 });
 test('matriz cubre cada herramienta datos_tenant exactamente en familia o extra',()=>{
- const covered=families.flatMap(f=>[f.create,f.read,...(f.extras||[]).map(x=>x[0]),...(f.deletes||[]).map(x=>x[0])]);
+ const covered=[...families.flatMap(f=>[f.create,f.read,...(f.extras||[]).map(x=>x[0]),...(f.deletes||[]).map(x=>x[0])]),...readonlyTenant];
  assert.deepEqual([...new Set(covered)].sort(),[...allow].sort());
+});
+test('rutinas datos_tenant: consultar_rutinas_aprendidas del tenant A no lee rutinas del propietario',async()=>{
+ fs.mkdirSync(path.join(DIR,'tenants','sint-a'),{recursive:true});
+ fs.writeFileSync(path.join(DIR,'routines_activity.json'),JSON.stringify({rutinas:[{tenantId:'propietario',diaSemana:1,franjaHoraria:'08-10',intencion:'secreto_owner_rutina',herramienta:'secreto_owner_tool',conteo:5,ultimaVez:'2026-01-01T08:00:00Z'}]}),'utf8');
+ const r=await tool('sint-a','consultar_rutinas_aprendidas',{});
+ assert.ok(!r.includes('secreto_owner_rutina')&&!r.includes('secreto_owner_tool'),'tenant A no lee rutinas del owner');
 });
 
 test('memoria E2E read/write/delete con SQLite OWNER real registrado por defecto: A no lee ni modifica owner',async()=>{

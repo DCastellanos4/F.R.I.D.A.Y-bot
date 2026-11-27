@@ -870,10 +870,13 @@ export function guardHallucinations(texto, contexto = {}) {
 
   // 2. Validate phone numbers / JIDs
   const autorizados = recopilarDestinatariosAutorizados(contexto);
-  // Match candidate phone numbers (9 to 15 digits, optional + prefix, optional @s.whatsapp.net)
-  const regexTelefonos = /(?<![\w@])\+?[1-9]\d{8,14}(?:@s\.whatsapp\.net)?(?!\w)|\b[1-9]\d{12,20}@lid\b/g;
+  // Match candidate phone numbers: also captures international format with spaces/hyphens
+  // e.g. "+34 635605605", "+34-690-358-664" as a single token so the full number is verified.
+  // The alternation order matters: try the spaced/hyphenated international format first.
+  const regexTelefonos = /(?<![\w@])\+[1-9]\d{0,3}[\s-]\d[\d\s-]{5,13}\d(?![\w@])|\b(?<![+\w])[1-9]\d{12,20}@lid\b|(?<![\w@])\+?[1-9]\d{8,14}(?:@s\.whatsapp\.net)?(?!\w)/g;
 
   textoModificado = textoModificado.replace(regexTelefonos, (coincidencia) => {
+    // Normalize: strip non-digit chars to compare against the authorized set
     const rawDigitos = coincidencia.replace(/\D/g, '');
 
     // Allow timestamps (e.g. 20261107...) or standard numbers if matched
@@ -883,6 +886,18 @@ export function guardHallucinations(texto, contexto = {}) {
 
     if (autorizados.has(coincidencia.toLowerCase()) || autorizados.has(rawDigitos)) {
       return coincidencia;
+    }
+
+    // Suffix match: an authorized number may include the country prefix while the
+    // captured token only contains the subscriber number (e.g. authorized has
+    // "34635605605" but we captured "635605605" or vice-versa).
+    if (rawDigitos.length >= 7) {
+      for (const auth of autorizados) {
+        const authDigitos = auth.replace(/\D/g, '');
+        if (authDigitos.length >= 7 && (authDigitos.endsWith(rawDigitos) || rawDigitos.endsWith(authDigitos))) {
+          return coincidencia;
+        }
+      }
     }
 
     // If context did not specify any contacts, permit standard text unless strictly hallucinated
