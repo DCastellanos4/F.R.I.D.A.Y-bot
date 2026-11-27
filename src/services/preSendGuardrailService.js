@@ -1043,3 +1043,175 @@ export async function ejecutarHerramientaConReintentos(fnEjecutar, nombreHerrami
     }
   }
 }
+
+export function obtenerContactosConocidosParaGuardrail(opciones = {}, listarContactosFn = null) {
+  if (Array.isArray(opciones.contactosConocidos) && opciones.contactosConocidos.length > 0) {
+    return opciones.contactosConocidos;
+  }
+  if (typeof listarContactosFn !== 'function') return [];
+  try {
+    return listarContactosFn({
+      rutaArchivo: opciones.rutaArchivoContactos,
+      tenantId: opciones.tenantId,
+      store: opciones.contactsStore
+    });
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Centraliza los guardarrailes finales de salida de jarvisAgent:
+ * 1) Guardia de capacidad y fuente en trenes
+ * 2) Adjunto de enlaces de noticias
+ * 3) Guardias de inventario de capacidades
+ * 4) Reflexion y critica pre-guardrail
+ * 5) Validacion y auto-correccion pre-envio (validarMensajeSalida)
+ */
+export async function aplicarGuardarrailesFinales({
+  textoFinal = '',
+  mensajeUsuario = '',
+  traza = { llamadas: [] },
+  opciones = {},
+  enlacesParaAdjuntar = [],
+  errCuotaAgotada = null,
+  deps = {}
+} = {}) {
+  let texto = typeof textoFinal === 'string' ? textoFinal : '';
+
+  // 1. Guardia de capacidad y fuente en trenes
+  if (texto && typeof deps.esConsultaSalidasTrenes === 'function' && deps.esConsultaSalidasTrenes(mensajeUsuario)) {
+    const origenG = deps.extraerOrigenDesde ? deps.extraerOrigenDesde(mensajeUsuario) : null;
+    const llamadaPrevia = [...(traza.llamadas || [])].reverse().find((l) => l.nombre === 'proximas_llegadas_transporte' && l.resultado === 'ok' && l.datos);
+    if (origenG || llamadaPrevia) {
+      let datosG = llamadaPrevia ? llamadaPrevia.datos : null;
+      let modoG = llamadaPrevia ? 'datos_reutilizados' : null;
+      if (!datosG && typeof deps.proximasLlegadas === 'function') {
+        try {
+          const destinoG = deps.extraerDestinoHacia ? (deps.extraerDestinoHacia(mensajeUsuario) || undefined) : undefined;
+          const tipoG = /\b(ave|alvia|avant|larga distancia|media distancia)\b/i.test(mensajeUsuario || '') ? 'tren' : (/cercan/i.test(mensajeUsuario || '') ? 'cercanias' : undefined);
+          const resG = await deps.proximasLlegadas({ parada: origenG, tipo: tipoG, destino: destinoG }, deps.depsTransporteDe ? deps.depsTransporteDe(opciones) : {});
+          const textoG = deps.textoResultadoTransporte ? deps.textoResultadoTransporte(resG) : String(resG?.error || '');
+          if (resG.ok) {
+            datosG = textoG.slice(0, 2000);
+            traza.llamadas.push({ nombre: 'proximas_llegadas_transporte', ronda: 0, resultado: 'ok', datos: datosG });
+            modoG = 'consulta_ejecutada';
+          } else {
+            texto = textoG;
+            traza.guardiaCapacidadTrenes = 'consulta_fallida_honesta';
+          }
+        } catch (errG) {
+          console.warn('[J.A.R.V.I.S.] Guardia de capacidad: la consulta directa fallo:', errG.message);
+        }
+      }
+      if (datosG) {
+        const prefijo = deps.AFIRMACION_INCAPACIDAD && deps.AFIRMACION_INCAPACIDAD.test(texto)
+          ? 'Señor, corrijo lo anterior: para estas salidas de Renfe no hace falta clave ni token, uso los datos abiertos oficiales.\n\n'
+          : '';
+        texto = `${prefijo}${datosG}`;
+        traza.guardiaCapacidadTrenes = modoG;
+      }
+    } else if (/\b\d{1,2}:\d{2}\b/.test(texto)) {
+      texto = 'Señor, ¿de que estacion me pide las salidas? Digame el nombre y se las consulto al momento con los datos oficiales de Renfe.';
+      traza.guardiaCapacidadTrenes = 'aclaracion_origen';
+    }
+    if (traza.guardiaCapacidadTrenes) console.warn(`[J.A.R.V.I.S.] Guardia de capacidad aplicada (${traza.guardiaCapacidadTrenes}).`);
+  } else if (texto && deps.CONSULTA_TRENES && deps.CONSULTA_TRENES.test(mensajeUsuario || '') && deps.AFIRMACION_INCAPACIDAD && deps.AFIRMACION_INCAPACIDAD.test(texto) && !/mobilitylabs|\bemt\b/i.test(texto)) {
+    texto = 'Señor, corrijo lo anterior: para consultar salidas de Renfe no hace falta clave ni token; uso los datos abiertos oficiales. Digame la estacion y lo consulto al momento.';
+    traza.guardiaCapacidadTrenes = 'correccion_incapacidad';
+    console.warn('[J.A.R.V.I.S.] Guardia de capacidad aplicada (correccion_incapacidad).');
+  }
+
+  // 2. Enlaces de lectura completa
+  if (Array.isArray(enlacesParaAdjuntar) && enlacesParaAdjuntar.length > 0) {
+    texto += '\n\n═════════════════════\nEnlaces para lectura completa:';
+    for (const art of enlacesParaAdjuntar) {
+      texto += `\n${art.id}. ${art.titulo}\n   ${art.link}\n`;
+    }
+  }
+
+  // 3. Guardias de inventario de capacidades
+  const capasGuardiaInventario = [];
+  if ((!opciones.tenantId || opciones.tenantId === 'propietario') && typeof deps.corregirInventarioInventado === 'function') {
+    const corregido = deps.corregirInventarioInventado(texto);
+    if (corregido !== texto) {
+      traza.guardiaInventario = 'modulo_no_implementado';
+      capasGuardiaInventario.push('modulo_no_implementado');
+    }
+    texto = corregido;
+  }
+
+  if ((!opciones.tenantId || opciones.tenantId === 'propietario')
+      && typeof deps.esConsultaPuraCapacidades === 'function'
+      && deps.esConsultaPuraCapacidades(mensajeUsuario)
+      && (traza.llamadas || []).every((l) => l.nombre === (deps.NOMBRE_DESCUBRIR || 'descubrir_herramientas'))) {
+    if (typeof deps.RESUMEN_CAPACIDADES_FACTUAL === 'string') {
+      texto = deps.RESUMEN_CAPACIDADES_FACTUAL;
+      traza.guardiaInventario = 'resumen_factual_determinista';
+      capasGuardiaInventario.push('resumen_factual_determinista');
+    }
+  }
+
+  if (capasGuardiaInventario.length > 1) {
+    traza.guardiaInventarioCapas = capasGuardiaInventario;
+  }
+
+  // 4. Reflexion y critica pre-guardrail
+  if (!errCuotaAgotada && !traza.guardiaCapacidadTrenes && typeof deps.reflexionarYCriticarRespuesta === 'function') {
+    try {
+      const critica = await deps.reflexionarYCriticarRespuesta({
+        mensajeUsuario,
+        textoBorrador: texto,
+        llamadas: traza.llamadas,
+        chatCompletion: deps.chatAcotado ? (peticion) => deps.chatAcotado(peticion, 'reflexion_critica') : undefined,
+        maxRevisiones: 1,
+        opciones
+      });
+      if (critica) {
+        if (critica.revisado && critica.texto) {
+          texto = critica.texto;
+        }
+        traza.reflexion = {
+          ...(traza.reflexion || {}),
+          revisado: critica.revisado,
+          llamadasLlm: critica.llamadasLlm,
+          defectosDetectados: critica.defectosDetectados,
+          motivo: critica.motivo,
+          ...(critica.error ? { error: critica.error } : {})
+        };
+      }
+    } catch (errRef) {
+      console.warn('[J.A.R.V.I.S. Reflexion] Error en critica pre-envio:', errRef.message);
+    }
+  }
+
+  // 5. Validacion y auto-correccion pre-envio
+  try {
+    const validacionGuardrail = validarMensajeSalida(texto, {
+      traza,
+      destinatario: opciones.chatId,
+      canal: 'whatsapp',
+      contactosConocidos: obtenerContactosConocidosParaGuardrail(opciones, deps.listarContactos)
+    });
+    if (validacionGuardrail) {
+      if (validacionGuardrail.textoFinal) {
+        texto = validacionGuardrail.textoFinal;
+      }
+      if (Array.isArray(validacionGuardrail.correccionesAplicadas) && validacionGuardrail.correccionesAplicadas.length > 0) {
+        traza.guardrailCorrections = validacionGuardrail.correccionesAplicadas;
+        traza.correccionesGuardrail = validacionGuardrail.correccionesAplicadas;
+        console.log(`[J.A.R.V.I.S. Guardrail] Correcciones aplicadas: ${validacionGuardrail.correccionesAplicadas.join(', ')}`);
+      }
+      if (validacionGuardrail.bloqueado && validacionGuardrail.motivoBloqueo) {
+        texto = validacionGuardrail.motivoBloqueo;
+        traza.guardrailBloqueado = true;
+        traza.motivoBloqueoGuardrail = validacionGuardrail.motivoBloqueo;
+        console.warn(`[J.A.R.V.I.S. Guardrail] Salida bloqueada por guardrail: ${validacionGuardrail.motivoBloqueo}`);
+      }
+    }
+  } catch (errGuard) {
+    console.warn('[J.A.R.V.I.S. Guardrail] Error ejecutando guardrails de salida:', errGuard.message);
+  }
+
+  return { textoFinal: texto };
+}

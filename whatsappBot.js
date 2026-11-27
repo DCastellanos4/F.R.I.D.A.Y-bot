@@ -719,7 +719,11 @@ export async function iniciarWhatsApp() {
   });
 
   // Procesamiento de mensajes entrantes
-  sock.ev.on('messages.upsert', (evento) => procesarMensajesEntrantes(sock, evento));
+  sock.ev.on('messages.upsert', (evento) => {
+    procesarMensajesEntrantes(sock, evento).catch((err) => {
+      console.error('[WhatsApp] Error no controlado en messages.upsert:', err?.message || err);
+    });
+  });
 }
 
 /**
@@ -800,6 +804,34 @@ export function crearOpcionesRuntimeWhatsapp(sock, remoteJid, deps = {}, urgency
  };
 }
 
+// Cola/mutex por remoteJid para serializar el procesamiento de mensajes del mismo
+// chat entre eventos messages.upsert concurrentes, sin bloquear chats distintos.
+const colasPorJid = new Map();
+
+export async function ejecutarEnColaPorJid(remoteJid, tarea) {
+  if (!remoteJid) return await tarea();
+
+  const colaAnterior = colasPorJid.get(remoteJid) || Promise.resolve();
+  let liberarTurno;
+  const turnoActual = new Promise((resolve) => {
+    liberarTurno = resolve;
+  });
+
+  // Encadenar el turno antes de cualquier await garantiza orden FIFO estricto.
+  const promesaCadena = colaAnterior.catch(() => {}).then(() => turnoActual);
+  colasPorJid.set(remoteJid, promesaCadena);
+
+  await colaAnterior.catch(() => {});
+  try {
+    return await tarea();
+  } finally {
+    liberarTurno();
+    if (colasPorJid.get(remoteJid) === promesaCadena) {
+      colasPorJid.delete(remoteJid);
+    }
+  }
+}
+
 export async function procesarMensajesEntrantes(sock, { messages, type }, deps = {}) {
     if (type !== 'notify') return;
 
@@ -809,11 +841,14 @@ export async function procesarMensajesEntrantes(sock, { messages, type }, deps =
     const chatCompletionEfectivo = typeof deps.chatCompletion === 'function' ? deps.chatCompletion : chatCompletionPorDefecto;
     const chatCompletionAux = resolverChatCompletionAux(deps);
 
-    for (const msg of messages) {
-      if (!msg.message || msg.key.fromMe) continue;
+    await Promise.all(messages.map(async (msg) => {
+      if (!msg.message || msg.key.fromMe) return;
 
       const remoteJid = msg.key.remoteJid;
-      if (!remoteJid) continue;
+      if (!remoteJid) return;
+
+      await ejecutarEnColaPorJid(remoteJid, async () => {
+        do {
 
       // 1. Mensajes de grupos (@g.us): interaccion avanzada con menciones y resumen
       if (remoteJid.endsWith('@g.us')) {
@@ -1497,7 +1532,9 @@ Prueba a decirme:
           text: mensajeErrorParaUsuario(err)
         }, { quoted: msg });
       }
-    }
+        } while (false);
+      });
+    }));
 }
 
 export function registrarApagadoLimpio(deps = {}) {

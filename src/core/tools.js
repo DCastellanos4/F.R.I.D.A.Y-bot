@@ -2106,6 +2106,20 @@ export const herramientasJarvis = [
   {
     type: 'function',
     function: {
+      name: 'consultar_eventos',
+      description: 'Consulta los eventos programados en la agenda de D.A.V.I.S. y en Google Calendar en un rango de fechas.',
+      parameters: {
+        type: 'object',
+        properties: {
+          desde: { type: 'string', description: 'Fecha y hora de inicio del rango en formato ISO o YYYY-MM-DD (opcional; por defecto ahora).' },
+          hasta: { type: 'string', description: 'Fecha y hora de fin del rango en formato ISO o YYYY-MM-DD (opcional; por defecto +7 dias).' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'crear_evento',
       description: 'Crea un nuevo evento o cita en la agenda de D.A.V.I.S. y en Google Calendar.',
       parameters: {
@@ -2413,7 +2427,7 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   procesos: ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'],
   finanzas: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'],
   skills: ['proponer_skill', 'listar_skills', 'ejecutar_skill'],
-  calendario: ['crear_evento', 'modificar_evento', 'cancelar_evento'],
+  calendario: ['consultar_eventos', 'crear_evento', 'modificar_evento', 'cancelar_evento'],
   github: ['crear_rama_trabajo', 'crear_commit', 'abrir_pull_request', 'empujar_rama', 'ejecutar_tarea_programacion'],
   cuota: ['consultar_cuota_tenant', 'solicitar_upgrade_tenant'],
   conversacion: []

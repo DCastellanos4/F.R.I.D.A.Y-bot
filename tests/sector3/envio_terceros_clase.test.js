@@ -286,7 +286,7 @@ test('descubrir: el inventario de contexto no se repite entero en la misma consu
   });
   assert.equal(todosLosToolMsgs.length, 2, 'debieron ejecutarse las dos llamadas de descubrimiento');
   assert.match(todosLosToolMsgs[0], /CAPACIDADES REALES/, 'la primera entrega no trajo el inventario completo');
-  assert.match(todosLosToolMsgs[1], /ya entregado en esta consulta/, 'la segunda llamada no recibio el apunte de deduplicacion');
+  assert.match(todosLosToolMsgs[1], /ya entregado en esta consulta|Limite de descubrimiento alcanzado/i, 'la segunda llamada no recibio el apunte de deduplicacion o limite');
   assert.doesNotMatch(todosLosToolMsgs[1], /CAPACIDADES REALES/, 'el inventario completo se repitio');
   // Los esquemas ya cargados en la primera llamada no se repiten; el apunte
   // remite a ellos (cargar de nuevo seria duplicar tokens).

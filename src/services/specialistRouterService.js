@@ -74,6 +74,7 @@ export const HERRAMIENTAS_PERSONAL = Object.freeze([
   'reservar_cita',
   'cancelar_cita',
   'listar_citas',
+  'consultar_eventos',
   'crear_evento',
   'modificar_evento',
   'cancelar_evento',

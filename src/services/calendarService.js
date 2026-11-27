@@ -41,6 +41,96 @@ export function getGoogleAccessToken(deps = {}) {
   return process.env.GOOGLE_CALENDAR_ACCESS_TOKEN || process.env.GOOGLE_CALENDAR_TOKEN || null;
 }
 
+export function getGoogleOAuthConfig(deps = {}) {
+  const clientId = deps.clientId !== undefined ? deps.clientId : (process.env.GOOGLE_CLIENT_ID || null);
+  const clientSecret = deps.clientSecret !== undefined ? deps.clientSecret : (process.env.GOOGLE_CLIENT_SECRET || null);
+  const refreshToken = deps.refreshToken !== undefined ? deps.refreshToken : (process.env.GOOGLE_REFRESH_TOKEN || null);
+  return { clientId, clientSecret, refreshToken };
+}
+
+const MARGEN_EXPIRACION_MS = 60 * 1000;
+
+let oauthTokenCache = {
+  accessToken: null,
+  expiresAt: 0,
+  clientId: null,
+  refreshToken: null
+};
+
+export function resetOAuthTokenCache() {
+  oauthTokenCache = {
+    accessToken: null,
+    expiresAt: 0,
+    clientId: null,
+    refreshToken: null
+  };
+}
+
+function obtenerAhoraMs(deps = {}) {
+  if (typeof deps.now === 'number') return deps.now;
+  if (deps.ahora !== undefined) return new Date(deps.ahora).getTime();
+  return Date.now();
+}
+
+/**
+ * Obtiene un access_token valido para Google Calendar:
+ * 1) Si hay credenciales OAuth2 (clientId, clientSecret, refreshToken), usa cache en memoria
+ *    (con margen de 60s antes de expirar) o renueva via https://oauth2.googleapis.com/token.
+ * 2) Fallback a GOOGLE_CALENDAR_ACCESS_TOKEN directo.
+ */
+export async function obtenerAccessTokenValido(deps = {}) {
+  const { clientId, clientSecret, refreshToken } = getGoogleOAuthConfig(deps);
+  const now = obtenerAhoraMs(deps);
+
+  if (clientId && clientSecret && refreshToken) {
+    const cacheValido =
+      oauthTokenCache.accessToken &&
+      oauthTokenCache.clientId === clientId &&
+      oauthTokenCache.refreshToken === refreshToken &&
+      (now + MARGEN_EXPIRACION_MS) < oauthTokenCache.expiresAt;
+
+    if (cacheValido) {
+      return oauthTokenCache.accessToken;
+    }
+
+    const fetchFn = deps.fetchFn || fetchSeguro;
+    try {
+      const body = new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token'
+      }).toString();
+
+      const res = await fetchFn('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded'
+        },
+        body
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.access_token) {
+          const expiresInSec = Number(data.expires_in) > 0 ? Number(data.expires_in) : 3600;
+          oauthTokenCache = {
+            accessToken: data.access_token,
+            expiresAt: now + expiresInSec * 1000,
+            clientId,
+            refreshToken
+          };
+          return oauthTokenCache.accessToken;
+        }
+      }
+    } catch {
+      // Fallback a token directo si la renovacion OAuth2 falla
+    }
+  }
+
+  return getGoogleAccessToken(deps);
+}
+
 /**
  * Consulta eventos programados en un rango de fechas.
  */
@@ -50,15 +140,18 @@ export async function consultarEventos({ desde, hasta } = {}, deps = {}) {
   const fHasta = dHasta.toISOString();
 
   const apiKey = getGoogleApiKey(deps);
+  const token = await obtenerAccessTokenValido(deps);
   const calId = encodeURIComponent(getCalendarId(deps));
 
-  // Si hay API key de Google configurada, consulta la API oficial
-  if (apiKey) {
+  // Si hay credenciales OAuth2, access_token o API key configurada, consulta la API oficial
+  if (token || apiKey) {
     const fetchFn = deps.fetchFn || fetchSeguro;
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events?timeMin=${encodeURIComponent(fDesde)}&timeMax=${encodeURIComponent(fHasta)}&singleEvents=true&orderBy=startTime&key=${apiKey}`;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events?timeMin=${encodeURIComponent(fDesde)}&timeMax=${encodeURIComponent(fHasta)}&singleEvents=true&orderBy=startTime${apiKey ? `&key=${encodeURIComponent(apiKey)}` : ''}`;
 
     try {
-      const res = await fetchFn(url);
+      const res = await fetchFn(url, {
+        headers: token ? { authorization: `Bearer ${token}` } : {}
+      });
       if (res.ok) {
         const data = await res.json();
         const items = (data.items || []).map((e) => ({
@@ -94,13 +187,13 @@ export async function crearEvento({ titulo, inicio, fin, descripcion } = {}, dep
 
   const calId = encodeURIComponent(getCalendarId(deps));
   const apiKey = getGoogleApiKey(deps);
-  const token = getGoogleAccessToken(deps);
+  const token = await obtenerAccessTokenValido(deps);
   let remoteId = null;
   let fuente = 'local';
 
-  if (deps.fetchFn || (apiKey && token)) {
+  if (deps.fetchFn || token || apiKey) {
     const fetchFn = deps.fetchFn || fetchSeguro;
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events${apiKey ? `?key=${apiKey}` : ''}`;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`;
     try {
       const res = await fetchFn(url, {
         method: 'POST',
@@ -149,8 +242,12 @@ export async function modificarEvento({ id, criterio, titulo, inicio, fin, descr
   const c = String(id || criterio || titulo || '').trim().toLowerCase();
   if (!c) return { ok: false, error: 'Especifica el ID o titulo del evento a modificar.' };
 
+  const calId = encodeURIComponent(getCalendarId(deps));
+  const apiKey = getGoogleApiKey(deps);
+  const token = await obtenerAccessTokenValido(deps);
+
   const lista = leerEventosLocales(deps);
-  const evento = lista.find((e) => {
+  let evento = lista.find((e) => {
     if (id && e.id === id) return true;
     if (e.id.toLowerCase() === c) return true;
     if (e.titulo.toLowerCase().includes(c)) return true;
@@ -158,6 +255,39 @@ export async function modificarEvento({ id, criterio, titulo, inicio, fin, descr
   });
 
   if (!evento) {
+    if (id && !String(id).startsWith('cal-') && (deps.fetchFn || token || apiKey)) {
+      const fetchFn = deps.fetchFn || fetchSeguro;
+      const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${encodeURIComponent(id)}${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`;
+      const patchBody = {};
+      if (titulo !== undefined && String(titulo).trim()) patchBody.summary = String(titulo).trim();
+      if (descripcion !== undefined) patchBody.description = descripcion ? String(descripcion).trim() : undefined;
+      if (inicio !== undefined && String(inicio).trim()) patchBody.start = { dateTime: String(inicio).trim() };
+      if (fin !== undefined && fin) patchBody.end = { dateTime: String(fin).trim() };
+
+      try {
+        const res = await fetchFn(url, {
+          method: 'PATCH',
+          headers: {
+            ...(token ? { authorization: `Bearer ${token}` } : {}),
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify(patchBody)
+        });
+        if (res.ok) {
+          const data = await res.json();
+          evento = {
+            id: data?.id || id,
+            titulo: data?.summary || patchBody.summary || '(Sin titulo)',
+            inicio: data?.start?.dateTime || data?.start?.date || (inicio ? String(inicio).trim() : null),
+            fin: data?.end?.dateTime || data?.end?.date || (fin ? String(fin).trim() : null),
+            descripcion: data?.description || (descripcion ? String(descripcion).trim() : null),
+            actualizadoEn: (deps.ahora ? new Date(deps.ahora) : new Date()).toISOString(),
+            origen: 'google_calendar'
+          };
+          return { ok: true, evento, nota: 'Evento modificado en la agenda de D.A.V.I.S.', fuente: 'google' };
+        }
+      } catch {}
+    }
     return { ok: false, error: 'No se encontro ningun evento que coincida para modificar.' };
   }
 
@@ -175,14 +305,11 @@ export async function modificarEvento({ id, criterio, titulo, inicio, fin, descr
   }
   evento.actualizadoEn = (deps.ahora ? new Date(deps.ahora) : new Date()).toISOString();
 
-  const calId = encodeURIComponent(getCalendarId(deps));
-  const apiKey = getGoogleApiKey(deps);
-  const token = getGoogleAccessToken(deps);
   let fuente = 'local';
 
-  if ((deps.fetchFn || (apiKey && token)) && evento.id && !evento.id.startsWith('cal-')) {
+  if ((deps.fetchFn || token || apiKey) && evento.id && !evento.id.startsWith('cal-')) {
     const fetchFn = deps.fetchFn || fetchSeguro;
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${encodeURIComponent(evento.id)}${apiKey ? `?key=${apiKey}` : ''}`;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${encodeURIComponent(evento.id)}${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`;
     try {
       const res = await fetchFn(url, {
         method: 'PATCH',
@@ -212,6 +339,10 @@ export async function cancelarEvento({ id, criterio, titulo } = {}, deps = {}) {
   const c = String(id || criterio || titulo || '').trim().toLowerCase();
   if (!c) return { ok: false, error: 'Especifica el ID o titulo del evento a cancelar.' };
 
+  const calId = encodeURIComponent(getCalendarId(deps));
+  const apiKey = getGoogleApiKey(deps);
+  const token = await obtenerAccessTokenValido(deps);
+
   const lista = leerEventosLocales(deps);
   const inicial = lista.length;
   const aEliminar = [];
@@ -227,19 +358,28 @@ export async function cancelarEvento({ id, criterio, titulo } = {}, deps = {}) {
   });
 
   if (filtrados.length === inicial) {
+    if (id && !String(id).startsWith('cal-') && (deps.fetchFn || token || apiKey)) {
+      const fetchFn = deps.fetchFn || fetchSeguro;
+      const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${encodeURIComponent(id)}${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`;
+      try {
+        const res = await fetchFn(url, {
+          method: 'DELETE',
+          headers: token ? { authorization: `Bearer ${token}` } : {}
+        });
+        if (res.ok) {
+          return { ok: true, eliminados: 1, cancelados: 1, nota: 'Evento cancelado de la agenda.', fuente: 'google' };
+        }
+      } catch {}
+    }
     return { ok: false, error: 'No se encontro ningun evento que coincida para cancelar.' };
   }
 
-  const calId = encodeURIComponent(getCalendarId(deps));
-  const apiKey = getGoogleApiKey(deps);
-  const token = getGoogleAccessToken(deps);
-
-  if (deps.fetchFn || (apiKey && token)) {
+  if (deps.fetchFn || token || apiKey) {
     const fetchFn = deps.fetchFn || fetchSeguro;
     for (const ev of aEliminar) {
       if (ev.id && !ev.id.startsWith('cal-')) {
         try {
-          const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${encodeURIComponent(ev.id)}${apiKey ? `?key=${apiKey}` : ''}`;
+          const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${encodeURIComponent(ev.id)}${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`;
           await fetchFn(url, {
             method: 'DELETE',
             headers: token ? { authorization: `Bearer ${token}` } : {}

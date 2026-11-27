@@ -138,7 +138,7 @@ test('descubrimiento repetido queda acotado sin gastar rondas de accion original
       return { message: { content: '', tool_calls: [{ id: 'd' + n, function: { name: 'descubrir_herramientas', arguments: { consulta: 'habitos', nombres: ['listar_habitos'] } } }] } };
     }
   });
-  assert.equal(n, 5, '1 inicial + 1 trabajo + 2 descubrimiento + 1 formulacion final');
+  assert.equal(n, 4, '1 inicial + 1 trabajo + 1 descubrimiento + 1 formulacion final');
   assert.equal(r.traza.llamadas.filter(l => l.nombre === 'descubrir_herramientas').length, 2);
   assert.match(r.respuesta, /aclarar/);
 });
