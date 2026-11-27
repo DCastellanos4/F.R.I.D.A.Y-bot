@@ -8,6 +8,7 @@ import pino from 'pino';
 import qrcode from 'qrcode-terminal';
 import path from 'path';
 import fs from 'fs';
+import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 
 import { config } from './src/config/config.js';
@@ -56,6 +57,56 @@ import { transcribirAudioBuffer } from './src/services/audioTranscriberService.j
 import { analizarImagen, procesarDocumentoPDF } from './src/services/visionService.js';
 import { extraerTextoPDF, resumirDocumento, consultarSeccionPDF } from './src/services/pdfReaderService.js';
 import { capturarPantallaWeb } from './src/services/browserService.js';
+
+function handleOutreachLeadReply(remitenteLimpio, textoExterno) {
+  const outreachDbPath = process.env.OUTREACH_DB_PATH || '/home/ubuntu/madrid-lead-outreach/data/outreach.db';
+  if (!fs.existsSync(outreachDbPath)) return null;
+  let odb;
+  try {
+    odb = new Database(outreachDbPath);
+    const digits = String(remitenteLimpio || '').replace(/\D/g, '');
+    const national = digits.startsWith('34') && digits.length === 11 ? digits.slice(2) : digits;
+    const lead = odb.prepare(`
+      SELECT id, name, city, status FROM leads
+      WHERE phone_normalized = ? OR phone_normalized = ? OR REPLACE(REPLACE(COALESCE(phone, ''), ' ', ''), '+34', '') = ?
+      LIMIT 1
+    `).get(digits, '34' + national, national);
+    if (!lead) return null;
+
+    const norm = String(textoExterno || '').trim().toLowerCase();
+    const isOptOut = /^\s*(no|no gracias|no me interesa|no nos interesa|baja|stop|dejad de escribir|no contactar)\b/i.test(norm) && norm.length < 80;
+    const cols = odb.prepare('PRAGMA table_info(leads)').all().map(c => c.name);
+    const hasReplyCols = cols.includes('reply_snippet') && cols.includes('opted_out_at');
+
+    if (isOptOut) {
+      if (hasReplyCols) {
+        odb.prepare(`
+          UPDATE leads SET status = 'opted_out', opted_out_at = CURRENT_TIMESTAMP, opt_out_reason = 'whatsapp_reply',
+          reply_channel = 'whatsapp', reply_snippet = ?, replied_at = CURRENT_TIMESTAMP, next_followup_at = NULL WHERE id = ?
+        `).run(String(textoExterno).slice(0, 300), lead.id);
+      } else {
+        odb.prepare("UPDATE leads SET status = 'opted_out' WHERE id = ?").run(lead.id);
+      }
+      return { matched: true, isOptOut: true, lead };
+    }
+
+    if (hasReplyCols) {
+      odb.prepare(`
+        UPDATE leads SET status = 'replied', reply_channel = 'whatsapp', reply_snippet = ?,
+        replied_at = CURRENT_TIMESTAMP, next_followup_at = NULL WHERE id = ?
+      `).run(String(textoExterno).slice(0, 300), lead.id);
+    } else {
+      odb.prepare("UPDATE leads SET status = 'replied' WHERE id = ?").run(lead.id);
+    }
+    return { matched: true, isOptOut: false, lead };
+  } catch (err) {
+    console.error('[Outreach] Error comprobando lead en whatsappBot:', err.message);
+    return null;
+  } finally {
+    try { odb?.close(); } catch {}
+  }
+}
+
 import { isVipModeActive, shouldFilterMessage } from './src/services/vipFilterService.js';
 import { recordGroupMessage, generateGroupSummary, isDavidMentioned } from './src/services/groupSummarizerService.js';
 import { isPersonalNote, savePersonalNote } from './src/services/notesService.js';
@@ -846,6 +897,19 @@ Prueba a decirme:
           }
         }
         if (textoExterno) {
+          const outreachRes = handleOutreachLeadReply(remitenteLimpio, textoExterno);
+          if (outreachRes?.matched) {
+            if (outreachRes.isOptOut) {
+              console.log(`[Outreach WA] Opt-out de ${outreachRes.lead.name} (+${remitenteLimpio})`);
+              await sock.sendMessage(remoteJid, { text: 'Entendido, disculpa las molestias. No volveremos a escribirte.' }, { quoted: msg });
+              await enviarMensajeADavid(`[OUTREACH OPT-OUT] ${outreachRes.lead.name} (${outreachRes.lead.city}, +${remitenteLimpio}) pidió no recibir más mensajes:\n"${textoExterno}"`);
+            } else {
+              console.log(`[Outreach WA] Respuesta de ${outreachRes.lead.name} (+${remitenteLimpio})`);
+              await sock.sendMessage(remoteJid, { text: 'Recibido. Aviso ahora mismo a David para que te escriba desde su WhatsApp personal (+34 635 60 56 05) con los detalles.' }, { quoted: msg });
+              await enviarMensajeADavid(`[OUTREACH RESPUESTA WA] ${outreachRes.lead.name} (${outreachRes.lead.city}) respondió:\n"${textoExterno}"\n\nEscribirle: https://wa.me/${remitenteLimpio}`);
+            }
+            continue;
+          }
           const filter = shouldFilterMessage(remoteJid, msg.key?.participant, textoExterno);
           if (!filter.allowed) {
             console.log(`[WhatsApp Filtro VIP] Mensaje bloqueado de +${remitenteLimpio}. Enviando autorrespuesta sobria.`);
@@ -1370,33 +1434,9 @@ Prueba a decirme:
         let respuesta;
         try {
           const inbound = crearInboundDesdeWhatsApp({ msg, texto, remoteJid });
-          const estaEnModoNocturno = () => {
-            if (typeof deps.estaEnModoNocturno === 'function') {
-              return Boolean(deps.estaEnModoNocturno(deps.quietDeps || {}));
-            }
-            const fnSilencio = typeof deps.enHorarioSilencio === 'function' ? deps.enHorarioSilencio : enHorarioSilencio;
-            return Boolean(fnSilencio({
-              ...(deps.quietDeps || {}),
-              ...(deps.rutaArchivoNocturno ? { rutaArchivo: deps.rutaArchivoNocturno } : {})
-            }));
-          };
-          const onProgresoTactico = !esAudio && process.env.DAVIS_ASYNC_PIPELINE !== '1' && !estaEnModoNocturno()
-            ? async (msgProgreso) => {
-                if (!msgProgreso || typeof msgProgreso !== 'string') return;
-                try {
-                  await canalWhatsapp.enviarTexto(remoteJid, msgProgreso);
-                } catch (errProgreso) {
-                  console.warn('[WhatsApp Progreso Tactico] Error enviando feedback de progreso:', errProgreso?.message || errProgreso);
-                }
-              }
-            : undefined;
           respuesta = await procesarMensajeEntrante(inbound, {
             historial: historialPrevio,
-            opciones: {
-              ...crearOpcionesRuntimeWhatsapp(sock, remoteJid, deps, urgencyDirective),
-              respuestaVoz: esAudio || /responde(me)?\s+(en|con)?\s*(audio|nota de voz|voz)/i.test(texto),
-              ...(onProgresoTactico ? { onProgresoTactico } : {})
-            }
+            opciones: {...crearOpcionesRuntimeWhatsapp(sock,remoteJid,deps,urgencyDirective),respuestaVoz:esAudio || /responde(me)?\s+(en|con)?\s*(audio|nota de voz|voz)/i.test(texto)}
           });
           registrarEventoMetrica({ tipo: 'comando', nombre: 'consulta_jarvis', duracionMs: Date.now() - inicioJarvis }, { rutaArchivo: deps.rutaArchivoMetricas });
         } catch (errJarvis) {

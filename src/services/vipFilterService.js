@@ -1,6 +1,6 @@
 import { config } from '../config/config.js';
 
-let vipModeEnabled = true;
+let vipModeEnabled = process.env.DAVIS_VIP_MODE_ENABLED !== 'false';
 const vipContacts = new Set();
 
 /**

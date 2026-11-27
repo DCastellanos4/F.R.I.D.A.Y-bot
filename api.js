@@ -2,6 +2,7 @@ import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { config } from './src/config/config.js';
+import { programarMensaje } from './src/services/scheduledMessageService.js';
 // Canal HTTP sobre el hexagono: mismo puerto de entrada que WhatsApp y CLI.
 import { procesarMensajeEntrante, contenedorCompartido } from './src/composition/container.js';
 import { crearInboundMessage } from './src/ports/inbound/InboundMessage.js';
@@ -145,6 +146,69 @@ export async function handleApiRequest(req, res) {
   if (authHeader !== `Bearer ${apiToken}` && tokenHeader !== apiToken) {
     res.writeHead(401, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+    return;
+  }
+
+
+  // Endpoint interno para encolar envíos de WhatsApp (ej. desde madrid-lead-outreach)
+  if (req.method === 'POST' && url.pathname === '/api/send-whatsapp') {
+    try {
+      const data = await parsearBody(req);
+      const numero = data.phone || data.jid || data.numero || '';
+      const mensaje = data.message || data.mensaje || '';
+
+      if (!numero || !mensaje) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Faltan los campos "phone" (o "jid") y "message"' }));
+        return;
+      }
+
+      const resultado = programarMensaje({
+        numero,
+        mensaje,
+        inmediato: true
+      });
+
+      if (!resultado.ok) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(resultado));
+        return;
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(resultado));
+    } catch (err) {
+      console.error('Error procesando /api/send-whatsapp:', err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: err.message }));
+    }
+    return;
+  }
+
+
+  // Endpoint interno para notificar a David por WhatsApp (ej. respuestas de leads en Gmail)
+  if (req.method === 'POST' && url.pathname === '/api/notify-david') {
+    try {
+      const data = await parsearBody(req);
+      const mensaje = data.message || data.mensaje || '';
+      if (!mensaje) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Falta el campo "message"' }));
+        return;
+      }
+      const numeroDavid = config.userPhone || '34635605605';
+      const resultado = programarMensaje({
+        numero: numeroDavid,
+        mensaje,
+        inmediato: true
+      });
+      res.writeHead(resultado.ok ? 200 : 400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(resultado));
+    } catch (err) {
+      console.error('Error procesando /api/notify-david:', err);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: err.message }));
+    }
     return;
   }
 

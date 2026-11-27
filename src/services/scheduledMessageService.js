@@ -391,7 +391,7 @@ export function programarMensaje({ numero, mensaje, minutosEnElFuturo = null, ho
   console.log(`[Mensaje ${esInmediato ? 'Inmediato' : 'Programado'} Guardado] Para +${nuevo.numero} ("${nuevo.mensaje}") [${esInmediato ? 'AHORA' : nuevo.fechaHoraLocal}]`);
 
   // Si es entrega inmediata, disparar el monitor en background sin demoras
-  if (esInmediato || fechaObjetivo.getTime() <= Date.now()) {
+  if ((esInmediato || fechaObjetivo.getTime() <= Date.now()) && typeof callbackEnvioGlobal === 'function') {
     setTimeout(() => {
       despacharMensajesPendientes().catch(err => console.error('Error despachando inmediato:', err));
     }, 50);
