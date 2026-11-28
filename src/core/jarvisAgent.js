@@ -481,13 +481,14 @@ export function analizarIntencion(mensaje) {
   let matchGenerativo = intents.generativo.test(sinNombre);
   let matchSkills = intents.skills.test(sinNombre);
   let matchCalendario = intents.calendario.test(sinNombre);
+  let matchCorreo = intents.correo.test(sinNombre);
   let matchGithub = intents.github.test(sinNombre);
   let matchCuota = intents.cuota.test(sinNombre);
   let matchProcedural = intents.procedural.test(sinNombre);
   let matchRutinas = intents.rutinas.test(sinNombre);
 
   // Si tiene saludo o agradecimiento y no pide ninguna acción: 0 herramientas (1.2s de respuesta)
-  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchContactos && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro && !matchBienestar && !matchCarrera && !matchCompras && !matchDevtools && !matchOps && !matchHogar && !matchViajes && !matchGenerativo && !matchCalendario && !matchGithub && !matchCuota && !matchFinanzas && !matchProcesos && !matchComunicacion && !matchSkills && !matchProcedural && !matchRutinas) {
+  if (tieneChitChat && !matchClima && !matchMensajeProgramado && !matchRecordatorio && !matchMemoria && !matchSniper && !matchNoticias && !matchNavegacion && !matchServidor && !matchVip && !matchGrupo && !matchMultimedia && !matchNotas && !matchContactos && !matchVCard && !matchEncuestas && !matchBash && !matchCrypto && !matchDocker && !matchDisco && !matchInfra && !matchTunel && !matchBackup && !matchEmpleo && !matchEstudio && !matchTransporte && !matchCerebro && !matchBienestar && !matchCarrera && !matchCompras && !matchDevtools && !matchOps && !matchHogar && !matchViajes && !matchGenerativo && !matchCalendario && !matchCorreo && !matchGithub && !matchCuota && !matchFinanzas && !matchProcesos && !matchComunicacion && !matchSkills && !matchProcedural && !matchRutinas) {
     return { herramientas: [], intenciones: ['conversacion'], safetyNet: false, esChitChat: true };
   }
 
@@ -620,7 +621,10 @@ export function analizarIntencion(mensaje) {
     tools.push(...herramientasJarvis.filter(h => ['vigilar_ruta', 'listar_rutas_vigiladas', 'cancelar_vigilancia_ruta', 'registrar_precio_ruta'].includes(h.function.name)));
   }
   if (matchCalendario) {
-    tools.push(...herramientasJarvis.filter(h => ['consultar_eventos', 'crear_evento', 'modificar_evento', 'cancelar_evento'].includes(h.function.name)));
+    tools.push(...herramientasJarvis.filter(h => ['conectar_google', 'consultar_eventos', 'crear_evento', 'modificar_evento', 'cancelar_evento'].includes(h.function.name)));
+  }
+  if (matchCorreo) {
+    tools.push(...herramientasJarvis.filter(h => ['conectar_google', 'listar_correos', 'leer_correo', 'resumir_correos_urgentes', 'crear_borrador_correo'].includes(h.function.name)));
   }
   if (matchGithub) {
     tools.push(...herramientasJarvis.filter(h => ['crear_rama_trabajo', 'crear_commit', 'abrir_pull_request', 'empujar_rama', 'ejecutar_tarea_programacion'].includes(h.function.name)));
@@ -682,6 +686,7 @@ export function analizarIntencion(mensaje) {
   if (matchHogar) intenciones.push('hogar');
   if (matchViajes) intenciones.push('viajes');
   if (matchCalendario) intenciones.push('calendario');
+  if (matchCorreo) intenciones.push('correo');
   if (matchGithub) intenciones.push('github');
   if (matchCuota) intenciones.push('cuota');
   if (matchProcedural) intenciones.push('procedural');
