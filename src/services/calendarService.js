@@ -146,7 +146,7 @@ export async function consultarEventos({ desde, hasta } = {}, deps = {}) {
   // Si hay credenciales OAuth2, access_token o API key configurada, consulta la API oficial
   if (token || apiKey) {
     const fetchFn = deps.fetchFn || fetchSeguro;
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events?timeMin=${encodeURIComponent(fDesde)}&timeMax=${encodeURIComponent(fHasta)}&singleEvents=true&orderBy=startTime${apiKey ? `&key=${encodeURIComponent(apiKey)}` : ''}`;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events?timeMin=${encodeURIComponent(fDesde)}&timeMax=${encodeURIComponent(fHasta)}&singleEvents=true&orderBy=startTime${!token && apiKey ? `&key=${encodeURIComponent(apiKey)}` : ''}`;
 
     try {
       const res = await fetchFn(url, {
@@ -193,7 +193,7 @@ export async function crearEvento({ titulo, inicio, fin, descripcion } = {}, dep
 
   if (deps.fetchFn || token || apiKey) {
     const fetchFn = deps.fetchFn || fetchSeguro;
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events${!token && apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`;
     try {
       const res = await fetchFn(url, {
         method: 'POST',
@@ -257,7 +257,7 @@ export async function modificarEvento({ id, criterio, titulo, inicio, fin, descr
   if (!evento) {
     if (id && !String(id).startsWith('cal-') && (deps.fetchFn || token || apiKey)) {
       const fetchFn = deps.fetchFn || fetchSeguro;
-      const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${encodeURIComponent(id)}${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`;
+      const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${encodeURIComponent(id)}${!token && apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`;
       const patchBody = {};
       if (titulo !== undefined && String(titulo).trim()) patchBody.summary = String(titulo).trim();
       if (descripcion !== undefined) patchBody.description = descripcion ? String(descripcion).trim() : undefined;
@@ -309,7 +309,7 @@ export async function modificarEvento({ id, criterio, titulo, inicio, fin, descr
 
   if ((deps.fetchFn || token || apiKey) && evento.id && !evento.id.startsWith('cal-')) {
     const fetchFn = deps.fetchFn || fetchSeguro;
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${encodeURIComponent(evento.id)}${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${encodeURIComponent(evento.id)}${!token && apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`;
     try {
       const res = await fetchFn(url, {
         method: 'PATCH',
@@ -360,7 +360,7 @@ export async function cancelarEvento({ id, criterio, titulo } = {}, deps = {}) {
   if (filtrados.length === inicial) {
     if (id && !String(id).startsWith('cal-') && (deps.fetchFn || token || apiKey)) {
       const fetchFn = deps.fetchFn || fetchSeguro;
-      const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${encodeURIComponent(id)}${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`;
+      const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${encodeURIComponent(id)}${!token && apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`;
       try {
         const res = await fetchFn(url, {
           method: 'DELETE',
@@ -379,7 +379,7 @@ export async function cancelarEvento({ id, criterio, titulo } = {}, deps = {}) {
     for (const ev of aEliminar) {
       if (ev.id && !ev.id.startsWith('cal-')) {
         try {
-          const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${encodeURIComponent(ev.id)}${apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`;
+          const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${encodeURIComponent(ev.id)}${!token && apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`;
           await fetchFn(url, {
             method: 'DELETE',
             headers: token ? { authorization: `Bearer ${token}` } : {}
