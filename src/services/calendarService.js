@@ -177,6 +177,25 @@ export async function consultarEventos({ desde, hasta } = {}, deps = {}) {
   return { ok: true, eventos: eventosLocales, fuente: 'local' };
 }
 
+function formatearDateTimeGoogle(valor, sumarHoras = 0) {
+  let s = String(valor || '').trim().replace(' ', 'T');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    s = `${s}T09:00:00`;
+  } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s)) {
+    s = `${s}:00`;
+  }
+  const tieneZona = /(?:Z|[+-]\d{2}:\d{2})$/i.test(s);
+  if (sumarHoras > 0) {
+    const d = new Date(tieneZona ? s : `${s}Z`);
+    if (!Number.isNaN(d.getTime())) {
+      d.setUTCHours(d.getUTCHours() + sumarHoras);
+      const iso = d.toISOString().slice(0, 19);
+      return tieneZona ? { dateTime: d.toISOString() } : { dateTime: iso, timeZone: 'Europe/Madrid' };
+    }
+  }
+  return tieneZona ? { dateTime: s } : { dateTime: s, timeZone: 'Europe/Madrid' };
+}
+
 /**
  * Registra un nuevo evento o cita en el calendario.
  */
@@ -194,6 +213,8 @@ export async function crearEvento({ titulo, inicio, fin, descripcion } = {}, dep
   if (deps.fetchFn || token || apiKey) {
     const fetchFn = deps.fetchFn || fetchSeguro;
     const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events${!token && apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''}`;
+    const startObj = formatearDateTimeGoogle(inicio, 0);
+    const endObj = fin ? formatearDateTimeGoogle(fin, 0) : formatearDateTimeGoogle(inicio, 1);
     try {
       const res = await fetchFn(url, {
         method: 'POST',
@@ -204,8 +225,8 @@ export async function crearEvento({ titulo, inicio, fin, descripcion } = {}, dep
         body: JSON.stringify({
           summary: t,
           description: descripcion ? String(descripcion).trim() : undefined,
-          start: { dateTime: String(inicio).trim() },
-          end: { dateTime: fin ? String(fin).trim() : String(inicio).trim() }
+          start: startObj,
+          end: endObj
         })
       });
       if (res.ok) {
@@ -214,8 +235,13 @@ export async function crearEvento({ titulo, inicio, fin, descripcion } = {}, dep
           remoteId = data.id;
           fuente = 'google';
         }
+      } else {
+        const errTxt = await res.text().catch(() => '');
+        console.warn(`[Calendar] Error HTTP ${res.status} al crear evento en Google:`, errTxt.slice(0, 200));
       }
-    } catch {}
+    } catch (err) {
+      console.warn('[Calendar] Excepcion al crear evento en Google:', err.message);
+    }
   }
 
   const evento = {
@@ -261,8 +287,8 @@ export async function modificarEvento({ id, criterio, titulo, inicio, fin, descr
       const patchBody = {};
       if (titulo !== undefined && String(titulo).trim()) patchBody.summary = String(titulo).trim();
       if (descripcion !== undefined) patchBody.description = descripcion ? String(descripcion).trim() : undefined;
-      if (inicio !== undefined && String(inicio).trim()) patchBody.start = { dateTime: String(inicio).trim() };
-      if (fin !== undefined && fin) patchBody.end = { dateTime: String(fin).trim() };
+      if (inicio !== undefined && String(inicio).trim()) patchBody.start = formatearDateTimeGoogle(inicio, 0);
+      if (fin !== undefined && fin) patchBody.end = formatearDateTimeGoogle(fin, 0);
 
       try {
         const res = await fetchFn(url, {
