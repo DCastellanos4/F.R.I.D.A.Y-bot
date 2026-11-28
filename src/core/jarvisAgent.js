@@ -414,10 +414,10 @@ export function analizarIntencion(mensaje) {
     skills: /(procedimiento|skill|rutina\s+guardada|pasos\s+guardados|diagn[oó]stico)/i,
 
     // Calendario y eventos
-    calendario: /(conectar\s+(mi\s+)?(google\s+)?(calendar|calendario|google)|vincular\s+(mi\s+)?(google\s+)?(calendar|calendario|google)|consulta(r)?\s+(los\s+|mis\s+)?eventos?|crea(r)?\s+(un\s+)?evento|a[nñ]ad(ir|e)\s+(un\s+)?evento|modifica(r)?\s+(el\s+|un\s+)?evento|cancela(r)?\s+(el\s+|un\s+)?evento|elimina(r)?\s+(el\s+|un\s+)?evento|eventos?\s+(en\s+el\s+|del\s+)?(calendario|agenda)|agenda(r)?\s+(una?\s+)?(cita|reunion|evento)|(nuevo|nueva|crear|modificar|cancelar|borrar|consultar)\s+(evento|eventos|cita)\b)/i,
+    calendario: /((conecta(r)?|vincula(r)?|enlaza(r)?)\s+(mi\s+|el\s+|la\s+cuenta\s+de\s+)?(google(\s+(calendar|calendario))?|calendar|calendario)|consulta(r)?\s+(los\s+|mis\s+)?eventos?|crea(r)?\s+(un\s+)?evento|a[nñ]ad(ir|e)\s+(un\s+)?evento|modifica(r)?\s+(el\s+|un\s+)?evento|cancela(r)?\s+(el\s+|un\s+)?evento|elimina(r)?\s+(el\s+|un\s+)?evento|eventos?\s+(en\s+el\s+|del\s+)?(calendario|agenda)|agenda(r)?\s+(una?\s+)?(cita|reunion|evento)|(nuevo|nueva|crear|modificar|cancelar|borrar|consultar)\s+(evento|eventos|cita)\b)/i,
 
     // Correo electronico / Gmail
-    correo: /\b(conectar\s+gmail|vincular\s+gmail|gmail|correos?|emails?|bandeja\s+de\s+entrada|mensajes?\s+de\s+correo|borrador(es)?\s+de\s+correo)\b/i,
+    correo: /\b((conecta(r)?|vincula(r)?|enlaza(r)?)\s+(mi\s+|el\s+)?gmail|gmail|correos?|emails?|bandeja\s+de\s+entrada|mensajes?\s+de\s+correo|borrador(es)?\s+de\s+correo)\b/i,
 
     // Agente GitHub autonomo
     github: /(crea(r)?\s+(una?\s+)?rama|crea(r)?\s+(un\s+)?commit|haz\s+commit|hacer\s+commit|empuja(r)?\s+(la\s+)?rama|git\s+push|abre\s+(una\s+)?pr|abrir\s+(una\s+)?(pull\s+request|pr)|ejecuta(r)?\s+(la\s+)?tarea\s+(de\s+)?programaci[oó]n|pull\s+request|git\s+(branch|checkout|commit|push))/i,
