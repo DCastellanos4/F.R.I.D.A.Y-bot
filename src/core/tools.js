@@ -2107,11 +2107,11 @@ export const herramientasJarvis = [
     type: 'function',
     function: {
       name: 'conectar_google',
-      description: 'Genera un enlace directo de 1 clic para que el comercio o usuario conecte su Google Calendar o Gmail sin usar Google Cloud Console.',
+      description: 'Genera un enlace directo de 1 clic para que el comercio o usuario conecte su Google Calendar o Gmail sin usar Google Cloud Console. Si pide conectar Google sin especificar servicio, usa servicio="ambos".',
       parameters: {
         type: 'object',
         properties: {
-          servicio: { type: 'string', enum: ['calendar', 'gmail', 'ambos'], description: 'Servicio de Google a conectar (por defecto calendar).' }
+          servicio: { type: 'string', enum: ['calendar', 'gmail', 'ambos'], description: 'Servicio de Google a conectar (usa "ambos" por defecto si dice conectar Google).' }
         }
       }
     }
