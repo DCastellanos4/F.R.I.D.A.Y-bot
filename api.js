@@ -38,6 +38,7 @@ import {
   handleWebhookPayload
 } from './src/monitors/githubWebhookService.js';
 import { iniciarObservabilidad, atenderMetricas } from './src/observability/telemetry.js';
+import { generarEnlaceGoogleOAuth, procesarCallbackGoogleOAuth } from './src/services/tenantOAuthService.js';
 
 // Observabilidad (Mejora 3): OTel + Prometheus, apagada salvo
 // DAVIS_OTEL_ENABLED=true. No-op seguro si las deps faltan.
@@ -88,6 +89,53 @@ export async function handleApiRequest(req, res) {
   // Metricas Prometheus: SOLO localhost (Prometheus convive en el VPS).
   if (req.method === 'GET' && url.pathname === '/metrics') {
     if (await atenderMetricas(req, res)) return;
+  }
+
+  // OAuth2 Multi-Tenant 1-clic: inicio y callback de Google (Calendar / Gmail)
+  if (req.method === 'GET' && url.pathname === '/oauth/google/start') {
+    const tenantId = url.searchParams.get('tenantId') || 'propietario';
+    const servicio = url.searchParams.get('servicio') || 'calendar';
+    if (!esTenantIdValido(tenantId)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'tenantId invalido.' }));
+      return;
+    }
+    const baseUrl = process.env.DAVIS_PUBLIC_URL || `http://${req.headers.host || '127.0.0.1:' + PUERTO}`;
+    const enlace = generarEnlaceGoogleOAuth({ tenantId, servicio, baseUrl });
+    if (!enlace.ok) {
+      res.writeHead(enlace.configRequired ? 503 : 400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: enlace.error }));
+      return;
+    }
+    if (url.searchParams.get('format') === 'json' || (req.headers.accept || '').includes('application/json')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, url: enlace.url, servicio: enlace.servicio, tenantId: enlace.tenantId }));
+      return;
+    }
+    res.writeHead(302, { Location: enlace.url });
+    res.end();
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/oauth/google/callback') {
+    const code = url.searchParams.get('code') || '';
+    const state = url.searchParams.get('state') || '';
+    const errParam = url.searchParams.get('error');
+    if (errParam) {
+      res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end('<html><body><h2>Conexion cancelada</h2><p>No se concedieron permisos de Google. Puedes cerrar esta ventana.</p></body></html>');
+      return;
+    }
+    const baseUrl = process.env.DAVIS_PUBLIC_URL || `http://${req.headers.host || '127.0.0.1:' + PUERTO}`;
+    const resultado = await procesarCallbackGoogleOAuth({ code, state, baseUrl });
+    if (!resultado.ok) {
+      res.writeHead(resultado.configRequired ? 503 : 400, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(`<html><body><h2>Error al conectar Google</h2><p>${String(resultado.error || 'Error desconocido').replace(/[<>&]/g, '')}</p></body></html>`);
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(`<html><body><h2>Google conectado</h2><p>Servicios activados (${resultado.servicios.join(', ')}) para el comercio "${resultado.tenantId}". Ya puedes cerrar esta ventana y volver a WhatsApp.</p></body></html>`);
+    return;
   }
 
   // Endpoint de Webhook de GitHub Actions (CI/CD)

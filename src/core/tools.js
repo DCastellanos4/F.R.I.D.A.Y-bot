@@ -2106,6 +2106,19 @@ export const herramientasJarvis = [
   {
     type: 'function',
     function: {
+      name: 'conectar_google',
+      description: 'Genera un enlace directo de 1 clic para que el comercio o usuario conecte su Google Calendar o Gmail sin usar Google Cloud Console.',
+      parameters: {
+        type: 'object',
+        properties: {
+          servicio: { type: 'string', enum: ['calendar', 'gmail', 'ambos'], description: 'Servicio de Google a conectar (por defecto calendar).' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'consultar_eventos',
       description: 'Consulta los eventos programados en la agenda de D.A.V.I.S. y en Google Calendar en un rango de fechas.',
       parameters: {
@@ -2483,8 +2496,8 @@ export const MAPA_INTENCION_HERRAMIENTAS = {
   procesos: ['vigilar_proceso', 'listar_procesos_vigilados', 'dejar_vigilar_proceso', 'configurar_vigilante_procesos'],
   finanzas: ['registrar_gasto', 'listar_gastos', 'resumen_gastos_mes', 'registrar_suscripcion', 'listar_suscripciones', 'configurar_presupuesto', 'estado_presupuestos', 'configurar_avisos_suscripciones'],
   skills: ['proponer_skill', 'listar_skills', 'ejecutar_skill'],
-  calendario: ['consultar_eventos', 'crear_evento', 'modificar_evento', 'cancelar_evento'],
-  correo: ['listar_correos', 'leer_correo', 'resumir_correos_urgentes', 'crear_borrador_correo'],
+  calendario: ['conectar_google', 'consultar_eventos', 'crear_evento', 'modificar_evento', 'cancelar_evento'],
+  correo: ['conectar_google', 'listar_correos', 'leer_correo', 'resumir_correos_urgentes', 'crear_borrador_correo'],
   github: ['crear_rama_trabajo', 'crear_commit', 'abrir_pull_request', 'empujar_rama', 'ejecutar_tarea_programacion'],
   cuota: ['consultar_cuota_tenant', 'solicitar_upgrade_tenant'],
   conversacion: []

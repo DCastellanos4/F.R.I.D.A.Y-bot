@@ -47,7 +47,8 @@ export const CLASIFICACION_HERRAMIENTAS = Object.freeze({
     'empujar_rama', 'abrir_pull_request', 'ejecutar_tarea_programacion'
   ],
   identidad: [
-    'activar_modo_vip', 'estado_modo_vip', 'agregar_contacto_vip', 'ejecutar_skill', 'proponer_skill', 'listar_skills'
+    'activar_modo_vip', 'estado_modo_vip', 'agregar_contacto_vip', 'ejecutar_skill', 'proponer_skill', 'listar_skills',
+    'conectar_google'
   ],
   terceros: [
     'programar_mensaje_whatsapp', 'listar_mensajes_programados', 'cancelar_mensaje_programado',

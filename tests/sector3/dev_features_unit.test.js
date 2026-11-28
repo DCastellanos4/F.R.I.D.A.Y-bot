@@ -212,11 +212,12 @@ test('3. Tools: herramientas registradas en tools.js y MAPA_INTENCION_HERRAMIENT
   const nombres = herramientasJarvis.map((h) => h.function.name);
 
   // Calendar
+  assert.ok(nombres.includes('conectar_google'));
   assert.ok(nombres.includes('consultar_eventos'));
   assert.ok(nombres.includes('crear_evento'));
   assert.ok(nombres.includes('modificar_evento'));
   assert.ok(nombres.includes('cancelar_evento'));
-  assert.deepEqual(MAPA_INTENCION_HERRAMIENTAS.calendario, ['consultar_eventos', 'crear_evento', 'modificar_evento', 'cancelar_evento']);
+  assert.deepEqual(MAPA_INTENCION_HERRAMIENTAS.calendario, ['conectar_google', 'consultar_eventos', 'crear_evento', 'modificar_evento', 'cancelar_evento']);
 
   // GitHub Agent
   assert.ok(nombres.includes('crear_rama_trabajo'));

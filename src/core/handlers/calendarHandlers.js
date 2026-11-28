@@ -5,12 +5,21 @@
  */
 
 import { consultarEventos, crearEvento, modificarEvento, cancelarEvento } from '../../services/calendarService.js';
+import { obtenerRefreshTokenTenant, generarEnlaceGoogleOAuth, estadoConexionGoogleTenant, PROVIDERS_GOOGLE } from '../../services/tenantOAuthService.js';
 
 export function depsCalendarioDe(opciones = {}) {
+  let refreshToken = opciones.googleCalendarRefreshToken;
+  if (refreshToken === undefined && opciones.tenantId) {
+    refreshToken = obtenerRefreshTokenTenant(
+      { tenantId: opciones.tenantId, provider: PROVIDERS_GOOGLE.calendar },
+      { store: opciones.oauthTokenStore, dataDir: opciones.dataDirOAuth, encryptionKey: opciones.oauthEncryptionKey }
+    ) || undefined;
+  }
   return {
     rutaArchivo: opciones.rutaArchivoCalendario,
     apiKey: opciones.googleCalendarApiKey,
     accessToken: opciones.googleCalendarToken,
+    refreshToken,
     calendarId: opciones.googleCalendarId,
     fetchFn: opciones.fetchFnCalendar
   };
@@ -18,6 +27,26 @@ export function depsCalendarioDe(opciones = {}) {
 
 export function crearManejadoresCalendario() {
   return {
+    conectar_google: (args, opciones) => {
+      const tenantId = opciones.tenantId || 'propietario';
+      const servicio = args.servicio || 'calendar';
+      const estado = estadoConexionGoogleTenant({ tenantId }, {
+        store: opciones.oauthTokenStore,
+        dataDir: opciones.dataDirOAuth,
+        encryptionKey: opciones.oauthEncryptionKey
+      });
+      const res = generarEnlaceGoogleOAuth({
+        tenantId,
+        servicio,
+        baseUrl: opciones.publicUrlOAuth
+      }, {
+        clientId: opciones.googleClientId,
+        stateSecret: opciones.oauthStateSecret || opciones.oauthEncryptionKey
+      });
+      if (!res.ok) return res.error || 'No se pudo generar el enlace de conexion de Google.';
+      const ya = servicio === 'gmail' ? estado.gmail : (servicio === 'ambos' ? (estado.calendar && estado.gmail) : estado.calendar);
+      return `${ya ? 'Ya tienes Google conectado, pero puedes reautorizarlo aqui' : 'Pulsa este enlace para conectar tu Google en 1 clic'} (${res.servicio}):\n${res.url}`;
+    },
     consultar_eventos: async (args, opciones) => {
       const res = await consultarEventos({ desde: args.desde, hasta: args.hasta }, depsCalendarioDe(opciones));
       if (!res.ok) return res.error || 'No se pudieron consultar los eventos del calendario.';

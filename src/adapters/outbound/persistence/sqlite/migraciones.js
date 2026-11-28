@@ -545,6 +545,21 @@ export const MIGRACIONES = [
       );
       CREATE INDEX IF NOT EXISTS idx_rutinas_tenant_dia ON rutinas_actividad(tenant_id, dia_semana, franja_horaria);
     `
+  },
+  {
+    version: 17,
+    nombre: '017_tenant_oauth_tokens',
+    sql: `
+      CREATE TABLE IF NOT EXISTS tenant_oauth_tokens (
+        tenant_id TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        refresh_token_enc TEXT NOT NULL,
+        scopes TEXT NOT NULL DEFAULT '',
+        creado_en TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, provider)
+      );
+    `
   }
 ];
 

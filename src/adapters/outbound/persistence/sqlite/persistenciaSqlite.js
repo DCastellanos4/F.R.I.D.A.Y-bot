@@ -34,6 +34,7 @@ import {
   crearSqliteRoutineStore
 } from './sqliteDomainStores.js';
 import { importarJsonASqlite, comprobarEstadoConsistente } from './importExport.js';
+import { crearSqliteOAuthTokenStore } from '../../../../services/tenantOAuthService.js';
 
 export function crearPersistenciaSqlite({ rutaDb, rutaMemoriasJson = null, rutaFinanzasJson = null, rutaUsuariosJson = null } = {}) {
   if (!rutaDb) throw new Error('crearPersistenciaSqlite requiere rutaDb.');
@@ -58,6 +59,7 @@ export function crearPersistenciaSqlite({ rutaDb, rutaMemoriasJson = null, rutaF
   const knowledgeGraphStore = crearSqliteKnowledgeGraphStore(db);
   const proceduralStore = crearSqliteProceduralStore(db);
   const routineStore = crearSqliteRoutineStore(db);
+  const oauthTokenStore = crearSqliteOAuthTokenStore(db);
 
   const problema = comprobarEstadoConsistente(db);
   if (problema) {
@@ -115,6 +117,7 @@ export function crearPersistenciaSqlite({ rutaDb, rutaMemoriasJson = null, rutaF
     knowledgeGraphStore,
     proceduralStore,
     routineStore,
+    oauthTokenStore,
     fuenteSemantica,
     importacion,
     cerrar: () => db.close()
