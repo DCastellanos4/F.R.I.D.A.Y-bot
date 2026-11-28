@@ -346,7 +346,7 @@ export async function procesarCallbackGoogleOAuth({ code, state, baseUrl, redire
   if (!resp.ok || !data.refresh_token) {
     return {
       ok: false,
-      error: data.error_description || data.error || 'Google no devolvio refresh_token (asegura prompt=consent).'
+      error: data.error_description || data.error || (!resp.ok ? `Error HTTP ${resp.status} al intercambiar token con Google.` : 'Google no devolvio refresh_token (asegura prompt=consent).')
     };
   }
 

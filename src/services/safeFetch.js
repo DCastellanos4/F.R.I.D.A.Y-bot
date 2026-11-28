@@ -120,13 +120,20 @@ function peticionSegura(url, opciones, deps) {
   return new Promise((resolve, reject) => {
     const maxBytes = opciones.maxBytes || MAX_BYTES_DEFECTO;
     const modulo = url.protocol === 'http:' ? http : https;
+    const metodo = String(opciones.method || 'GET').toUpperCase();
+    const bodyBuf = opciones.body !== undefined && opciones.body !== null
+      ? (Buffer.isBuffer(opciones.body) ? opciones.body : Buffer.from(String(opciones.body), 'utf8'))
+      : null;
+    const headersReq = {
+      'user-agent': 'Mozilla/5.0 (compatible; DAVIS-bot/1.0; +verificacion-de-ofertas)',
+      accept: 'text/html,application/xhtml+xml,application/json',
+      ...(bodyBuf ? { 'content-length': String(bodyBuf.length) } : {}),
+      ...(opciones.headers || {})
+    };
     const hacerPeticion = deps.requestImpl || ((u, o) => modulo.request(u, o));
     const req = hacerPeticion(url.href, {
-      headers: {
-        'user-agent': 'Mozilla/5.0 (compatible; DAVIS-bot/1.0; +verificacion-de-ofertas)',
-        accept: 'text/html,application/xhtml+xml,application/json',
-        ...(opciones.headers || {})
-      },
+      method: metodo,
+      headers: headersReq,
       lookup: crearLookupSeguro(deps)
     });
     const limpiar = () => clearTimeout(temporizador);
@@ -166,6 +173,7 @@ function peticionSegura(url, opciones, deps) {
       res.on('error', (err) => { limpiar(); reject(err); });
     });
     req.on('error', (err) => { limpiar(); reject(err); });
+    if (bodyBuf) req.write(bodyBuf);
     req.end();
   });
 }
