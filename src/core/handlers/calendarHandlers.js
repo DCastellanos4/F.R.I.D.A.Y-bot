@@ -44,8 +44,12 @@ export function crearManejadoresCalendario() {
         stateSecret: opciones.oauthStateSecret || opciones.oauthEncryptionKey
       });
       if (!res.ok) return res.error || 'No se pudo generar el enlace de conexion de Google.';
+      const basePublica = (opciones.publicUrlOAuth || process.env.DAVIS_PUBLIC_URL || '').replace(/\/+$/, '');
+      const urlMostrar = basePublica
+        ? `${basePublica}/oauth/google/start?tenantId=${encodeURIComponent(tenantId)}&servicio=${encodeURIComponent(res.servicio)}`
+        : res.url;
       const ya = servicio === 'gmail' ? estado.gmail : (servicio === 'ambos' ? (estado.calendar && estado.gmail) : estado.calendar);
-      return `${ya ? 'Ya tienes Google conectado, pero puedes reautorizarlo aqui' : 'Pulsa este enlace para conectar tu Google en 1 clic'} (${res.servicio}):\n${res.url}`;
+      return `${ya ? 'Ya tienes Google conectado, pero puedes reautorizarlo aqui' : 'Pulsa este enlace para conectar tu Google en 1 clic'} (${res.servicio}):\n${urlMostrar}\n[INSTRUCCION: Incluye literalmente esa URL completa en tu respuesta al usuario para que pueda pulsarla.]`;
     },
     consultar_eventos: async (args, opciones) => {
       const res = await consultarEventos({ desde: args.desde, hasta: args.hasta }, depsCalendarioDe(opciones));

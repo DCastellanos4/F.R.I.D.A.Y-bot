@@ -169,7 +169,7 @@ test('Dispatcher usa refresh_token del tenant activo para Calendar y Gmail y con
     googleClientId: 'cid',
     publicUrlOAuth: 'https://bot.test'
   });
-  assert.match(resEnlace.texto, /https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth/);
+  assert.match(resEnlace.texto, /https:\/\/(?:accounts\.google\.com\/o\/oauth2\/v2\/auth|bot\.test\/oauth\/google\/start)/);
 
   // 2) crear_evento toma automaticamente el refreshToken de comercio-uno
   const prevCid = process.env.GOOGLE_CLIENT_ID;
